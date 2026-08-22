@@ -1,7 +1,7 @@
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { getApi } from "./api.$";
+import { getApi } from "~/routes/api.$";
 
 const HEALTH_QUERY_KEY = ["health"] as const;
 

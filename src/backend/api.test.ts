@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { treaty } from "@elysia/eden";
 
-import { api } from "./api";
+import { api } from "~/backend/api";
 
 const API_ORIGIN = "http://localhost";
 const EXPECTED_HEALTH_RESPONSE = {

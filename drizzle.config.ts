@@ -1,6 +1,6 @@
 import { defineConfig } from "drizzle-kit";
 
-import { getDatabaseUrl } from "./src/db/config.ts";
+import { getDatabaseUrl } from "~/db/config.ts";
 
 export default defineConfig({
 	dbCredentials: {
