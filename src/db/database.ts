@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 
 import { getDatabaseUrl, IN_MEMORY_DATABASE_URL } from "~/db/config";
 import * as schema from "~/db/schema";

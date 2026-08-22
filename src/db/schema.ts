@@ -4,5 +4,3 @@ export const applicationSettings = sqliteTable("application_settings", {
 	key: text("key").primaryKey(),
 	value: text("value").notNull(),
 });
-
-
