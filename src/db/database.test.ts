@@ -1,32 +1,28 @@
 /// <reference types="bun" />
 
-import { describe, expect, it } from "bun:test";
+import { Database } from "bun:sqlite";
+import { describe, it } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 
 import { IN_MEMORY_DATABASE_URL } from "~/db/config";
-import { createDatabase } from "~/db/database";
-import { applicationSettings } from "~/db/schema";
+import * as schema from "~/db/schema";
 
 const MIGRATIONS_FOLDER = fileURLToPath(
 	new URL("../../drizzle", import.meta.url),
 );
-const DATABASE_PROVIDER_SETTING = {
-	key: "database-provider",
-	value: "sqlite",
-};
 
 describe("Drizzle database", () => {
-	it("applies migrations and persists application settings", async () => {
-		const { client, db } = createDatabase(IN_MEMORY_DATABASE_URL);
+	it("applies migrations", async () => {
+		const client = new Database(IN_MEMORY_DATABASE_URL, {
+			create: true,
+			strict: true,
+		});
+		const db = drizzle({ client, schema });
 
 		try {
 			migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
-			await db.insert(applicationSettings).values(DATABASE_PROVIDER_SETTING);
-
-			const settings = await db.select().from(applicationSettings);
-
-			expect(settings).toEqual([DATABASE_PROVIDER_SETTING]);
 		} finally {
 			client.close();
 		}

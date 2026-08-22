@@ -1,10 +1,10 @@
 import { defineConfig } from "drizzle-kit";
 
-import { getDatabaseUrl } from "~/db/config.ts";
+import { ensureDatabaseDirectory } from "~/db/config.ts";
 
 export default defineConfig({
 	dbCredentials: {
-		url: getDatabaseUrl(),
+		url: ensureDatabaseDirectory(),
 	},
 	dialect: "sqlite",
 	out: "./drizzle",
