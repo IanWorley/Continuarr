@@ -4,9 +4,9 @@ import { describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 
-import { IN_MEMORY_DATABASE_URL } from "./config";
-import { createDatabase } from "./database";
-import { applicationSettings } from "./schema";
+import { IN_MEMORY_DATABASE_URL } from "~/db/config";
+import { createDatabase } from "~/db/database";
+import { applicationSettings } from "~/db/schema";
 
 const MIGRATIONS_FOLDER = fileURLToPath(
 	new URL("../../drizzle", import.meta.url),
