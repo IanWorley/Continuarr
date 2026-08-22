@@ -33,7 +33,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.5",
+    "@biomejs/biome": "2.5.10",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-cli": "^1.132.0",
     "@types/bun": "^1.4.0",
