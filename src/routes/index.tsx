@@ -7,7 +7,7 @@ const HEALTH_QUERY_KEY = ["health"] as const;
 
 const healthQueryOptions = queryOptions({
 	queryFn: async () => {
-		const response = await getApi().health.get();
+		const response = await getApi().v1.health.get();
 
 		if (response.error) {
 			throw response.error;

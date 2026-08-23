@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
+import { Route as PlexIndexRouteImport } from './routes/plex/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const ApiSplatRoute = ApiSplatRouteImport.update({
   path: '/api/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlexIndexRoute = PlexIndexRouteImport.update({
+  id: '/plex/',
+  path: '/plex/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/$': typeof ApiSplatRoute
+  '/plex/': typeof PlexIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/$': typeof ApiSplatRoute
+  '/plex': typeof PlexIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/$': typeof ApiSplatRoute
+  '/plex/': typeof PlexIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/$'
+  fullPaths: '/' | '/api/$' | '/plex/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/$'
-  id: '__root__' | '/' | '/api/$'
+  to: '/' | '/api/$' | '/plex'
+  id: '__root__' | '/' | '/api/$' | '/plex/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiSplatRoute: typeof ApiSplatRoute
+  PlexIndexRoute: typeof PlexIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/plex/': {
+      id: '/plex/'
+      path: '/plex'
+      fullPath: '/plex/'
+      preLoaderRoute: typeof PlexIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiSplatRoute: ApiSplatRoute,
+  PlexIndexRoute: PlexIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
