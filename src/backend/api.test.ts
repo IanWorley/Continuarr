@@ -4,6 +4,7 @@ import { describe, expect, it } from "bun:test";
 import { treaty } from "@elysia/eden";
 
 import { api } from "~/backend/api";
+import { API_PREFIX } from "~/backend/auth/plex/endpoints";
 
 const API_ORIGIN = "http://localhost";
 const EXPECTED_HEALTH_RESPONSE = {
@@ -14,7 +15,7 @@ const EXPECTED_HEALTH_RESPONSE = {
 describe("Elysia API", () => {
 	it("returns health information over HTTP", async () => {
 		const response = await api.handle(
-			new Request(`${API_ORIGIN}/api/v1/health`),
+			new Request(`${API_ORIGIN}${API_PREFIX}/health`),
 		);
 
 		expect(response.status).toBe(200);
