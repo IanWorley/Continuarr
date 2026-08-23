@@ -6,8 +6,13 @@ import type z from "zod";
 export const applicationSettings = sqliteTable("application_settings", {
 	key: text("key").primaryKey(),
 	value: text("value").notNull(),
-	createdAt: integer("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-	updateAt: integer("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+	createdAt: integer("created_at", { mode: "timestamp" })
+		.notNull()
+		.default(sql`(unixepoch())`),
+	updatedAt: integer("updated_at", { mode: "timestamp" })
+		.notNull()
+		.default(sql`(unixepoch())`)
+		.$onUpdate(() => sql`(unixepoch())`),
 });
 
 export const applicationSettingsSchema =
