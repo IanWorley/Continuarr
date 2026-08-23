@@ -6,7 +6,7 @@ A minimal Bun application with:
 - TanStack Query for SSR-aware data fetching and caching
 - Elysia for the API
 - Eden Treaty for end-to-end type-safe API calls
-- Drizzle ORM with Bun's native SQLite driver
+- Drizzle ORM with better-sqlite3 for the Vite/Node server; tests use Bun's native SQLite driver
 - Tailwind CSS for styling
 
 ## Run locally
