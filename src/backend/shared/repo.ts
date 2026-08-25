@@ -20,7 +20,7 @@ function findApplicationSetting(key: string): ApplicationSetting | null {
 
 function saveApplicationSetting(key: string, value: string) {
 	const { db } = getDatabase();
-	return db.insert(applicationSettings).values({ key, value });
+	return db.insert(applicationSettings).values({ key, value }).run();
 }
 
 export { findApplicationSetting, saveApplicationSetting };

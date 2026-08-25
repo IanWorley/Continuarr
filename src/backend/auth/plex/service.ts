@@ -1,34 +1,31 @@
-import { z } from "zod";
-import { startPlexAuth } from "~/backend/shared/clients/plexclient";
-import {
-	findApplicationSetting,
-	saveApplicationSetting,
-} from "~/backend/shared/repo";
+import type { PlexLoginClient } from "~/backend/auth/plex/client";
+import type { PlexLoginRepository } from "~/backend/auth/plex/repo";
 
-const PLEX_LOGIN_CLIENT_IDENTIFIER_KEY = "plex_login_client_identifier";
+export interface PlexLoginServiceDependencies {
+	repository: PlexLoginRepository;
+	client: PlexLoginClient;
+	createClientIdentifier: () => string;
+}
 
-export async function startPlexLogin() {
-	let plexIdentifier = null;
+export interface PlexLoginService {
+	startLogin: () => Promise<string | undefined>;
+}
 
-	if (!findApplicationSetting(PLEX_LOGIN_CLIENT_IDENTIFIER_KEY)) {
-		const clientIdentifier = crypto.randomUUID();
-		saveApplicationSetting(PLEX_LOGIN_CLIENT_IDENTIFIER_KEY, clientIdentifier);
-		plexIdentifier = clientIdentifier;
-	} else {
-		plexIdentifier = findApplicationSetting(
-			PLEX_LOGIN_CLIENT_IDENTIFIER_KEY,
-		)?.value;
-	}
+export function createPlexLoginService(
+	dependencies: PlexLoginServiceDependencies,
+): PlexLoginService {
+	return {
+		startLogin: async () => {
+			const storedIdentifier = dependencies.repository.findClientIdentifier();
+			const plexIdentifier =
+				storedIdentifier ?? dependencies.createClientIdentifier();
 
-	const canParse = z.string().safeParse(plexIdentifier);
-	if (!canParse.success) {
-		throw new Error("Invalid plex identifier");
-	}
+			if (storedIdentifier === null) {
+				dependencies.repository.saveClientIdentifier(plexIdentifier);
+			}
 
-	const result = await startPlexAuth(canParse.data);
-	if (!result.success) {
-		// throw 500 error
-	}
-
-	return result.data?.authorizationUrl;
+			const result = await dependencies.client.startAuth(plexIdentifier);
+			return result.data?.authorizationUrl;
+		},
+	};
 }
