@@ -5,8 +5,8 @@ import {
 } from "~/backend/auth/plex/service";
 import { startPlexAuth as startPlexAuthWithPlex } from "~/backend/shared/clients/plexclient";
 import {
-	createApplicationSettingsRepository,
 	type ApplicationSettingsRepository,
+	createApplicationSettingsRepository,
 } from "~/backend/shared/repo";
 import { createDatabase } from "~/db/database";
 
