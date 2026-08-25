@@ -1,5 +1,10 @@
+import type { Jwk } from "@parke.dev/plexjs/src/models/shared/jwkregistrationrequest.js";
 import { PlexAPI } from "@parke.dev/plexjs/src/sdk/sdk.js";
-import { plexOauthSchema } from "~/backend/shared/clients/model";
+import type { JWK } from "jose";
+import {
+	type PlexOauth,
+	plexOauthSchema,
+} from "~/backend/shared/clients/model";
 
 const PLEX_PRODUCT = "Continuarr";
 const PLEX_PLATFORM = "server";
@@ -21,7 +26,16 @@ function plexClientKey(clientIdentifier: string, token?: string) {
 	return `${clientIdentifier}:${token ?? ""}`;
 }
 
-export function generatePlexClient(clientIdentifier: string, token?: string) {
+function toPlexJwk(publicJwk: JWK): Jwk {
+	return {
+		crv: publicJwk.crv,
+		kid: publicJwk.kid,
+		kty: publicJwk.kty,
+		x: publicJwk.x,
+	};
+}
+
+function generatePlexClient(clientIdentifier: string, token?: string) {
 	const clients = getPlexClients();
 	const key = plexClientKey(clientIdentifier, token);
 	const existing = clients.get(key);
@@ -41,8 +55,30 @@ export function generatePlexClient(clientIdentifier: string, token?: string) {
 	return client;
 }
 
-export async function startPlexAuth(clientIdentifier: string, token?: string) {
+export async function startPlexAuth(
+	clientIdentifier: string,
+	publicJwk: JWK,
+	token?: string,
+): Promise<PlexOauth> {
+	const plexJwk = toPlexJwk(publicJwk);
+	if (!plexJwk.crv || !plexJwk.kid || !plexJwk.kty || !plexJwk.x) {
+		return plexOauthSchema.parse({
+			success: false,
+			data: null,
+		});
+	}
+
 	const client = generatePlexClient(clientIdentifier, token);
+
+	if (token) {
+		await client.authentication.registerDeviceJWK({
+			jwkRegistrationRequest: {
+				jwk: plexJwk,
+				strong: true,
+			},
+		});
+	}
+
 	const pin = await client.authentication.createOAuthPin(
 		{
 			clientIdentifier,
@@ -69,7 +105,7 @@ export async function startPlexAuth(clientIdentifier: string, token?: string) {
 
 	const authorizationUrl = `https://app.plex.tv/auth/#!?${params}`;
 
-	return {
+	return plexOauthSchema.parse({
 		success: true,
 		data: {
 			code: pin.code,
@@ -78,5 +114,5 @@ export async function startPlexAuth(clientIdentifier: string, token?: string) {
 			expiresIn: pin.expiresIn,
 			authorizationUrl: authorizationUrl,
 		},
-	};
+	});
 }
