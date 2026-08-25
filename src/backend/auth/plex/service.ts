@@ -2,6 +2,7 @@ import { z } from "zod";
 import { startPlexAuth } from "~/backend/shared/clients/plexclient";
 import {
 	findApplicationSetting,
+	getOrCreatePlexJWK,
 	saveApplicationSetting,
 } from "~/backend/shared/repo";
 
@@ -25,7 +26,8 @@ export async function startPlexLogin() {
 		throw new Error("Invalid plex identifier");
 	}
 
-	const result = await startPlexAuth(canParse.data);
+	const { publicJwk } = await getOrCreatePlexJWK();
+	const result = await startPlexAuth(canParse.data, publicJwk);
 	if (!result.success) {
 		// throw 500 error
 	}
