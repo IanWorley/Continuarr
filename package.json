@@ -36,6 +36,7 @@
     "@tanstack/react-router": "latest",
     "@tanstack/react-router-ssr-query": "^1.167.1",
     "@tanstack/react-start": "latest",
+    "awilix": "^13.0.5",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
