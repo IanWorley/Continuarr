@@ -3,13 +3,17 @@
 import { describe, expect, it } from "bun:test";
 import { treaty } from "@elysia/eden";
 
-import { api } from "~/backend/api";
+import { api, createApi } from "~/backend/api";
+import { REQUEST_ID_HEADER_NAME } from "~/backend/health/controller";
+import { createApplicationLayer } from "~/backend/layers";
 
 const API_ORIGIN = "http://localhost";
 const EXPECTED_HEALTH_RESPONSE = {
 	application: "Continuarr",
 	status: "ok",
-};
+} as const;
+const TEST_APPLICATION_NAME = "Continuarr test";
+const TEST_REQUEST_ID = "test-request-id";
 
 describe("Elysia API", () => {
 	it("returns health information over HTTP", async () => {
@@ -27,5 +31,23 @@ describe("Elysia API", () => {
 
 		expect(error).toBeNull();
 		expect(data).toEqual(EXPECTED_HEALTH_RESPONSE);
+	});
+
+	it("accepts replacement dependencies at the composition root", async () => {
+		const testApi = createApi(
+			createApplicationLayer({
+				applicationName: TEST_APPLICATION_NAME,
+				createRequestId: () => TEST_REQUEST_ID,
+			}),
+		);
+		const response = await testApi.handle(
+			new Request(`${API_ORIGIN}/api/v1/health`),
+		);
+
+		expect(response.headers.get(REQUEST_ID_HEADER_NAME)).toBe(TEST_REQUEST_ID);
+		expect(await response.json()).toEqual({
+			application: TEST_APPLICATION_NAME,
+			status: "ok",
+		});
 	});
 });
