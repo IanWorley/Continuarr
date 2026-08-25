@@ -3,13 +3,15 @@ import { PLEX_CALLBACK_URL } from "~/backend/auth/plex/endpoints";
 import { PLEX_LOGIN_CLIENT_IDENTIFIER_KEY } from "~/backend/shared/ApplicationSettingsConstants";
 import { startPlexAuth } from "~/backend/shared/clients/plexclient";
 import {
-    findApplicationSetting,
-    getOrCreatePlexJWK,
-    saveApplicationSetting,
+	findApplicationSetting,
+	getOrCreatePlexJWK,
+	saveApplicationSetting,
 } from "~/backend/shared/repo";
 
 function getOrCreatePlexClientIdentifier() {
-	const existing = findApplicationSetting(PLEX_LOGIN_CLIENT_IDENTIFIER_KEY,)?.value;
+	const existing = findApplicationSetting(
+		PLEX_LOGIN_CLIENT_IDENTIFIER_KEY,
+	)?.value;
 	if (existing) {
 		return existing;
 	}

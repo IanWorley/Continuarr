@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, type JWK } from "jose";
 import {
-    PLEX_JWK_PRIVATE_KEY,
-    PLEX_JWK_PUBLIC_KEY,
+	PLEX_JWK_PRIVATE_KEY,
+	PLEX_JWK_PUBLIC_KEY,
 } from "~/backend/shared/ApplicationSettingsConstants";
 import { getDatabase } from "~/db/database";
 import { type ApplicationSetting, applicationSettings } from "~/db/schema";
@@ -34,12 +34,10 @@ function saveApplicationSetting(key: string, value: string) {
 	const { db } = getDatabase();
 	db.insert(applicationSettings)
 		.values({ key, value })
-		.onConflictDoUpdate(
-			{
-				target: [applicationSettings.key],
-				set: { value: value },
-			},
-		);
+		.onConflictDoUpdate({
+			target: [applicationSettings.key],
+			set: { value: value },
+		});
 }
 
 async function generatePlexJWK(): Promise<PlexJwkPair> {
@@ -87,10 +85,9 @@ async function getOrCreatePlexJWK(): Promise<PlexJwkPair> {
 }
 
 export {
-    findApplicationSetting,
-    generatePlexJWK,
-    getOrCreatePlexJWK,
-    getPlexJWK,
-    saveApplicationSetting
+	findApplicationSetting,
+	generatePlexJWK,
+	getOrCreatePlexJWK,
+	getPlexJWK,
+	saveApplicationSetting,
 };
-

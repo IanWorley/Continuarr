@@ -4,8 +4,8 @@ import { createOAuthPinResponseFromJSON } from "@parke.dev/plexjs/src/models/ope
 import type { Jwk } from "@parke.dev/plexjs/src/models/shared/jwkregistrationrequest.js";
 import { PlexAPI } from "@parke.dev/plexjs/src/sdk/sdk.js";
 import type { JWK } from "jose";
-import z from "zod";
-import { plexOauthSchema } from "~/backend/shared/clients/model";
+import type z from "zod";
+import type { plexOauthSchema } from "~/backend/shared/clients/model";
 
 const PLEX_PRODUCT = "Continuarr";
 const PLEX_PLATFORM = "server";
