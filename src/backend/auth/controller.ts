@@ -1,4 +1,9 @@
 import { Elysia } from "elysia";
-import { plexRoutes } from "~/backend/auth/plex/controller";
+import {
+	createPlexRoutes,
+	type PlexRouteDependencies,
+} from "~/backend/auth/plex/controller";
 
-export const authRoutes = new Elysia({ prefix: "/auth" }).use(plexRoutes);
+export function createAuthRoutes(dependencies: PlexRouteDependencies) {
+	return new Elysia({ prefix: "/auth" }).use(createPlexRoutes(dependencies));
+}

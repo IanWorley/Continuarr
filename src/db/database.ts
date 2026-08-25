@@ -10,7 +10,7 @@ const globalForDb = globalThis as typeof globalThis & {
 	databaseConnection?: ReturnType<typeof createDatabase>;
 };
 
-function createDatabase(databaseUrl = getDatabaseUrl()) {
+export function createDatabase(databaseUrl = getDatabaseUrl()) {
 	ensureDatabaseDirectory(databaseUrl);
 	const client = new Database(databaseUrl);
 	client.exec(ENABLE_FOREIGN_KEYS_SQL);
@@ -19,6 +19,8 @@ function createDatabase(databaseUrl = getDatabaseUrl()) {
 		db: drizzle({ client, schema }),
 	};
 }
+
+export type DatabaseConnection = ReturnType<typeof createDatabase>;
 
 export function getDatabase() {
 	if (!globalForDb.databaseConnection) {

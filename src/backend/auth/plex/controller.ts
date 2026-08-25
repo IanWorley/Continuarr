@@ -1,4 +1,10 @@
 import Elysia from "elysia";
-import { startPlexLogin } from "~/backend/auth/plex/service";
+import type { StartPlexLogin } from "~/backend/auth/plex/service";
 
-export const plexRoutes = new Elysia().get("/plex/login/start", startPlexLogin);
+export interface PlexRouteDependencies {
+	startPlexLogin: StartPlexLogin;
+}
+
+export function createPlexRoutes({ startPlexLogin }: PlexRouteDependencies) {
+	return new Elysia().get("/plex/login/start", startPlexLogin);
+}

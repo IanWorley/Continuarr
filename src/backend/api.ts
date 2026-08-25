@@ -1,13 +1,20 @@
 import { Elysia } from "elysia";
-import { authRoutes } from "~/backend/auth/controller";
+import { createAuthRoutes } from "~/backend/auth/controller";
+import type { StartPlexLogin } from "~/backend/auth/plex/service";
 
 const APPLICATION_NAME = "Continuarr";
 
-export const api = new Elysia({ prefix: "/api/v1" })
-	.get("/health", () => ({
-		application: APPLICATION_NAME,
-		status: "ok",
-	}))
-	.use(authRoutes);
+export interface ApiDependencies {
+	startPlexLogin: StartPlexLogin;
+}
 
-export type Api = typeof api;
+export function createApi(dependencies: ApiDependencies) {
+	return new Elysia({ prefix: "/api/v1" })
+		.get("/health", () => ({
+			application: APPLICATION_NAME,
+			status: "ok",
+		}))
+		.use(createAuthRoutes(dependencies));
+}
+
+export type Api = ReturnType<typeof createApi>;
