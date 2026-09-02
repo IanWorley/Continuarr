@@ -2,7 +2,7 @@
   "name": "continuarr",
   "private": true,
   "license": "MIT",
-  "packageManager": "bun@1.3.14",
+  "packageManager": "bun@1.4.0",
   "type": "module",
   "imports": {
     "#/*": "./src/*"
