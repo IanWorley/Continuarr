@@ -1,30 +1,24 @@
 import { z } from "zod";
 
-export const plexOauthDataSchema = z.object({
-	code: z.string().describe("The code to use to authenticate with Plex"),
-	expiresAt: z.iso.datetime().describe("The expiration time of the code"),
-	expiresIn: z.number().optional().describe("Seconds until the PIN expires"),
-	token: z
-		.string()
-		.nullable()
-		.optional()
-		.describe("Present after the user authorizes"),
-	authorizationUrl: z
-		.string()
-		.describe("The URL to use to authenticate with Plex"),
+export const plexPinSchema = z.object({
+	authToken: z.string().nullable().optional(),
+	code: z.string().min(1),
+	expiresAt: z.iso.datetime(),
+	expiresIn: z.number().optional(),
+	id: z.number().int().positive(),
 });
 
-export const plexOauthSchema = z
-	.discriminatedUnion("success", [
-		z.object({
-			success: z.literal(false),
-			data: z.null(),
-		}),
-		z.object({
-			success: z.literal(true),
-			data: plexOauthDataSchema,
-		}),
-	])
-	.describe("The Plex OAuth response");
+export const plexDeviceAuthSchema = z.object({
+	authToken: z.string().min(1),
+	clientIdentifier: z.string().optional(),
+	jwt: z.string().min(1),
+});
 
-export type PlexOauth = z.infer<typeof plexOauthSchema>;
+export const plexAccountSchema = z.object({
+	friendlyName: z.string(),
+	id: z.number().int().positive(),
+	title: z.string(),
+});
+
+export type PlexPin = z.infer<typeof plexPinSchema>;
+export type PlexAccount = z.infer<typeof plexAccountSchema>;
