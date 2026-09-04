@@ -41,7 +41,32 @@ bun run test:watch    # Run tests in watch mode
 bun run build
 ```
 
-## Database
+## Plex sign-in
+
+Set `CREDENTIAL_ENCRYPTION_KEY` to a 32-byte hexadecimal key (generate one with
+`openssl rand -hex 32`) and run `bun run db:migrate` before signing in.
+Keep this key stable and back it up separately: replacing or losing it prevents
+decryption of existing Plex credentials. HTTPS is required outside local development
+so session cookies are sent securely. Reverse proxies must preserve the public
+request origin.
+
+Each Plex account gets a separate local user and encrypted Plex connection.
+Only the Plex account ID and display name are kept as profile data. Tokens and
+device keys are encrypted with AES-GCM, bound to the local user ID; session
+tokens are stored as hashes. Login attempts expire after at most 30 minutes and
+sessions after seven days. Login completion requires both the callback state
+and the browser's HttpOnly login cookie. A failed completion must be restarted.
+
+The frontend PR supplies the sign-in and sign-out UI. The backend exposes POST
+`/api/v1/auth/plex/login/start`, POST `/complete`, GET `/me`, and POST
+`/logout` under that same login prefix. The legacy GET start route returns 405
+and remains only to keep the stacked frontend's previous type contract valid.
+Any Plex account may sign in; invitation or administrator approval is not implemented.
+
+Old instance-wide Plex settings are ignored and left intact. Users must sign in
+again; the application does not assign legacy credentials to an arbitrary user.
+
+## Database configuration
 
 SQLite is configured through `DATABASE_URL` and defaults to `./data/continuarr.db`. Copy `.env.example` to `.env` when you need to override it. Drizzle schemas live in `src/db/schema.ts`, the connection factory lives in `src/db/database.ts`, and generated migrations are committed under `drizzle`.
 
