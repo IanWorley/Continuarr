@@ -60,3 +60,35 @@ GitHub Actions runs the Biome checks, type checks, unit and Testcontainers integ
 [Renovate](https://docs.renovatebot.com/getting-started/installing-onboarding/) manages dependency updates. Install the Renovate GitHub App on the repository to enable it. Minor, patch, pin, digest, and lock-file maintenance updates are automatically squash-merged after CI passes; major updates require review.
 
 Application routes live in `src/routes`. The Elysia API contract is defined in `src/api.ts`, and `src/routes/api.$.ts` connects it to TanStack Start while exposing the isomorphic Eden client. The focused API and Eden integration tests live in `src/api.test.ts`.
+
+## Jellyfin
+
+Open **Connect to Jellyfin** on the home page (or `/jellyfin`) and enter your
+server URL, Jellyfin username, and password. URLs may include a reverse-proxy
+base path, such as `https://media.example.com/jellyfin`. The server must be
+reachable from Continuarr, not just from your browser. Use HTTPS for remote
+connections.
+
+The page displays the server name and version, your accessible libraries, and
+up to 12 recently added items. **Refresh** fetches current information; no media
+is imported into the local database. Empty libraries and connection errors are
+shown on the page.
+
+Jellyfin passwords are used only for authentication. Access tokens stay in
+process memory and the browser receives an HttpOnly, SameSite cookie. Each
+browser has its own connection. Sessions expire after eight hours or when
+Continuarr restarts; this initial implementation expects one app process.
+**Log out** forgets the local connection. It does not revoke the token on Jellyfin.
+
+This is a self-hosted integration for trusted users: server URLs can target the
+local network. Keep Continuarr behind your existing access controls rather than
+exposing its connection endpoints publicly.
+
+API endpoints (under `/api/v1/auth/jellyfin`):
+
+- `POST /login`: JSON `{ "serverUrl": "…", "username": "…", "password": "…" }`
+- `GET /overview`: server, user, libraries, and recent items for the session
+- `POST /logout`: clear the session
+
+POST requests require `x-continuarr-request: 1`; browser requests must be same
+origin. No Jellyfin token is returned by these endpoints.

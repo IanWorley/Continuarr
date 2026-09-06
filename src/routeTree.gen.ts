@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
+import { Route as JellyfinIndexRouteImport } from './routes/jellyfin/index'
 import { Route as PlexIndexRouteImport } from './routes/plex/index'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const ApiSplatRoute = ApiSplatRouteImport.update({
   path: '/api/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JellyfinIndexRoute = JellyfinIndexRouteImport.update({
+  id: '/jellyfin/',
+  path: '/jellyfin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlexIndexRoute = PlexIndexRouteImport.update({
   id: '/plex/',
   path: '/plex/',
@@ -32,30 +38,34 @@ const PlexIndexRoute = PlexIndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/$': typeof ApiSplatRoute
+  '/jellyfin/': typeof JellyfinIndexRoute
   '/plex/': typeof PlexIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/$': typeof ApiSplatRoute
+  '/jellyfin': typeof JellyfinIndexRoute
   '/plex': typeof PlexIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/$': typeof ApiSplatRoute
+  '/jellyfin/': typeof JellyfinIndexRoute
   '/plex/': typeof PlexIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/$' | '/plex/'
+  fullPaths: '/' | '/api/$' | '/jellyfin/' | '/plex/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/$' | '/plex'
-  id: '__root__' | '/' | '/api/$' | '/plex/'
+  to: '/' | '/api/$' | '/jellyfin' | '/plex'
+  id: '__root__' | '/' | '/api/$' | '/jellyfin/' | '/plex/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiSplatRoute: typeof ApiSplatRoute
+  JellyfinIndexRoute: typeof JellyfinIndexRoute
   PlexIndexRoute: typeof PlexIndexRoute
 }
 
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/jellyfin/': {
+      id: '/jellyfin/'
+      path: '/jellyfin'
+      fullPath: '/jellyfin/'
+      preLoaderRoute: typeof JellyfinIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/plex/': {
       id: '/plex/'
       path: '/plex'
@@ -88,6 +105,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiSplatRoute: ApiSplatRoute,
+  JellyfinIndexRoute: JellyfinIndexRoute,
   PlexIndexRoute: PlexIndexRoute,
 }
 export const routeTree = rootRouteImport

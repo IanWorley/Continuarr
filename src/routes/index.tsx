@@ -1,5 +1,5 @@
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { getApi } from "~/routes/api.$";
 
@@ -39,6 +39,12 @@ function Home() {
 				<p className="mt-4 text-lg text-slate-300">
 					TanStack Start, Query, Elysia, Eden, and Tailwind CSS are connected.
 				</p>
+				<Link
+					to="/jellyfin"
+					className="mt-6 inline-block font-semibold text-cyan-400"
+				>
+					Connect to Jellyfin →
+				</Link>
 				<div className="mt-8 flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-3">
 					<span className="size-3 rounded-full bg-emerald-400" />
 					<span className="text-sm text-slate-400">API status</span>
