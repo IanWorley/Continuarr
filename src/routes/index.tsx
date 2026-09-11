@@ -30,6 +30,17 @@ function Home() {
 	return (
 		<main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-6 py-16">
 			<section className="w-full rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl shadow-black/20">
+				<button
+					type="button"
+					className="mb-6 text-cyan-400"
+					onClick={async () => {
+						const { error } = await getApi().v1.admin["sign-out"].post();
+						if (error) throw new Error("Unable to sign out.");
+						window.location.assign("/sign-in");
+					}}
+				>
+					Sign out
+				</button>
 				<p className="mb-3 text-sm font-semibold tracking-widest text-cyan-400 uppercase">
 					System ready
 				</p>
