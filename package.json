@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "@elysia/eden": "^1.4.10",
-    "@jellyfin/sdk": "^0.13.0",
+    "@jellyfin/sdk": "^1.0.0",
     "@parke.dev/plexjs": "github:LukeHagar/plexjs",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-router": "latest",
