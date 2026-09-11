@@ -1,0 +1,220 @@
+name: PR Vouch
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+  issue_comment:
+    types: [created]
+  push:
+    branches:
+      - main
+    paths:
+      - .github/VOUCHED.td
+      - .github/workflows/pr-vouch.yml
+
+permissions: {}
+
+jobs:
+  collect-targets:
+    name: Collect PR targets
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    outputs:
+      targets: ${{ steps.collect.outputs.targets }}
+    steps:
+      - id: collect
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            if (context.eventName === "pull_request_target") {
+              const pullRequest = context.payload.pull_request;
+              core.setOutput(
+                "targets",
+                JSON.stringify([{ number: pullRequest.number, user: pullRequest.user.login }]),
+              );
+              return;
+            }
+
+            if (context.eventName === "issue_comment") {
+              const issue = context.payload.issue;
+              const comment = context.payload.comment;
+              const commandPattern = /^\s*\/recheck-vouch\s*$/;
+              const authorizedAssociations = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+              const isAuthorized = authorizedAssociations.has(comment.author_association);
+
+              if (
+                !issue.pull_request ||
+                issue.state !== "open" ||
+                !commandPattern.test(comment.body ?? "") ||
+                !isAuthorized
+              ) {
+                if (!isAuthorized && commandPattern.test(comment.body ?? "")) {
+                  core.warning(`Ignoring unauthorized /recheck-vouch from ${comment.user.login}.`);
+                }
+                core.setOutput("targets", "[]");
+                return;
+              }
+
+              core.setOutput(
+                "targets",
+                JSON.stringify([{ number: issue.number, user: issue.user.login }]),
+              );
+              return;
+            }
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const targets = pulls.map((pullRequest) => ({
+              number: pullRequest.number,
+              user: pullRequest.user.login,
+            }));
+            core.setOutput("targets", JSON.stringify(targets));
+
+  sync-label-definitions:
+    name: Sync vouch label definitions
+    needs: collect-targets
+    if: github.event_name != 'issue_comment' || needs.collect-targets.outputs.targets != '[]'
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    outputs:
+      labels: ${{ steps.labels.outputs.result }}
+    steps:
+      - id: labels
+        name: Ensure vouch labels exist
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          result-encoding: string
+          script: |
+            const labels = [
+              {
+                name: "vouch:trusted",
+                color: "1f883d",
+                description: "PR author is trusted by repo permissions or the VOUCHED list.",
+              },
+              {
+                name: "vouch:unvouched",
+                color: "fbca04",
+                description: "PR author is not yet trusted in the VOUCHED list.",
+              },
+              {
+                name: "vouch:denounced",
+                color: "d1242f",
+                description: "PR author is explicitly blocked by the VOUCHED list.",
+              },
+            ];
+
+            for (const label of labels) {
+              try {
+                const { data: existing } = await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                });
+                if (
+                  existing.color !== label.color ||
+                  (existing.description ?? "") !== label.description
+                ) {
+                  await github.rest.issues.updateLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ...label,
+                  });
+                }
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                try {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ...label,
+                  });
+                } catch (createError) {
+                  if (createError.status !== 422) throw createError;
+                }
+              }
+            }
+
+            return JSON.stringify(labels);
+
+  label:
+    name: Label PR ${{ matrix.target.number }}
+    needs: [collect-targets, sync-label-definitions]
+    if: needs.collect-targets.outputs.targets != '[]'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: pr-vouch-${{ matrix.target.number }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.collect-targets.outputs.targets) }}
+    steps:
+      - id: vouch
+        name: Check PR author trust
+        uses: mitchellh/vouch/action/check-user@d66fa29a64600490892131ad87597c30c91fcac4 # v1
+        with:
+          user: ${{ matrix.target.user }}
+          allow-fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync PR labels
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PR_NUMBER: ${{ matrix.target.number }}
+          VOUCH_LABELS_JSON: ${{ needs.sync-label-definitions.outputs.labels }}
+          VOUCH_STATUS: ${{ steps.vouch.outputs.status }}
+        with:
+          script: |
+            const issueNumber = Number(process.env.PR_NUMBER);
+            const status = process.env.VOUCH_STATUS;
+            const managedLabels = JSON.parse(process.env.VOUCH_LABELS_JSON);
+            const managedLabelNames = new Set(managedLabels.map(({ name }) => name));
+
+            const trustedStatuses = new Set(["bot", "collaborator", "vouched"]);
+            const nextLabel =
+              status === "denounced"
+                ? "vouch:denounced"
+                : trustedStatuses.has(status)
+                  ? "vouch:trusted"
+                  : "vouch:unvouched";
+            const { data: currentLabels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            for (const { name } of currentLabels) {
+              if (!managedLabelNames.has(name) || name === nextLabel) continue;
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name,
+                });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+
+            if (!currentLabels.some(({ name }) => name === nextLabel)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [nextLabel],
+              });
+            }
+
+            core.info(`PR #${issueNumber}: ${status} -> ${nextLabel}`);

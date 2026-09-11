@@ -30,6 +30,7 @@ bun run lint:fix      # Apply safe lint fixes
 bun run check         # Check formatting and lint rules
 bun run check:fix     # Apply formatting and safe lint fixes
 bun run typecheck     # Check TypeScript types
+bun run test:pr-size  # Test PR size label classification
 bun run db:generate   # Generate a migration after schema changes
 bun run db:check      # Validate migration history
 bun run db:migrate    # Apply pending migrations
@@ -58,5 +59,7 @@ bun run db:migrate
 GitHub Actions runs the Biome checks, type checks, unit and Testcontainers integration tests, and production build for pull requests and pushes to `main`. The autofix workflow applies Biome fixes to pull requests through [autofix.ci](https://autofix.ci); install the autofix.ci GitHub App on the repository to allow it to update pull requests.
 
 [Renovate](https://docs.renovatebot.com/getting-started/installing-onboarding/) manages dependency updates. Install the Renovate GitHub App on the repository to enable it. Minor, patch, pin, digest, and lock-file maintenance updates are automatically squash-merged after CI passes; major updates require review.
+
+Pull requests are automatically labeled by contributor trust and effective review size. See [CONTRIBUTING.md](CONTRIBUTING.md) for the vouch, recheck, and sizing rules.
 
 Application routes live in `src/routes`. The Elysia API contract is defined in `src/api.ts`, and `src/routes/api.$.ts` connects it to TanStack Start while exposing the isomorphic Eden client. The focused API and Eden integration tests live in `src/api.test.ts`.
