@@ -13,12 +13,21 @@ A minimal Bun application with:
 
 ```bash
 bun install
+bun run db:migrate
 bun run dev
 ```
 
-Open <http://localhost:3000>. The page calls the Elysia health endpoint through Eden Treaty and displays its status.
+Open <http://localhost:3000>. On a new installation, create the installation-owner account, then sign in to access the application.
 
-The API is available at <http://localhost:3000/api/health>.
+The API is available at <http://localhost:3000/api/v1/health>.
+
+## Installation-owner authentication
+
+Continuarr has one administrator, separate from Plex and Jellyfin identities. The first setup at `/sign-in` claims the installation; complete it before exposing a new installation to other users. Once the owner exists, bootstrap is permanently closed. There is no registration, invitation, or additional account flow.
+
+Passwords must contain 12–128 characters and are salted and hashed with Node's maintained `crypto.scrypt` implementation (N=131072, r=8, p=1). SQLite stores the owner and server-managed sessions. Each sign-in creates a random 256-bit token; only its SHA-256 hash is stored. Sessions survive server restarts, expire after seven days without sliding renewal, and are revoked immediately on sign-out. The cookie is HttpOnly, SameSite=Strict, and Secure for HTTPS or production. Serve production over HTTPS. Proxies must preserve the public request origin so same-origin checks succeed.
+
+All application routes and APIs require a session except `GET /api/v1/health` and the setup/sign-in flow (`GET /sign-in`, `GET /api/v1/admin/setup`, `POST /api/v1/admin/bootstrap`, `POST /api/v1/admin/sign-in`). Static application assets remain available to render sign-in. Unauthenticated APIs return 401; page requests redirect to sign-in. Mutating requests require an `Origin` header matching the request URL, including API clients. Credentials are JSON `{ "username": "…", "password": "…" }`; keep the returned cookie for subsequent requests. Use `GET /api/v1/admin/session` to check authentication and `POST /api/v1/admin/sign-out` to revoke the current session.
 
 ## Useful commands
 
@@ -62,4 +71,4 @@ GitHub Actions runs the Biome checks, type checks, unit and Testcontainers integ
 
 Pull requests are automatically labeled by contributor trust and effective review size. See [CONTRIBUTING.md](CONTRIBUTING.md) for the vouch, recheck, and sizing rules.
 
-Application routes live in `src/routes`. The Elysia API contract is defined in `src/api.ts`, and `src/routes/api.$.ts` connects it to TanStack Start while exposing the isomorphic Eden client. The focused API and Eden integration tests live in `src/api.test.ts`.
+Application routes live in `src/routes`. The Elysia API contract is defined in `src/backend/api.ts`, and `src/routes/api.$.ts` connects it to TanStack Start while exposing the isomorphic Eden client. The focused API and Eden integration tests live in `src/backend/api.test.ts`.
