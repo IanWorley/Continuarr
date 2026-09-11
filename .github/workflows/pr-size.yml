@@ -1,0 +1,193 @@
+name: PR Size
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+  push:
+    branches:
+      - main
+    paths:
+      - .github/scripts/pr-size.mjs
+      - .github/workflows/pr-size.yml
+
+permissions: {}
+
+jobs:
+  sync-label-definitions:
+    name: Sync PR size label definitions
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    outputs:
+      labels: ${{ steps.labels.outputs.result }}
+    steps:
+      - id: labels
+        name: Ensure PR size labels exist
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          result-encoding: string
+          script: |
+            const labels = [
+              {
+                name: "size:XS",
+                color: "0e8a16",
+                description: "0-9 effective changed lines (tests excluded in mixed PRs).",
+              },
+              {
+                name: "size:S",
+                color: "5ebd3e",
+                description: "10-29 effective changed lines (tests excluded in mixed PRs).",
+              },
+              {
+                name: "size:M",
+                color: "fbca04",
+                description: "30-99 effective changed lines (tests excluded in mixed PRs).",
+              },
+              {
+                name: "size:L",
+                color: "fe7d37",
+                description: "100-499 effective changed lines (tests excluded in mixed PRs).",
+              },
+              {
+                name: "size:XL",
+                color: "d93f0b",
+                description: "500-999 effective changed lines (tests excluded in mixed PRs).",
+              },
+              {
+                name: "size:XXL",
+                color: "b60205",
+                description: "1,000+ effective changed lines (tests excluded in mixed PRs).",
+              },
+            ];
+
+            for (const label of labels) {
+              try {
+                const { data: existing } = await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                });
+                if (
+                  existing.color !== label.color ||
+                  (existing.description ?? "") !== label.description
+                ) {
+                  await github.rest.issues.updateLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ...label,
+                  });
+                }
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                try {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ...label,
+                  });
+                } catch (createError) {
+                  if (createError.status !== 422) throw createError;
+                }
+              }
+            }
+
+            return JSON.stringify(labels);
+
+  label:
+    name: Label PR size
+    needs: sync-label-definitions
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: pr-size-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      # This job fetches untrusted PR commits only as passive Git data. Do not add
+      # dependency installs, PR scripts, build steps, or caches to this job.
+      - name: Check out the trusted base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Fetch pull request commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --no-tags origin "$BASE_SHA"
+          git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/pr-size/$PR_NUMBER"
+          FETCHED_HEAD_SHA=$(git rev-parse "refs/remotes/pr-size/$PR_NUMBER")
+          if [ "$FETCHED_HEAD_SHA" != "$HEAD_SHA" ]; then
+            echo "Fetched head $FETCHED_HEAD_SHA does not match event head $HEAD_SHA" >&2
+            exit 1
+          fi
+
+      - id: size
+        name: Calculate effective review size
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          HEAD_REF="refs/remotes/pr-size/$PR_NUMBER"
+          SIZE_JSON=$(node .github/scripts/pr-size.mjs "$BASE_SHA" "$HEAD_REF")
+          echo "result=$SIZE_JSON" >> "$GITHUB_OUTPUT"
+
+      - name: Sync PR size label
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          LABELS_JSON: ${{ needs.sync-label-definitions.outputs.labels }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SIZE_JSON: ${{ steps.size.outputs.result }}
+        with:
+          script: |
+            const issueNumber = Number(process.env.PR_NUMBER);
+            const labels = JSON.parse(process.env.LABELS_JSON);
+            const size = JSON.parse(process.env.SIZE_JSON);
+            const managedLabelNames = new Set(labels.map(({ name }) => name));
+            const { data: currentLabels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            for (const { name } of currentLabels) {
+              if (!managedLabelNames.has(name) || name === size.label) continue;
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name,
+                });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+
+            if (!currentLabels.some(({ name }) => name === size.label)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [size.label],
+              });
+            }
+
+            const classification =
+              size.productionLines === 0 && size.testLines > 0
+                ? "test-only PR"
+                : size.testLines > 0
+                  ? "test lines excluded"
+                  : "production changes";
+            core.info(
+              `PR #${issueNumber}: ${size.productionLines} production lines, ` +
+                `${size.testLines} test lines, ${size.effectiveLines} effective lines ` +
+                `-> ${size.label} (${classification})`,
+            );

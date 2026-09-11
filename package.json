@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "test": "bun test",
     "test:containers": "bun test ./src/db/schema.container.test.ts",
+    "test:pr-size": "node --test .github/scripts/pr-size.test.mjs",
     "test:watch": "bun test --watch",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
