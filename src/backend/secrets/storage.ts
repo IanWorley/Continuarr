@@ -13,6 +13,7 @@ const TAG_BYTES = 16;
 const VERSION = "v1";
 const ENVELOPE_PARTS = 4;
 const REDACTED = "[REDACTED]";
+const AAD_NAMESPACE = "continuarr:credential";
 const KEY_ERROR =
 	"CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key";
 const STORAGE_ERROR = "Unable to process stored credential";
@@ -55,9 +56,7 @@ function associatedData(connectionId: string): Buffer {
 	if (typeof connectionId !== "string" || connectionId.length === 0) {
 		throw new Error(STORAGE_ERROR);
 	}
-	return Buffer.from(
-		JSON.stringify(["continuarr:credential", VERSION, connectionId]),
-	);
+	return Buffer.from(JSON.stringify([AAD_NAMESPACE, VERSION, connectionId]));
 }
 
 export function createSecretStorage(
