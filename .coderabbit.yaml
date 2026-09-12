@@ -1,0 +1,87 @@
+# yaml-language-server: $schema=https://www.coderabbit.ai/integrations/schema.v2.json
+language: en-US
+early_access: false
+tone_instructions: >-
+  Be concise, direct, and constructive. Explain the concrete impact of findings
+  and suggest the simplest fix. Prefer actionable feedback over stylistic nitpicks.
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  auto_apply_labels: false
+  suggested_reviewers: false
+  auto_assign_reviewers: false
+  in_progress_fortune: false
+  poem: false
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+
+  # Review dependency manifests and SQL migrations, but skip generated artifacts.
+  path_filters:
+    - "!bun.lock"
+    - "!bun.lockb"
+    - "!src/routeTree.gen.ts"
+    - "!drizzle/meta/**"
+    - "!node_modules/**"
+    - "!dist/**"
+    - "!dist-ssr/**"
+    - "!coverage/**"
+    - "!.output/**"
+    - "!.tanstack/**"
+    - "!.nitro/**"
+
+  path_instructions:
+    - path: "**/*"
+      instructions: >-
+        Prioritize correctness, security, and maintainability. Prefer simple
+        solutions and avoid speculative abstractions. Flag magic values and
+        suggest descriptive named constants. Comments should explain intent;
+        flag stale comments. Leave formatting to the repository's Biome config.
+    - path: "src/**/*.{ts,tsx}"
+      instructions: >-
+        Preserve end-to-end type safety across TanStack Start, Elysia, Eden,
+        Zod, and Drizzle. Flag unjustified any types, unsafe assertions, and
+        missing validation at external boundaries. Check server/client import
+        boundaries, SSR behavior, and loading and error handling in React.
+    - path: "src/backend/**"
+      instructions: >-
+        Check authentication, authorization, external API failures, and credential
+        handling. Secrets must not leak into responses, logs, or client bundles.
+        Flag unbounded retries and missing timeouts for external requests.
+    - path: "src/db/**"
+      instructions: >-
+        Check SQLite constraints, transactions, and data integrity. Schema changes
+        should include appropriate committed Drizzle migrations. Account for
+        better-sqlite3 in the application and Bun SQLite in tests.
+    - path: "drizzle/*.sql"
+      instructions: >-
+        Review migration ordering, SQLite compatibility, and potential data loss
+        on existing databases. Prefer new migrations over editing previously
+        applied migrations.
+    - path: "**/*.test.{ts,tsx,mjs}"
+      instructions: >-
+        Keep tests focused on specific observable behaviors, including meaningful
+        failure cases. Avoid implementation-mirroring or throwaway smoke tests.
+        Remove obsolete tests when their feature is removed. Container tests
+        require Docker; other tests should not depend on live external services.
+
+  # Intent-focused comments are more useful here than a docstring quota.
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+
+  tools:
+    biome:
+      enabled: true
+    eslint:
+      enabled: false
