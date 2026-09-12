@@ -2,8 +2,12 @@ import { eq } from "drizzle-orm";
 import { getDatabase } from "~/db/database";
 import { type ApplicationSetting, applicationSettings } from "~/db/schema";
 
-function findApplicationSetting(key: string): ApplicationSetting | null {
-	const { db } = getDatabase();
+type Database = ReturnType<typeof getDatabase>["db"];
+
+function findApplicationSetting(
+	key: string,
+	db: Database = getDatabase().db,
+): ApplicationSetting | null {
 	const result = db
 		.select()
 		.from(applicationSettings)
@@ -18,9 +22,20 @@ function findApplicationSetting(key: string): ApplicationSetting | null {
 	return result;
 }
 
-function saveApplicationSetting(key: string, value: string) {
-	const { db } = getDatabase();
-	return db.insert(applicationSettings).values({ key, value });
+function saveApplicationSetting(
+	key: string,
+	value: string,
+	db: Database = getDatabase().db,
+): ApplicationSetting {
+	return db
+		.insert(applicationSettings)
+		.values({ key, value })
+		.onConflictDoUpdate({
+			target: applicationSettings.key,
+			set: { value },
+		})
+		.returning()
+		.get();
 }
 
 export { findApplicationSetting, saveApplicationSetting };

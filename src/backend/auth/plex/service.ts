@@ -8,19 +8,17 @@ import {
 const PLEX_LOGIN_CLIENT_IDENTIFIER_KEY = "plex_login_client_identifier";
 
 export async function startPlexLogin() {
-	let plexIdentifier = null;
+	let setting = findApplicationSetting(PLEX_LOGIN_CLIENT_IDENTIFIER_KEY);
 
-	if (!findApplicationSetting(PLEX_LOGIN_CLIENT_IDENTIFIER_KEY)) {
+	if (!setting) {
 		const clientIdentifier = crypto.randomUUID();
-		saveApplicationSetting(PLEX_LOGIN_CLIENT_IDENTIFIER_KEY, clientIdentifier);
-		plexIdentifier = clientIdentifier;
-	} else {
-		plexIdentifier = findApplicationSetting(
+		setting = saveApplicationSetting(
 			PLEX_LOGIN_CLIENT_IDENTIFIER_KEY,
-		)?.value;
+			clientIdentifier,
+		);
 	}
 
-	const canParse = z.string().safeParse(plexIdentifier);
+	const canParse = z.string().safeParse(setting.value);
 	if (!canParse.success) {
 		throw new Error("Invalid plex identifier");
 	}
