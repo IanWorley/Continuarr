@@ -13,6 +13,8 @@ A minimal Bun application with:
 
 ```bash
 bun install
+cp .env.example .env
+# Set CREDENTIAL_ENCRYPTION_KEY in .env (see below).
 bun run dev
 ```
 
@@ -41,6 +43,12 @@ bun run test:containers # Run only Testcontainers schema tests
 bun run test:watch    # Run tests in watch mode
 bun run build
 ```
+
+## Credential encryption
+
+Set `CREDENTIAL_ENCRYPTION_KEY` to a base64-encoded 32-byte random key in your deployment environment or local `.env`. Generate it with `openssl rand -base64 32`. The server refuses to start if the key is missing or invalid. Keep this key stable and back it up separately from SQLite; replacing or losing it makes existing credentials unreadable. Never commit the key or expose it through a `VITE_` variable.
+
+`src/backend/secrets/storage.server.ts` provides the configured secret-storage boundary. Encrypt a `Secret` using the stable, unique connection ID before writing its returned string to SQLite, and pass that same record ID when decrypting. Values use versioned AES-256-GCM with a fresh nonce and authenticated connection identity. Decryption returns a redacted `Secret`; call `reveal()` only when passing credentials to the media server, never in API responses or logs. Connection tables and persistence integration follow separately.
 
 ## Database
 
