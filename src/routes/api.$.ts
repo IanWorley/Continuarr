@@ -1,6 +1,7 @@
 import { treaty } from "@elysia/eden";
 import { createFileRoute } from "@tanstack/react-router";
 import { createIsomorphicFn } from "@tanstack/react-start";
+import { getRequestHeaders } from "@tanstack/react-start/server";
 
 import type { Api } from "~/backend/api";
 import { api } from "~/backend/api.server";
@@ -24,5 +25,5 @@ export const Route = createFileRoute("/api/$")({
 });
 
 export const getApi = createIsomorphicFn()
-	.server(() => treaty(api).api)
+	.server(() => treaty(api, { headers: getRequestHeaders() }).api)
 	.client(() => treaty<Api>(window.location.origin).api);
