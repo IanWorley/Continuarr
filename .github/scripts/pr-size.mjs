@@ -3,11 +3,11 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const SIZE_THRESHOLDS = [
-  { maximumExclusive: 10, label: "size:XS" },
-  { maximumExclusive: 30, label: "size:S" },
-  { maximumExclusive: 100, label: "size:M" },
-  { maximumExclusive: 500, label: "size:L" },
-  { maximumExclusive: 1_000, label: "size:XL" },
+  { maximumInclusive: 9, label: "size:XS" },
+  { maximumInclusive: 200, label: "size:S" },
+  { maximumInclusive: 400, label: "size:M" },
+  { maximumInclusive: 800, label: "size:L" },
+  { maximumInclusive: 1_500, label: "size:XL" },
 ];
 
 const TEST_DIRECTORY_NAMES = new Set(["__tests__", "test", "tests"]);
@@ -26,7 +26,7 @@ export function isTestPath(path) {
 
 export function resolveSizeLabel(changedLines) {
   const threshold = SIZE_THRESHOLDS.find(
-    ({ maximumExclusive }) => changedLines < maximumExclusive,
+    ({ maximumInclusive }) => changedLines <= maximumInclusive,
   );
 
   return threshold?.label ?? "size:XXL";
