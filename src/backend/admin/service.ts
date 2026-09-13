@@ -1,9 +1,5 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
-import { and, eq, gt, lte } from "drizzle-orm";
-import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-import { getDatabase } from "~/db/database";
-import type * as schema from "~/db/schema";
-import { administrator, administratorSessions } from "~/db/schema";
+import { createAdministratorRepository } from "~/backend/admin/repo";
 
 export const SESSION_COOKIE = "continuarr_session";
 export const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 7;
@@ -13,7 +9,16 @@ export {
 	MIN_PASSWORD_LENGTH,
 } from "~/backend/admin/model";
 
-const OWNER_ID = 1;
+// Each scrypt derivation needs roughly 128 MiB; bound work across service instances.
+export const MAX_CONCURRENT_PASSWORD_DERIVATIONS = 2;
+let activePasswordDerivations = 0;
+
+export class PasswordDerivationBusyError extends Error {
+	constructor() {
+		super("Authentication is busy. Please retry.");
+	}
+}
+
 const TOKEN_BYTES = 32;
 const SALT_BYTES = 16;
 const KEY_BYTES = 64;
@@ -24,23 +29,28 @@ const SCRYPT_MAX_MEMORY = 256 * 1024 * 1024;
 const MILLISECONDS_PER_SECOND = 1000;
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 
-type Database = BaseSQLiteDatabase<"sync", unknown, typeof schema>;
-
-function deriveKey(password: string, salt: string): Promise<Buffer> {
-	return new Promise((resolve, reject) => {
-		scrypt(
-			password,
-			salt,
-			KEY_BYTES,
-			{
-				N: SCRYPT_COST,
-				r: SCRYPT_BLOCK_SIZE,
-				p: SCRYPT_PARALLELISM,
-				maxmem: SCRYPT_MAX_MEMORY,
-			},
-			(error, key) => (error ? reject(error) : resolve(key)),
-		);
-	});
+async function deriveKey(password: string, salt: string): Promise<Buffer> {
+	if (activePasswordDerivations >= MAX_CONCURRENT_PASSWORD_DERIVATIONS)
+		throw new PasswordDerivationBusyError();
+	activePasswordDerivations += 1;
+	try {
+		return await new Promise<Buffer>((resolve, reject) => {
+			scrypt(
+				password,
+				salt,
+				KEY_BYTES,
+				{
+					N: SCRYPT_COST,
+					r: SCRYPT_BLOCK_SIZE,
+					p: SCRYPT_PARALLELISM,
+					maxmem: SCRYPT_MAX_MEMORY,
+				},
+				(error, key) => (error ? reject(error) : resolve(key)),
+			);
+		});
+	} finally {
+		activePasswordDerivations -= 1;
+	}
 }
 
 async function hashPassword(password: string) {
@@ -68,38 +78,26 @@ export function sessionCookie(
 	token: string,
 	maxAge = SESSION_DURATION_SECONDS,
 ) {
-	const secure =
-		new URL(request.url).protocol === "https:" ||
-		process.env.NODE_ENV === "production";
+	const secure = new URL(request.url).protocol === "https:";
 	return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
 }
 
 export function createAdministratorService(
-	database: () => Database = () => getDatabase().db,
+	database?: Parameters<typeof createAdministratorRepository>[0],
 	now = () => Math.floor(Date.now() / MILLISECONDS_PER_SECOND),
 ) {
+	const repository = createAdministratorRepository(database);
 	return {
 		isConfigured() {
-			return Boolean(
-				database().select({ id: administrator.id }).from(administrator).get(),
-			);
+			return repository.isConfigured();
 		},
 		async bootstrap(username: string, password: string) {
-			const db = database();
 			if (this.isConfigured()) return false;
 			const passwordHash = await hashPassword(password);
-			return Boolean(
-				db
-					.insert(administrator)
-					.values({ id: OWNER_ID, username, passwordHash })
-					.onConflictDoNothing()
-					.returning({ id: administrator.id })
-					.get(),
-			);
+			return repository.createOwner(username, passwordHash);
 		},
 		async signIn(username: string, password: string) {
-			const db = database();
-			const owner = db.select().from(administrator).get();
+			const owner = repository.getOwner();
 			// Always derive a key so unknown usernames do not skip the expensive password check.
 			const [salt, storedKey] = owner?.passwordHash.split(":") ?? [
 				"unconfigured",
@@ -113,41 +111,22 @@ export function createAdministratorService(
 			)
 				return null;
 			const token = randomBytes(TOKEN_BYTES).toString("hex");
-			db.delete(administratorSessions)
-				.where(lte(administratorSessions.expiresAt, now()))
-				.run();
-			db.insert(administratorSessions)
-				.values({
-					tokenHash: tokenHash(token),
-					administratorId: OWNER_ID,
-					expiresAt: now() + SESSION_DURATION_SECONDS,
-				})
-				.run();
+			const timestamp = now();
+			repository.deleteExpiredSessions(timestamp);
+			repository.createSession(
+				tokenHash(token),
+				timestamp + SESSION_DURATION_SECONDS,
+			);
 			return token;
 		},
 		authenticate(request: Request) {
 			const token = readSessionToken(request);
 			if (!token) return false;
-			return Boolean(
-				database()
-					.select({ tokenHash: administratorSessions.tokenHash })
-					.from(administratorSessions)
-					.where(
-						and(
-							eq(administratorSessions.tokenHash, tokenHash(token)),
-							gt(administratorSessions.expiresAt, now()),
-						),
-					)
-					.get(),
-			);
+			return repository.hasActiveSession(tokenHash(token), now());
 		},
 		signOut(request: Request) {
 			const token = readSessionToken(request);
-			if (token)
-				database()
-					.delete(administratorSessions)
-					.where(eq(administratorSessions.tokenHash, tokenHash(token)))
-					.run();
+			if (token) repository.deleteSession(tokenHash(token));
 		},
 	};
 }

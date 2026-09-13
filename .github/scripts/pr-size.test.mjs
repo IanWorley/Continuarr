@@ -16,14 +16,14 @@ describe("resolveSizeLabel", () => {
     [0, "size:XS"],
     [9, "size:XS"],
     [10, "size:S"],
-    [29, "size:S"],
-    [30, "size:M"],
-    [99, "size:M"],
-    [100, "size:L"],
-    [499, "size:L"],
-    [500, "size:XL"],
-    [999, "size:XL"],
-    [1_000, "size:XXL"],
+    [200, "size:S"],
+    [201, "size:M"],
+    [400, "size:M"],
+    [401, "size:L"],
+    [800, "size:L"],
+    [801, "size:XL"],
+    [1_500, "size:XL"],
+    [1_501, "size:XXL"],
   ];
 
   for (const [changedLines, expectedLabel] of boundaryCases) {
@@ -53,7 +53,7 @@ describe("summarizeNumstat", () => {
 
     assert.deepEqual(result, {
       effectiveLines: 30,
-      label: "size:M",
+      label: "size:S",
       productionLines: 30,
       testLines: 10,
     });
@@ -64,7 +64,7 @@ describe("summarizeNumstat", () => {
 
     assert.deepEqual(result, {
       effectiveLines: 30,
-      label: "size:M",
+      label: "size:S",
       productionLines: 0,
       testLines: 30,
     });

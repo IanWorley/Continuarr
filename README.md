@@ -13,6 +13,8 @@ A minimal Bun application with:
 
 ```bash
 bun install
+cp .env.example .env
+# Set CREDENTIAL_ENCRYPTION_KEY in .env (see below).
 bun run db:migrate
 bun run dev
 ```
@@ -25,7 +27,7 @@ The API is available at <http://localhost:3000/api/v1/health>.
 
 Continuarr has one administrator, separate from Plex and Jellyfin identities. The first setup at `/sign-in` claims the installation; complete it before exposing a new installation to other users. Once the owner exists, bootstrap is permanently closed. There is no registration, invitation, or additional account flow.
 
-Passwords must contain 12–128 characters and are salted and hashed with Node's maintained `crypto.scrypt` implementation (N=131072, r=8, p=1). SQLite stores the owner and server-managed sessions. Each sign-in creates a random 256-bit token; only its SHA-256 hash is stored. Sessions survive server restarts, expire after seven days without sliding renewal, and are revoked immediately on sign-out. The cookie is HttpOnly, SameSite=Strict, and Secure for HTTPS or production. Serve production over HTTPS. Proxies must preserve the public request origin so same-origin checks succeed.
+Passwords must contain 12–128 characters and are salted and hashed with Node's maintained `crypto.scrypt` implementation (N=131072, r=8, p=1). SQLite stores the owner and server-managed sessions. Each sign-in creates a random 256-bit token; only its SHA-256 hash is stored. Sessions survive server restarts, expire after seven days without sliding renewal, and are revoked immediately on sign-out. The cookie is HttpOnly, SameSite=Strict, and Secure when the request URL uses HTTPS. Use HTTPS for deployments exposed beyond a trusted local network. Proxies must preserve the public request origin so same-origin checks succeed.
 
 All application routes and APIs require a session except `GET /api/v1/health` and the setup/sign-in flow (`GET /sign-in`, `GET /api/v1/admin/setup`, `POST /api/v1/admin/bootstrap`, `POST /api/v1/admin/sign-in`). Static application assets remain available to render sign-in. Unauthenticated APIs return 401; page requests redirect to sign-in. Mutating requests require an `Origin` header matching the request URL, including API clients. Credentials are JSON `{ "username": "…", "password": "…" }`; keep the returned cookie for subsequent requests. Use `GET /api/v1/admin/session` to check authentication and `POST /api/v1/admin/sign-out` to revoke the current session.
 
@@ -50,6 +52,12 @@ bun run test:containers # Run only Testcontainers schema tests
 bun run test:watch    # Run tests in watch mode
 bun run build
 ```
+
+## Credential encryption
+
+Set `CREDENTIAL_ENCRYPTION_KEY` to a base64-encoded 32-byte random key in your deployment environment or local `.env`. Generate it with `openssl rand -base64 32`. The server refuses to start if the key is missing or invalid. Keep this key stable and back it up separately from SQLite; replacing or losing it makes existing credentials unreadable. Never commit the key or expose it through a `VITE_` variable.
+
+`src/backend/secrets/storage.server.ts` provides the configured secret-storage boundary. Encrypt a `Secret` using the stable, unique connection ID before writing its returned string to SQLite, and pass that same record ID when decrypting. Values use versioned AES-256-GCM with a fresh nonce and authenticated connection identity. Decryption returns a redacted `Secret`; call `reveal()` only when passing credentials to the media server, never in API responses or logs. Connection tables and persistence integration follow separately.
 
 ## Database
 

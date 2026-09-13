@@ -7,6 +7,8 @@ import {
 } from "~/backend/admin/model";
 import { getApi } from "~/routes/api.$";
 
+const HTTP_CONFLICT = 409;
+
 export const Route = createFileRoute("/sign-in")({
 	loader: async () => {
 		const { data, error } = await getApi().v1.admin.setup.get();
@@ -35,7 +37,7 @@ function SignIn() {
 			if (!configured) {
 				const result = await getApi().v1.admin.bootstrap.post(credentials);
 				if (result.error) {
-					if (result.status === 409) setConfigured(true);
+					if (result.status === HTTP_CONFLICT) setConfigured(true);
 					throw new Error(
 						"Unable to create the owner. The installation may already be configured.",
 					);
@@ -89,7 +91,8 @@ function SignIn() {
 				</label>
 				{!configured && (
 					<p className="text-sm text-slate-400">
-						Use 12–128 characters for your password.
+						Use {MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_LENGTH} characters for your
+						password.
 					</p>
 				)}
 				{error && (

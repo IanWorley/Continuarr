@@ -5,7 +5,9 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { guardRequest } from "~/backend/admin/guard";
 import {
 	createAdministratorService,
+	MAX_CONCURRENT_PASSWORD_DERIVATIONS,
 	SESSION_DURATION_SECONDS,
+	sessionCookie,
 } from "~/backend/admin/service";
 import { createApi } from "~/backend/api";
 import * as schema from "~/db/schema";
@@ -242,4 +244,41 @@ describe("installation administrator", () => {
 			),
 		).toBeUndefined();
 	});
+});
+
+it.each(["development", "production"])(
+	"allows HTTP session cookies in %s mode",
+	(environment) => {
+		const previousEnvironment = process.env.NODE_ENV;
+		try {
+			process.env.NODE_ENV = environment;
+			const cookie = sessionCookie(new Request(ORIGIN), "test-token");
+			expect(cookie).not.toContain("; Secure");
+			expect(cookie).toContain("HttpOnly");
+			expect(cookie).toContain("SameSite=Strict");
+		} finally {
+			if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+			else process.env.NODE_ENV = previousEnvironment;
+		}
+	},
+);
+
+it("rejects excess password work across bootstrap and sign-in, then releases capacity", async () => {
+	const pendingBootstraps = Array.from(
+		{ length: MAX_CONCURRENT_PASSWORD_DERIVATIONS },
+		() => service.bootstrap(CREDENTIALS.username, CREDENTIALS.password),
+	);
+	try {
+		expect((await request("/admin/sign-in", "POST", CREDENTIALS)).status).toBe(
+			429,
+		);
+		expect(
+			(await request("/admin/bootstrap", "POST", CREDENTIALS)).status,
+		).toBe(429);
+	} finally {
+		await Promise.all(pendingBootstraps);
+	}
+	expect((await request("/admin/sign-in", "POST", CREDENTIALS)).status).toBe(
+		200,
+	);
 });
