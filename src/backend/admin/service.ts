@@ -119,10 +119,14 @@ export function createAdministratorService(
 			);
 			return token;
 		},
-		authenticate(request: Request) {
+		activeSessionHash(request: Request) {
 			const token = readSessionToken(request);
-			if (!token) return false;
-			return repository.hasActiveSession(tokenHash(token), now());
+			if (!token) return null;
+			const hash = tokenHash(token);
+			return repository.hasActiveSession(hash, now()) ? hash : null;
+		},
+		authenticate(request: Request) {
+			return this.activeSessionHash(request) !== null;
 		},
 		signOut(request: Request) {
 			const token = readSessionToken(request);

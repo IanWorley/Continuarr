@@ -83,3 +83,11 @@ GitHub Actions runs the Biome checks, type checks, unit and Testcontainers integ
 Pull requests are automatically labeled by contributor trust and effective review size. See [CONTRIBUTING.md](CONTRIBUTING.md) for the vouch, recheck, and sizing rules.
 
 Application routes live in `src/routes`. The Elysia API contract is defined in `src/backend/api.ts`, and `src/routes/api.$.ts` connects it to TanStack Start while exposing the isomorphic Eden client. The focused API and Eden integration tests live in `src/backend/api.test.ts`.
+
+## Plex authorization attempts
+
+`POST /api/v1/auth/plex/login/start` requires an active administrator session and a same-origin `Origin` header. It requests a strong Plex PIN and returns only `{ authorizationUrl, expiresAt }` after persistence succeeds. The authorization URL contains the PIN code and a return URL with random correlation state. Account tokens, raw session cookies, and PIN codes are never stored in attempt history.
+
+`authorization_attempts` holds shared service authorization history: initiating session hash, state, status, timestamps, and a fixed failure code. `plex_authorization_attempts` holds the PIN ID and a client identifier generated for that attempt; completion must reuse that identifier. History survives sign-out. Pending lookup and atomic consumption both require the original session to remain active and the PIN deadline to be in the future. Expiry is derived from `expires_at`, so an expired row may retain `pending` status; it is never usable. A crash during PIN creation can leave a `starting` row, which is also unusable. History currently has no automatic retention cleanup.
+
+The Plex page starts authorization and redirects to Plex. The return state is reserved for issue #60: this change does not poll for approval, exchange a PIN, select a server, or save a connection. Completion must validate the returned state against the active session and only consume an approved attempt once, alongside durable connection persistence. `SameSite=Strict` administrator cookies stay unchanged; returning from Plex must lead to a same-origin completion request after session recovery.

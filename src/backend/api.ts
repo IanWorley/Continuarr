@@ -7,10 +7,16 @@ import {
 } from "~/backend/admin/service";
 import { authRoutes } from "~/backend/auth/controller";
 
+import {
+	createPlexAuthorizationService,
+	type PlexAuthorizationService,
+} from "~/backend/auth/plex/service";
+
 const APPLICATION_NAME = "Continuarr";
 
 export function createApi(
 	service: AdministratorService = administratorService,
+	plex: PlexAuthorizationService = createPlexAuthorizationService(),
 ) {
 	return new Elysia({ prefix: "/api/v1" })
 		.onRequest(({ request, status, set }) => {
@@ -23,7 +29,7 @@ export function createApi(
 		})
 		.get("/health", () => ({ application: APPLICATION_NAME, status: "ok" }))
 		.use(administratorRoutes(service))
-		.use(authRoutes);
+		.use(authRoutes(service, plex));
 }
 
 export const api = createApi();
