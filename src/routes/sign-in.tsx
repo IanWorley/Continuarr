@@ -2,12 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
 	MAX_PASSWORD_LENGTH,
+	MAX_SETUP_CODE_LENGTH,
 	MAX_USERNAME_LENGTH,
 	MIN_PASSWORD_LENGTH,
 } from "~/backend/admin/model";
 import { getApi } from "~/routes/api.$";
 
 const HTTP_CONFLICT = 409;
+const HTTP_FORBIDDEN = 403;
 
 export const Route = createFileRoute("/sign-in")({
 	loader: async () => {
@@ -35,13 +37,25 @@ function SignIn() {
 		setError("");
 		try {
 			if (!configured) {
-				const result = await getApi().v1.admin.bootstrap.post(credentials);
+				const result = await getApi().v1.admin.bootstrap.post({
+					...credentials,
+					setupCode: String(form.get("setupCode")).trim(),
+				});
 				if (result.error) {
-					if (result.status !== HTTP_CONFLICT) {
+					if (result.status === HTTP_CONFLICT) {
+						setConfigured(true);
 						throw new Error(
-							"Unable to create the owner. The installation may already be configured.",
+							"An administrator already exists. Sign in with that account.",
 						);
 					}
+					if (result.status === HTTP_FORBIDDEN) {
+						throw new Error(
+							"Invalid setup code. Paste the current code from the server logs.",
+						);
+					}
+					throw new Error(
+						"Unable to create the owner. The installation may already be configured.",
+					);
 				}
 				setConfigured(true);
 			}
@@ -67,6 +81,27 @@ function SignIn() {
 					: "Create the single installation-owner account. This is separate from your Plex or Jellyfin account."}
 			</p>
 			<form onSubmit={submit} className="flex flex-col gap-4">
+				{!configured && (
+					<label>
+						Setup code
+						<input
+							name="setupCode"
+							maxLength={MAX_SETUP_CODE_LENGTH}
+							type="password"
+							required
+							autoComplete="off"
+							className="mt-1 block w-full rounded bg-slate-800 p-3"
+							aria-describedby="setup-code-help"
+						/>
+						<span
+							id="setup-code-help"
+							className="mt-2 block text-sm text-slate-400"
+						>
+							Paste the first-time setup code from your Continuarr server logs.
+							Restarting the server replaces it.
+						</span>
+					</label>
+				)}
 				<label>
 					Username
 					<input

@@ -20,6 +20,7 @@ let db: ReturnType<typeof drizzle<typeof schema>>;
 let service: ReturnType<typeof createAdministratorService>;
 let api: ReturnType<typeof createApi>;
 let now: number;
+let setupCode: string;
 
 beforeEach(() => {
 	client = new Database(":memory:");
@@ -31,6 +32,9 @@ beforeEach(() => {
 		() => db,
 		() => now,
 	);
+	service.initializeSetup((message) => {
+		setupCode = message.split(": ")[1].split(".")[0];
+	});
 	api = createApi(service);
 });
 afterEach(() => client.close());
@@ -50,7 +54,13 @@ function request(
 				...(body ? { "content-type": "application/json" } : {}),
 				...(cookie ? { cookie } : {}),
 			},
-			body: body ? JSON.stringify(body) : undefined,
+			body: body
+				? JSON.stringify(
+						path === "/admin/bootstrap"
+							? { setupCode, ...(body as object) }
+							: body,
+					)
+				: undefined,
 		}),
 	);
 }
@@ -63,6 +73,74 @@ async function signIn() {
 }
 
 describe("installation administrator", () => {
+	it("rejects incorrect or missing setup codes without creating an owner", async () => {
+		for (const code of ["incorrect", undefined]) {
+			const response = await request("/admin/bootstrap", "POST", {
+				...CREDENTIALS,
+				setupCode: code,
+			});
+			expect(response.status).toBe(code === undefined ? 422 : 403);
+			expect(service.isConfigured()).toBe(false);
+		}
+	});
+
+	it("replaces the setup code after restart and accepts only the current code", async () => {
+		const previousCode = setupCode;
+		service = createAdministratorService(
+			() => db,
+			() => now,
+		);
+		service.initializeSetup((message) => {
+			setupCode = message.split(": ")[1].split(".")[0];
+		});
+		api = createApi(service);
+		expect(setupCode).not.toBe(previousCode);
+		expect(
+			(
+				await request("/admin/bootstrap", "POST", {
+					...CREDENTIALS,
+					setupCode: previousCode,
+				})
+			).status,
+		).toBe(403);
+		expect(
+			(await request("/admin/bootstrap", "POST", CREDENTIALS)).status,
+		).toBe(201);
+	});
+
+	it("logs setup once and never issues a setup code for an existing owner", async () => {
+		const repeatedLogs: string[] = [];
+		service.initializeSetup((message) => repeatedLogs.push(message));
+		expect(repeatedLogs).toEqual([]);
+		await request("/admin/bootstrap", "POST", CREDENTIALS);
+		const restarted = createAdministratorService(
+			() => db,
+			() => now,
+		);
+		const logs: string[] = [];
+		restarted.initializeSetup((message) => logs.push(message));
+		expect(logs).toEqual(["Administrator configured; sign in to continue."]);
+		expect(
+			await restarted.bootstrap(
+				CREDENTIALS.username,
+				CREDENTIALS.password,
+				setupCode,
+			),
+		).toBe(false);
+	});
+
+	it("signing out one device leaves another device signed in", async () => {
+		const firstCookie = await signIn();
+		const secondResponse = await request("/admin/sign-in", "POST", CREDENTIALS);
+		const secondCookie = secondResponse.headers
+			.get("set-cookie")
+			?.split(";")[0];
+		await request("/admin/sign-out", "POST", undefined, firstCookie);
+		expect(
+			(await request("/admin/session", "GET", undefined, secondCookie)).status,
+		).toBe(200);
+	});
+
 	it("bootstraps exactly one owner, even with concurrent requests", async () => {
 		expect(await (await request("/admin/setup")).json()).toEqual({
 			configured: false,
@@ -266,7 +344,8 @@ it.each(["development", "production"])(
 it("rejects excess password work across bootstrap and sign-in, then releases capacity", async () => {
 	const pendingBootstraps = Array.from(
 		{ length: MAX_CONCURRENT_PASSWORD_DERIVATIONS },
-		() => service.bootstrap(CREDENTIALS.username, CREDENTIALS.password),
+		() =>
+			service.bootstrap(CREDENTIALS.username, CREDENTIALS.password, setupCode),
 	);
 	try {
 		expect((await request("/admin/sign-in", "POST", CREDENTIALS)).status).toBe(

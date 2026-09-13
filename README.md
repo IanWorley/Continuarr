@@ -18,17 +18,19 @@ bun run db:migrate
 bun run dev
 ```
 
-Open <http://localhost:3000>. On a new installation, create the installation-owner account, then sign in to access the application.
+Open <http://localhost:3000>. On first launch, paste the setup code from the server logs and choose an administrator username and password. Setup signs you in automatically.
 
 The API is available at <http://localhost:3000/api/v1/health>.
 
-## Installation-owner authentication
+## Administrator authentication
 
-Continuarr has one administrator, separate from Plex and Jellyfin identities. The first setup at `/sign-in` claims the installation; complete it before exposing a new installation to other users. Once the owner exists, bootstrap is permanently closed. There is no registration, invitation, or additional account flow.
+Continuarr has one administrator, separate from Plex and Jellyfin identities. Before an owner exists, the server prints a random first-time setup code on startup. Paste it into `/sign-in`; the code is never put in a URL. Restarting before setup replaces the code. Creating the owner permanently closes bootstrap and invalidates the code. Once configured, startup logs say “Administrator configured; sign in to continue.” Keep access to server logs limited to people who may configure the installation.
 
-Passwords must contain 12–128 characters and are salted and hashed with Node's maintained `crypto.scrypt` implementation (N=131072, r=8, p=1). SQLite stores the owner and server-managed sessions. Each sign-in creates a random 256-bit token; only its SHA-256 hash is stored. Sessions survive server restarts, expire after seven days without sliding renewal, and are revoked immediately on sign-out. The cookie is HttpOnly, SameSite=Strict, and Secure when the request URL uses HTTPS. Use HTTPS for deployments exposed beyond a trusted local network. Proxies must preserve the public request origin so same-origin checks succeed.
+Passwords contain 12–128 characters and are salted and hashed with Node's `crypto.scrypt`. Sessions are stored in SQLite with hashed random tokens and survive restarts. Each device can sign in separately. Sessions expire seven days after sign-in without sliding renewal; sign-out revokes only the current session. Password recovery is outside the current scope.
 
-All application routes and APIs require a session except `GET /api/v1/health` and the setup/sign-in flow (`GET /sign-in`, `GET /api/v1/admin/setup`, `POST /api/v1/admin/bootstrap`, `POST /api/v1/admin/sign-in`). Static application assets remain available to render sign-in. Unauthenticated APIs return 401; page requests redirect to sign-in. Mutating requests require an `Origin` header matching the request URL, including API clients. Credentials are JSON `{ "username": "…", "password": "…" }`; keep the returned cookie for subsequent requests. Use `GET /api/v1/admin/session` to check authentication and `POST /api/v1/admin/sign-out` to revoke the current session.
+Application pages and APIs require a session, except health and initial setup/sign-in. Static assets remain available to render sign-in. Unauthenticated pages redirect to `/sign-in`; APIs return 401. Session cookies are HttpOnly, SameSite=Strict, and Secure over HTTPS. Proxies must preserve the public request origin, and mutating requests require a matching `Origin` header. Use HTTPS when accessing outside a trusted home network.
+
+Authentication endpoints under `/api/v1/admin` are `GET /setup`, `POST /bootstrap`, `POST /sign-in`, `GET /session`, and `POST /sign-out`. Bootstrap takes JSON `{ "username": "…", "password": "…", "setupCode": "…" }`; sign-in takes username and password and returns the session cookie. Bootstrap API clients must call sign-in after creating the owner, as the UI does.
 
 ## Useful commands
 
