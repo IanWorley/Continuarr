@@ -1,5 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { randomBytes } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { inspect } from "node:util";
 import Elysia from "elysia";
 import { createSecretStorage, Secret } from "./storage";
@@ -135,17 +138,28 @@ describe("credential storage", () => {
 });
 
 describe("server startup", () => {
+	const directories: string[] = [];
+	afterEach(() => {
+		for (const directory of directories.splice(0))
+			rmSync(directory, { recursive: true, force: true });
+	});
 	it.each(["", "invalid", key])(
 		"validates deployment configuration before serving requests (%#)",
 		(deploymentKey) => {
+			const directory = mkdtempSync(join(tmpdir(), "continuarr-startup-"));
+			directories.push(directory);
 			const result = Bun.spawnSync(
 				[process.execPath, "-e", 'await import("./src/backend/api.server.ts")'],
 				{
 					cwd: process.cwd(),
-					env: { ...process.env, CREDENTIAL_ENCRYPTION_KEY: deploymentKey },
+					env: {
+						...process.env,
+						CREDENTIAL_ENCRYPTION_KEY: deploymentKey,
+						DATABASE_URL: join(directory, "app.db"),
+					},
 				},
 			);
-			if (deploymentKey === key) {
+			if (deploymentKey !== "invalid") {
 				expect(result.exitCode).toBe(0);
 			} else {
 				expect(result.exitCode).not.toBe(0);
