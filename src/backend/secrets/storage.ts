@@ -7,7 +7,7 @@ import {
 import { inspect } from "node:util";
 
 const ALGORITHM = "aes-256-gcm";
-const KEY_BYTES = 32;
+export const CREDENTIAL_KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 const VERSION = "v1";
@@ -66,7 +66,7 @@ export function createSecretStorage(
 		try {
 			if (!encodedKey) throw new Error(KEY_ERROR);
 			const bytes = decodeBase64(encodedKey);
-			if (bytes.length !== KEY_BYTES) throw new Error(KEY_ERROR);
+			if (bytes.length !== CREDENTIAL_KEY_BYTES) throw new Error(KEY_ERROR);
 			return createSecretKey(bytes);
 		} catch {
 			throw new Error(KEY_ERROR);
