@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import { randomBytes } from "node:crypto";
 import {
+	chmodSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
 	statSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +18,8 @@ import { CREDENTIAL_KEY_BYTES, createSecretStorage, Secret } from "./storage";
 
 const PERMISSION_MASK = 0o777;
 const OWNER_READ_WRITE = 0o600;
+const GROUP_READ = 0o040;
+const OTHER_WRITE = 0o002;
 let directory: string;
 let databaseUrl: string;
 let keyPath: string;
@@ -64,7 +69,7 @@ it("creates the database directory on first startup", () => {
 it.each(["", "invalid"])(
 	"refuses to replace an invalid saved key (%#)",
 	(invalidKey) => {
-		writeFileSync(keyPath, invalidKey);
+		writeFileSync(keyPath, invalidKey, { mode: OWNER_READ_WRITE });
 		expect(() => loadCredentialEncryptionKey("", databaseUrl)).toThrow(
 			"CREDENTIAL_ENCRYPTION_KEY must be",
 		);
@@ -90,4 +95,36 @@ it("rejects an invalid override without generating a fallback key", () => {
 		"CREDENTIAL_ENCRYPTION_KEY must be",
 	);
 	expect(existsSync(keyPath)).toBe(false);
+});
+
+it.skipIf(process.platform === "win32")(
+	"rejects keys accessible to another OS user without changing them",
+	() => {
+		const key = loadCredentialEncryptionKey("", databaseUrl);
+		for (const permission of [GROUP_READ, OTHER_WRITE]) {
+			chmodSync(keyPath, OWNER_READ_WRITE | permission);
+			expect(() => loadCredentialEncryptionKey("", databaseUrl)).toThrow(
+				"no group or other permissions",
+			);
+			expect(readFileSync(keyPath, "utf8")).toBe(key);
+		}
+	},
+);
+
+it.skipIf(process.platform === "win32")(
+	"rejects symbolic links to otherwise valid keys",
+	() => {
+		const targetDatabase = join(directory, "target", "app.db");
+		const key = loadCredentialEncryptionKey("", targetDatabase);
+		const targetKey = join(directory, "target", "credential-encryption.key");
+		symlinkSync(targetKey, keyPath);
+		expect(() => loadCredentialEncryptionKey("", databaseUrl)).toThrow();
+		expect(readFileSync(targetKey, "utf8")).toBe(key);
+	},
+);
+
+it("rejects a directory in place of a key file", () => {
+	mkdirSync(keyPath);
+	expect(() => loadCredentialEncryptionKey("", databaseUrl)).toThrow();
+	expect(statSync(keyPath).isDirectory()).toBe(true);
 });

@@ -1,5 +1,13 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	closeSync,
+	constants,
+	fstatSync,
+	mkdirSync,
+	openSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
 	DEFAULT_DATABASE_URL,
@@ -10,6 +18,32 @@ import { CREDENTIAL_KEY_BYTES, createSecretStorage } from "./storage";
 
 const KEY_FILENAME = "credential-encryption.key";
 const KEY_FILE_MODE = 0o600;
+const GROUP_OTHER_PERMISSIONS = 0o077;
+const KEY_FILE_ERROR =
+	"Credential key must be a regular file owned by the service user with no group or other permissions";
+
+function readSavedKey(keyPath: string): string {
+	const flags =
+		process.platform === "win32"
+			? constants.O_RDONLY
+			: constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+	const descriptor = openSync(keyPath, flags);
+	try {
+		// Inspect the opened file so a path replacement cannot bypass validation.
+		const metadata = fstatSync(descriptor);
+		if (
+			!metadata.isFile() ||
+			(process.platform !== "win32" &&
+				(metadata.uid !== process.geteuid?.() ||
+					(metadata.mode & GROUP_OTHER_PERMISSIONS) !== 0))
+		) {
+			throw new Error(KEY_FILE_ERROR);
+		}
+		return readFileSync(descriptor, "utf8");
+	} finally {
+		closeSync(descriptor);
+	}
+}
 
 export function loadCredentialEncryptionKey(
 	deploymentKey = process.env.CREDENTIAL_ENCRYPTION_KEY,
@@ -30,7 +64,7 @@ export function loadCredentialEncryptionKey(
 	const keyPath = join(directory, KEY_FILENAME);
 	let encodedKey: string;
 	try {
-		encodedKey = readFileSync(keyPath, "utf8");
+		encodedKey = readSavedKey(keyPath);
 	} catch (error) {
 		if (
 			!(error instanceof Error) ||
@@ -56,7 +90,7 @@ export function loadCredentialEncryptionKey(
 			) {
 				throw error;
 			}
-			encodedKey = readFileSync(keyPath, "utf8");
+			encodedKey = readSavedKey(keyPath);
 		}
 	}
 	createSecretStorage(encodedKey);
