@@ -61,9 +61,7 @@ export function sessionCookie(
 	token: string,
 	maxAge = SESSION_DURATION_SECONDS,
 ) {
-	const secure =
-		new URL(request.url).protocol === "https:" ||
-		process.env.NODE_ENV === "production";
+	const secure = new URL(request.url).protocol === "https:";
 	return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
 }
 

@@ -245,17 +245,19 @@ describe("installation administrator", () => {
 	});
 });
 
-// Exercise development mode explicitly, regardless of the test runner environment.
-it("allows HTTP development cookies without requiring HTTPS", () => {
-	const previousEnvironment = process.env.NODE_ENV;
-	try {
-		process.env.NODE_ENV = "development";
-		const cookie = sessionCookie(new Request(ORIGIN), "test-token");
-		expect(cookie).not.toContain("; Secure");
-		expect(cookie).toContain("HttpOnly");
-		expect(cookie).toContain("SameSite=Strict");
-	} finally {
-		if (previousEnvironment === undefined) delete process.env.NODE_ENV;
-		else process.env.NODE_ENV = previousEnvironment;
-	}
-});
+it.each(["development", "production"])(
+	"allows HTTP session cookies in %s mode",
+	(environment) => {
+		const previousEnvironment = process.env.NODE_ENV;
+		try {
+			process.env.NODE_ENV = environment;
+			const cookie = sessionCookie(new Request(ORIGIN), "test-token");
+			expect(cookie).not.toContain("; Secure");
+			expect(cookie).toContain("HttpOnly");
+			expect(cookie).toContain("SameSite=Strict");
+		} finally {
+			if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+			else process.env.NODE_ENV = previousEnvironment;
+		}
+	},
+);
