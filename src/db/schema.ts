@@ -43,3 +43,40 @@ export const administratorSessions = sqliteTable("administrator_sessions", {
 		.references(() => administrator.id, { onDelete: "cascade" }),
 	expiresAt: integer("expires_at").notNull(),
 });
+
+export const CONNECTION_SERVICES = ["plex", "jellyfin"] as const;
+export const CONNECTION_STATUSES = [
+	"connected",
+	"unavailable",
+	"revoked",
+] as const;
+
+export const serverConnections = sqliteTable(
+	"server_connections",
+	{
+		id: text("id").primaryKey().notNull(),
+		administratorId: integer("administrator_id")
+			.notNull()
+			.references(() => administrator.id, { onDelete: "cascade" }),
+		service: text("service", { enum: CONNECTION_SERVICES }).notNull().unique(),
+		serverId: text("server_id").notNull(),
+		url: text("url").notNull(),
+		displayName: text("display_name").notNull(),
+		encryptedCredential: text("encrypted_credential").notNull(),
+		status: text("status", { enum: CONNECTION_STATUSES }).notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" })
+			.notNull()
+			.default(sql`(unixepoch())`),
+		updatedAt: integer("updated_at", { mode: "timestamp" })
+			.notNull()
+			.default(sql`(unixepoch())`)
+			.$onUpdate(() => sql`(unixepoch())`),
+	},
+	(table) => [
+		check("connection_service", sql`${table.service} IN ('plex', 'jellyfin')`),
+		check(
+			"connection_status",
+			sql`${table.status} IN ('connected', 'unavailable', 'revoked')`,
+		),
+	],
+);
