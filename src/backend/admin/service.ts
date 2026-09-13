@@ -9,6 +9,16 @@ export {
 	MIN_PASSWORD_LENGTH,
 } from "~/backend/admin/model";
 
+// Each scrypt derivation needs roughly 128 MiB; bound work across service instances.
+export const MAX_CONCURRENT_PASSWORD_DERIVATIONS = 2;
+let activePasswordDerivations = 0;
+
+export class PasswordDerivationBusyError extends Error {
+	constructor() {
+		super("Authentication is busy. Please retry.");
+	}
+}
+
 const TOKEN_BYTES = 32;
 const SALT_BYTES = 16;
 const KEY_BYTES = 64;
@@ -19,21 +29,28 @@ const SCRYPT_MAX_MEMORY = 256 * 1024 * 1024;
 const MILLISECONDS_PER_SECOND = 1000;
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 
-function deriveKey(password: string, salt: string): Promise<Buffer> {
-	return new Promise((resolve, reject) => {
-		scrypt(
-			password,
-			salt,
-			KEY_BYTES,
-			{
-				N: SCRYPT_COST,
-				r: SCRYPT_BLOCK_SIZE,
-				p: SCRYPT_PARALLELISM,
-				maxmem: SCRYPT_MAX_MEMORY,
-			},
-			(error, key) => (error ? reject(error) : resolve(key)),
-		);
-	});
+async function deriveKey(password: string, salt: string): Promise<Buffer> {
+	if (activePasswordDerivations >= MAX_CONCURRENT_PASSWORD_DERIVATIONS)
+		throw new PasswordDerivationBusyError();
+	activePasswordDerivations += 1;
+	try {
+		return await new Promise<Buffer>((resolve, reject) => {
+			scrypt(
+				password,
+				salt,
+				KEY_BYTES,
+				{
+					N: SCRYPT_COST,
+					r: SCRYPT_BLOCK_SIZE,
+					p: SCRYPT_PARALLELISM,
+					maxmem: SCRYPT_MAX_MEMORY,
+				},
+				(error, key) => (error ? reject(error) : resolve(key)),
+			);
+		});
+	} finally {
+		activePasswordDerivations -= 1;
+	}
 }
 
 async function hashPassword(password: string) {

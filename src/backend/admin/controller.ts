@@ -4,6 +4,7 @@ import {
 	MAX_PASSWORD_LENGTH,
 	MAX_USERNAME_LENGTH,
 	MIN_PASSWORD_LENGTH,
+	PasswordDerivationBusyError,
 	sessionCookie,
 } from "~/backend/admin/service";
 
@@ -21,6 +22,10 @@ const credentials = t.Object({
 
 export function administratorRoutes(service: AdministratorService) {
 	return new Elysia({ prefix: "/admin" })
+		.onError(({ error, status }) => {
+			if (error instanceof PasswordDerivationBusyError)
+				return status(429, { error: error.message });
+		})
 		.get("/setup", () => ({ configured: service.isConfigured() }))
 		.post(
 			"/bootstrap",

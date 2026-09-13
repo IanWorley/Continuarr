@@ -5,6 +5,7 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { guardRequest } from "~/backend/admin/guard";
 import {
 	createAdministratorService,
+	MAX_CONCURRENT_PASSWORD_DERIVATIONS,
 	SESSION_DURATION_SECONDS,
 	sessionCookie,
 } from "~/backend/admin/service";
@@ -261,3 +262,23 @@ it.each(["development", "production"])(
 		}
 	},
 );
+
+it("rejects excess password work across bootstrap and sign-in, then releases capacity", async () => {
+	const pendingBootstraps = Array.from(
+		{ length: MAX_CONCURRENT_PASSWORD_DERIVATIONS },
+		() => service.bootstrap(CREDENTIALS.username, CREDENTIALS.password),
+	);
+	try {
+		expect((await request("/admin/sign-in", "POST", CREDENTIALS)).status).toBe(
+			429,
+		);
+		expect(
+			(await request("/admin/bootstrap", "POST", CREDENTIALS)).status,
+		).toBe(429);
+	} finally {
+		await Promise.all(pendingBootstraps);
+	}
+	expect((await request("/admin/sign-in", "POST", CREDENTIALS)).status).toBe(
+		200,
+	);
+});
