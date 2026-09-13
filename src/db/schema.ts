@@ -43,3 +43,31 @@ export const administratorSessions = sqliteTable("administrator_sessions", {
 		.references(() => administrator.id, { onDelete: "cascade" }),
 	expiresAt: integer("expires_at").notNull(),
 });
+
+// Retain authorization history when sessions are revoked; usability is checked against live sessions.
+export const authorizationAttempts = sqliteTable("authorization_attempts", {
+	state: text("state").primaryKey().notNull(),
+	service: text("service", { enum: ["plex", "jellyfin"] }).notNull(),
+	sessionHash: text("session_hash").notNull(),
+	status: text("status", {
+		enum: ["starting", "pending", "consumed", "failed"],
+	}).notNull(),
+	createdAt: integer("created_at").notNull(),
+	expiresAt: integer("expires_at"),
+	finishedAt: integer("finished_at"),
+	failureCode: text("failure_code", {
+		enum: ["plex_unavailable", "session_ended"],
+	}),
+});
+
+export const plexAuthorizationAttempts = sqliteTable(
+	"plex_authorization_attempts",
+	{
+		state: text("state")
+			.primaryKey()
+			.notNull()
+			.references(() => authorizationAttempts.state, { onDelete: "cascade" }),
+		pinId: integer("pin_id"),
+		clientIdentifier: text("client_identifier").notNull(),
+	},
+);

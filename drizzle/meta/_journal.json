@@ -22,6 +22,13 @@
       "when": 1789103132697,
       "tag": "0002_fair_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789325107362,
+      "tag": "0003_authorization_attempts",
+      "breakpoints": true
     }
   ]
 }
