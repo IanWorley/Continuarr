@@ -37,10 +37,11 @@ function SignIn() {
 			if (!configured) {
 				const result = await getApi().v1.admin.bootstrap.post(credentials);
 				if (result.error) {
-					if (result.status === HTTP_CONFLICT) setConfigured(true);
-					throw new Error(
-						"Unable to create the owner. The installation may already be configured.",
-					);
+					if (result.status !== HTTP_CONFLICT) {
+						throw new Error(
+							"Unable to create the owner. The installation may already be configured.",
+						);
+					}
 				}
 				setConfigured(true);
 			}

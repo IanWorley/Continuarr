@@ -1,9 +1,12 @@
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 
 import { getApi } from "~/routes/api.$";
 
 const HEALTH_QUERY_KEY = ["health"] as const;
+const HTTP_UNAUTHORIZED = 401;
+const SIGN_OUT_ERROR = "Unable to sign out. Please try again.";
 
 const healthQueryOptions = queryOptions({
 	queryFn: async () => {
@@ -26,21 +29,33 @@ export const Route = createFileRoute("/")({
 
 function Home() {
 	const { data: health } = useSuspenseQuery(healthQueryOptions);
+	const [signOutError, setSignOutError] = useState("");
+
+	async function signOut() {
+		setSignOutError("");
+		try {
+			const result = await getApi().v1.admin["sign-out"].post();
+			if (!result.error || result.status === HTTP_UNAUTHORIZED) {
+				window.location.assign("/sign-in");
+				return;
+			}
+			setSignOutError(SIGN_OUT_ERROR);
+		} catch {
+			setSignOutError(SIGN_OUT_ERROR);
+		}
+	}
 
 	return (
 		<main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-6 py-16">
 			<section className="w-full rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl shadow-black/20">
-				<button
-					type="button"
-					className="mb-6 text-cyan-400"
-					onClick={async () => {
-						const { error } = await getApi().v1.admin["sign-out"].post();
-						if (error) throw new Error("Unable to sign out.");
-						window.location.assign("/sign-in");
-					}}
-				>
+				<button type="button" className="mb-6 text-cyan-400" onClick={signOut}>
 					Sign out
 				</button>
+				{signOutError && (
+					<p role="alert" className="mb-6 text-red-400">
+						{signOutError}
+					</p>
+				)}
 				<p className="mb-3 text-sm font-semibold tracking-widest text-cyan-400 uppercase">
 					System ready
 				</p>
