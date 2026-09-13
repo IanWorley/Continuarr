@@ -20,6 +20,13 @@ export class PasswordDerivationBusyError extends Error {
 }
 
 const TOKEN_BYTES = 32;
+const SETUP_CODE_BYTES = 16;
+
+export class InvalidSetupCodeError extends Error {
+	constructor() {
+		super("Invalid setup code. Use the current code from the server logs.");
+	}
+}
 const SALT_BYTES = 16;
 const KEY_BYTES = 64;
 const SCRYPT_COST = 131072;
@@ -59,6 +66,10 @@ async function hashPassword(password: string) {
 	return `${salt}:${key.toString("hex")}`;
 }
 
+function tokenHashBuffer(token: string) {
+	return createHash("sha256").update(token).digest();
+}
+
 function tokenHash(token: string) {
 	return createHash("sha256").update(token).digest("hex");
 }
@@ -87,14 +98,35 @@ export function createAdministratorService(
 	now = () => Math.floor(Date.now() / MILLISECONDS_PER_SECOND),
 ) {
 	const repository = createAdministratorRepository(database);
+	let setupCode: string | undefined;
+	let initialized = false;
 	return {
+		initializeSetup(log: (message: string) => void = console.info) {
+			if (initialized) return;
+			if (repository.isConfigured()) {
+				log("Administrator configured; sign in to continue.");
+			} else {
+				setupCode = randomBytes(SETUP_CODE_BYTES).toString("hex");
+				log(
+					`Continuarr first-time setup code: ${setupCode}. Open /sign-in and paste this code to create the administrator.`,
+				);
+			}
+			initialized = true;
+		},
 		isConfigured() {
 			return repository.isConfigured();
 		},
-		async bootstrap(username: string, password: string) {
+		async bootstrap(username: string, password: string, code: string) {
 			if (this.isConfigured()) return false;
+			if (
+				!setupCode ||
+				!timingSafeEqual(tokenHashBuffer(code), tokenHashBuffer(setupCode))
+			)
+				throw new InvalidSetupCodeError();
 			const passwordHash = await hashPassword(password);
-			return repository.createOwner(username, passwordHash);
+			const created = repository.createOwner(username, passwordHash);
+			if (repository.isConfigured()) setupCode = undefined;
+			return created;
 		},
 		async signIn(username: string, password: string) {
 			const owner = repository.getOwner();

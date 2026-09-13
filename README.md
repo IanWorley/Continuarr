@@ -15,12 +15,23 @@ A minimal Bun application with:
 bun install
 cp .env.example .env
 # Set CREDENTIAL_ENCRYPTION_KEY in .env (see below).
+bun run db:migrate
 bun run dev
 ```
 
-Open <http://localhost:3000>. The page calls the Elysia health endpoint through Eden Treaty and displays its status.
+Open <http://localhost:3000>. On first launch, paste the setup code from the server logs and choose an administrator username and password. Setup signs you in automatically.
 
-The API is available at <http://localhost:3000/api/health>.
+The API is available at <http://localhost:3000/api/v1/health>.
+
+## Administrator authentication
+
+Continuarr has one administrator, separate from Plex and Jellyfin identities. Before an owner exists, the server prints a random first-time setup code on startup. Paste it into `/sign-in`; the code is never put in a URL. Restarting before setup replaces the code. Creating the owner permanently closes bootstrap and invalidates the code. Once configured, startup logs say “Administrator configured; sign in to continue.” Keep access to server logs limited to people who may configure the installation.
+
+Passwords contain 12–128 characters and are salted and hashed with Node's `crypto.scrypt`. Sessions are stored in SQLite with hashed random tokens and survive restarts. Each device can sign in separately. Sessions expire seven days after sign-in without sliding renewal; sign-out revokes only the current session. Password recovery is outside the current scope.
+
+Application pages and APIs require a session, except health and initial setup/sign-in. Static assets remain available to render sign-in. Unauthenticated pages redirect to `/sign-in`; APIs return 401. Session cookies are HttpOnly, SameSite=Strict, and Secure over HTTPS. Proxies must preserve the public request origin, and mutating requests require a matching `Origin` header. Use HTTPS when accessing outside a trusted home network.
+
+Authentication endpoints under `/api/v1/admin` are `GET /setup`, `POST /bootstrap`, `POST /sign-in`, `GET /session`, and `POST /sign-out`. Bootstrap takes JSON `{ "username": "…", "password": "…", "setupCode": "…" }`; sign-in takes username and password and returns the session cookie. Bootstrap API clients must call sign-in after creating the owner, as the UI does.
 
 ## Useful commands
 
@@ -70,4 +81,4 @@ GitHub Actions runs the Biome checks, type checks, unit and Testcontainers integ
 
 Pull requests are automatically labeled by contributor trust and effective review size. See [CONTRIBUTING.md](CONTRIBUTING.md) for the vouch, recheck, and sizing rules.
 
-Application routes live in `src/routes`. The Elysia API contract is defined in `src/api.ts`, and `src/routes/api.$.ts` connects it to TanStack Start while exposing the isomorphic Eden client. The focused API and Eden integration tests live in `src/api.test.ts`.
+Application routes live in `src/routes`. The Elysia API contract is defined in `src/backend/api.ts`, and `src/routes/api.$.ts` connects it to TanStack Start while exposing the isomorphic Eden client. The focused API and Eden integration tests live in `src/backend/api.test.ts`.
