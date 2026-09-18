@@ -1,6 +1,8 @@
 import { Elysia, t } from "elysia";
+import { MAX_SETUP_CODE_LENGTH } from "~/backend/admin/model";
 import {
 	type AdministratorService,
+	InvalidSetupCodeError,
 	MAX_PASSWORD_LENGTH,
 	MAX_USERNAME_LENGTH,
 	MIN_PASSWORD_LENGTH,
@@ -23,6 +25,8 @@ const credentials = t.Object({
 export function administratorRoutes(service: AdministratorService) {
 	return new Elysia({ prefix: "/admin" })
 		.onError(({ error, status }) => {
+			if (error instanceof InvalidSetupCodeError)
+				return status(403, { error: error.message });
 			if (error instanceof PasswordDerivationBusyError)
 				return status(429, { error: error.message });
 		})
@@ -30,13 +34,27 @@ export function administratorRoutes(service: AdministratorService) {
 		.post(
 			"/bootstrap",
 			async ({ body, status }) => {
-				if (!(await service.bootstrap(body.username, body.password)))
+				if (
+					!(await service.bootstrap(
+						body.username,
+						body.password,
+						body.setupCode,
+					))
+				)
 					return status(409, {
 						error: "The installation owner already exists.",
 					});
 				return status(201, { configured: true });
 			},
-			{ body: credentials },
+			{
+				body: t.Object({
+					...credentials.properties,
+					setupCode: t.String({
+						minLength: 1,
+						maxLength: MAX_SETUP_CODE_LENGTH,
+					}),
+				}),
+			},
 		)
 		.post(
 			"/sign-in",
