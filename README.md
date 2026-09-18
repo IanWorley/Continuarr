@@ -60,7 +60,7 @@ Persist the database directory across container replacements and back up the key
 
 `CREDENTIAL_ENCRYPTION_KEY` remains an optional override for deployments that manage their own secrets. A nonempty override must be a base64-encoded 32-byte key and takes precedence over the file without changing it. Existing deployments using this variable should keep their current value, or save that exact value without a trailing newline in the key file before removing the override. On POSIX, ensure the file is owned by the service user and set its permissions to `600`. Never commit a key or expose it through a `VITE_` variable.
 
-`src/backend/secrets/storage.server.ts` provides the configured secret-storage boundary. Encrypt a `Secret` using the stable, unique connection ID before writing its returned string to SQLite, and pass that same record ID when decrypting. Values use versioned AES-256-GCM with a fresh nonce and authenticated connection identity. Decryption returns a redacted `Secret`; call `reveal()` only when passing credentials to the media server, never in API responses or logs. Connection tables and persistence integration follow separately.
+`src/backend/secrets/storage.server.ts` provides the configured secret-storage boundary. Encrypt a `Secret` using the stable, unique connection ID before writing its returned string to SQLite, and pass that same record ID when decrypting. Values use versioned AES-256-GCM with a fresh nonce and authenticated connection identity. Decryption returns a redacted `Secret`; call `reveal()` only when passing credentials to the media server, never in API responses or logs. The connection repository integrates this boundary with SQLite persistence.
 
 ## Database
 
@@ -83,3 +83,11 @@ GitHub Actions runs the Biome checks, type checks, unit and Testcontainers integ
 Pull requests are automatically labeled by contributor trust and effective review size. See [CONTRIBUTING.md](CONTRIBUTING.md) for the vouch, recheck, and sizing rules.
 
 Application routes live in `src/routes`. The Elysia API contract is defined in `src/backend/api.ts`, and `src/routes/api.$.ts` connects it to TanStack Start while exposing the isomorphic Eden client. The focused API and Eden integration tests live in `src/backend/api.test.ts`.
+
+## Media-server connection storage
+
+`src/backend/connections/repo.server.ts` provides the configured server-side repository. It stores one Plex connection and one Jellyfin connection for the installation administrator, including unavailable or revoked connections. An administrator must exist before saving connections.
+
+`save` accepts a stable provider server ID, display name, HTTP(S) URL, and `Secret` access token. It normalizes the URL while preserving reverse-proxy paths and rejects embedded credentials, query parameters, and fragments. Callers authenticate with the provider before saving; a successful save marks the connection connected. Saving the same server rotates its token and updates metadata while preserving its internal ID and creation time. A different server ID is rejected until the old connection is explicitly removed. Future mapping workflows must handle that removal explicitly.
+
+`list`, `find`, `save`, and `setStatus` return only credential-free metadata. `readCredential` returns a redacted `Secret` for server-side media clients. Status is explicitly set to `connected`, `unavailable`, or `revoked`; the repository does not perform network health checks. Removing a connection deletes its stored credential, and removing the installation administrator cascades to its connections. Authentication endpoints and connection-management UI are separate work.
