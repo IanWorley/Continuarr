@@ -101,23 +101,32 @@ describe("Plex provider", () => {
 				if (token === "profile-token") return json({ id: 2, title: "Child" });
 				return json({}, 401);
 			}
-			if (url.pathname === "/api/home/users") {
+			if (url.pathname === "/api/v2/home/users") {
 				if (token !== "owner-token") return json({}, 401);
 				return json({
-					MediaContainer: {
-						User: [{ id: 2, title: "Child", protected: true }],
-					},
+					users: [{ id: 2, title: "Child", protected: true }],
 				});
 			}
 			if (url.pathname === "/api/home/users/2/switch") {
 				if (token !== "owner-token" || url.searchParams.get("pin") !== "1234")
 					return json({}, 401);
-				return json({ authenticationToken: "profile-token" });
+				return new Response(
+					'<user id="2" authenticationToken="profile-token"/>',
+					{
+						status: 201,
+						headers: { "content-type": "application/xml" },
+					},
+				);
 			}
 			if (url.pathname === "/api/v2/resources") {
 				if (token !== "profile-token") return json({}, 401);
 				return json([
-					{ clientIdentifier: "player-1", name: "Player", provides: "player" },
+					{
+						clientIdentifier: "player-1",
+						name: "Player",
+						provides: "player",
+						accessToken: null,
+					},
 					{
 						clientIdentifier: "machine-1",
 						name: "Plex",
@@ -247,7 +256,10 @@ describe("Plex provider", () => {
 		const baseUrl = serve((request) => {
 			const path = new URL(request.url).pathname;
 			if (path === "/api/home/users/2/switch") {
-				return json({ authenticationToken: "wrong-profile-token" });
+				return new Response(
+					'<user id="3" authenticationToken="wrong-profile-token"/>',
+					{ status: 201, headers: { "content-type": "application/xml" } },
+				);
 			}
 			if (path === "/api/v2/user")
 				return json({ id: 3, title: "Another user" });
@@ -418,11 +430,14 @@ it("keeps direct episode identifiers and rejects series paths as episode identif
 	]);
 });
 
-it("validates the identity of a wrapped legacy Plex Home switch response", async () => {
+it("validates the identity in a Plex Home XML switch response", async () => {
 	const baseUrl = serve((request) => {
 		const path = new URL(request.url).pathname;
 		if (path === "/api/home/users/2/switch")
-			return json({ user: { authenticationToken: "managed-token" } });
+			return new Response(
+				'<user id="2" authenticationToken="managed-token"/>',
+				{ status: 201, headers: { "content-type": "application/xml" } },
+			);
 		if (
 			path === "/api/v2/user" &&
 			request.headers.get("X-Plex-Token") === "managed-token"

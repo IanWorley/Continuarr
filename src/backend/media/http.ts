@@ -42,6 +42,15 @@ export async function requestEmpty(input: {
 	await request(input);
 }
 
+export async function requestText(input: {
+	fetch: typeof globalThis.fetch;
+	url: URL;
+	method?: "GET" | "POST" | "PUT";
+	headers?: HeadersInit;
+}): Promise<string> {
+	return await (await request(input)).text();
+}
+
 async function request(input: {
 	fetch: typeof globalThis.fetch;
 	url: URL;

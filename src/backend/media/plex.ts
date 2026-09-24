@@ -1,5 +1,11 @@
+import { XMLParser } from "fast-xml-parser";
 import { z } from "zod";
-import { endpoint, requestEmpty, requestJson } from "~/backend/media/http";
+import {
+	endpoint,
+	requestEmpty,
+	requestJson,
+	requestText,
+} from "~/backend/media/http";
 import {
 	type MediaAccess,
 	MediaError,
@@ -31,33 +37,21 @@ const homeUserSchema = z.object({
 	title: z.string(),
 	protected: z.union([z.boolean(), z.number(), z.string()]).optional(),
 });
-const homeUsersSchema = z.union([
-	z.object({ MediaContainer: z.object({ User: z.array(homeUserSchema) }) }),
-	z.object({
-		MediaContainer: z.object({ Directory: z.array(homeUserSchema) }),
-	}),
-	z.object({ users: z.array(homeUserSchema) }),
-]);
-const switchedTokenSchema = z
-	.union([
-		z.object({ authenticationToken: z.string().min(1) }),
-		z.object({ authToken: z.string().min(1) }),
-	])
-	.transform((value) =>
-		"authenticationToken" in value
-			? value.authenticationToken
-			: value.authToken,
-	);
-const switchedUserSchema = z.union([
-	switchedTokenSchema,
-	z.object({ user: switchedTokenSchema }).transform((value) => value.user),
-]);
+const homeUsersSchema = z.object({ users: z.array(homeUserSchema) });
+const switchedUserSchema = z.object({
+	user: z.object({ authenticationToken: z.string().min(1) }),
+});
+const xmlParser = new XMLParser({
+	ignoreAttributes: false,
+	attributeNamePrefix: "",
+	processEntities: false,
+});
 const connectionSchema = z.object({ uri: z.string().url() });
 const resourceSchema = z.object({
 	clientIdentifier: z.string().min(1),
 	name: z.string(),
 	provides: z.string(),
-	accessToken: z.string().min(1).optional(),
+	accessToken: z.string().min(1).nullish(),
 	connections: z.array(connectionSchema).optional(),
 });
 const resourcesSchema = z.array(resourceSchema);
@@ -205,17 +199,11 @@ export function createPlexProvider(options: {
 		async homeUsers(token) {
 			const response = await requestJson({
 				fetch: fetcher,
-				url: endpoint(homeUrl, "home/users"),
+				url: endpoint(accountUrl, "home/users"),
 				schema: homeUsersSchema,
 				headers: plexHeaders(options.clientIdentifier, token.reveal()),
 			});
-			const users =
-				"users" in response
-					? response.users
-					: "User" in response.MediaContainer
-						? response.MediaContainer.User
-						: response.MediaContainer.Directory;
-			return users.map((user) => ({
+			return response.users.map((user) => ({
 				id: String(user.id),
 				name: user.title,
 				protected:
@@ -231,13 +219,28 @@ export function createPlexProvider(options: {
 				throw new MediaError("Invalid Plex Home user ID.");
 			const url = endpoint(homeUrl, `home/users/${userId}/switch`);
 			if (pin) url.searchParams.set("pin", pin);
-			const switchedToken = await requestJson({
+			const response = await requestText({
 				fetch: fetcher,
 				url,
-				schema: switchedUserSchema,
 				method: "POST",
 				headers: plexHeaders(options.clientIdentifier, token.reveal()),
 			});
+			let parsed: unknown;
+			try {
+				parsed = xmlParser.parse(response, true);
+			} catch {
+				throw new MediaError(
+					"Plex returned an invalid Home user response.",
+					502,
+				);
+			}
+			const switched = switchedUserSchema.safeParse(parsed);
+			if (!switched.success)
+				throw new MediaError(
+					"Plex returned an invalid Home user response.",
+					502,
+				);
+			const switchedToken = switched.data.user.authenticationToken;
 			const account = await requestJson({
 				fetch: fetcher,
 				url: endpoint(accountUrl, "user"),
