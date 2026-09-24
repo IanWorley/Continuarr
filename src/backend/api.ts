@@ -5,17 +5,18 @@ import {
 	type AdministratorService,
 	administratorService,
 } from "~/backend/admin/service";
-import { authRoutes } from "~/backend/auth/controller";
+import { mediaRoutes } from "~/backend/media/controller";
 
 const APPLICATION_NAME = "Continuarr";
 
 export function createApi(
 	service: AdministratorService = administratorService,
+	media?: Parameters<typeof mediaRoutes>[0],
 ) {
 	return new Elysia({ prefix: "/api/v1" })
-		.onRequest(({ request, status, set }) => {
+		.onRequest(async ({ request, status, set }) => {
 			set.headers["cache-control"] = "no-store";
-			const rejection = guardRequest(request, service);
+			const rejection = await guardRequest(request, service);
 			if (rejection)
 				return rejection.status === 403
 					? status(403, { error: "A same-origin request is required." })
@@ -23,7 +24,7 @@ export function createApi(
 		})
 		.get("/health", () => ({ application: APPLICATION_NAME, status: "ok" }))
 		.use(administratorRoutes(service))
-		.use(authRoutes);
+		.use(mediaRoutes(media));
 }
 
 export const api = createApi();

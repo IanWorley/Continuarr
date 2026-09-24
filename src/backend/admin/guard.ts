@@ -12,10 +12,10 @@ const PUBLIC_ENDPOINTS = new Set([
 ]);
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-export function guardRequest(
+export async function guardRequest(
 	request: Request,
 	service: AdministratorService = administratorService,
-): Response | undefined {
+): Promise<Response | undefined> {
 	const url = new URL(request.url);
 	// Cookie-authenticated mutations must originate from this installation, including sign-in.
 	if (
@@ -28,7 +28,7 @@ export function guardRequest(
 		);
 	}
 	if (PUBLIC_ENDPOINTS.has(`${request.method} ${url.pathname}`)) return;
-	if (service.authenticate(request)) return;
+	if (await service.authenticate(request)) return;
 	if (url.pathname.startsWith("/api/")) {
 		return Response.json({ error: "Sign in to Continuarr." }, { status: 401 });
 	}

@@ -1,46 +1,30 @@
 /// <reference types="bun" />
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import Database from "better-sqlite3";
+import { beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-
 import {
 	findApplicationSetting,
+	getOrCreateApplicationSetting,
 	saveApplicationSetting,
 } from "~/backend/shared/repo";
-import { IN_MEMORY_DATABASE_URL } from "~/db/config";
+import type { AppDatabase } from "~/db/database";
 import * as schema from "~/db/schema";
+import { setupTestDatabase } from "~/db/test-database";
 
 const SETTING_KEY = "database-provider";
-const INITIAL_SETTING_VALUE = "sqlite";
-const UPDATED_SETTING_VALUE = "better-sqlite3";
+const INITIAL_SETTING_VALUE = "postgres";
+const UPDATED_SETTING_VALUE = "postgresql";
 const ORIGINAL_TIMESTAMP = new Date("2024-01-01T00:00:00.000Z");
-const CREATE_APPLICATION_SETTINGS_TABLE_SQL = `
-	CREATE TABLE application_settings (
-		key text PRIMARY KEY NOT NULL,
-		value text NOT NULL,
-		created_at integer DEFAULT (unixepoch()) NOT NULL,
-		updated_at integer DEFAULT (unixepoch()) NOT NULL
-	)
-`;
+const createTestDatabase = setupTestDatabase();
+let db: AppDatabase;
 
-let client: InstanceType<typeof Database>;
-let db: ReturnType<typeof drizzle<typeof schema>>;
-
-beforeEach(() => {
-	client = new Database(IN_MEMORY_DATABASE_URL);
-	client.exec(CREATE_APPLICATION_SETTINGS_TABLE_SQL);
-	db = drizzle({ client, schema });
-});
-
-afterEach(() => {
-	client.close();
+beforeEach(async () => {
+	({ db } = await createTestDatabase());
 });
 
 describe("application settings repository", () => {
-	it("inserts a setting", () => {
-		const savedSetting = saveApplicationSetting(
+	it("inserts a setting", async () => {
+		const savedSetting = await saveApplicationSetting(
 			SETTING_KEY,
 			INITIAL_SETTING_VALUE,
 			db,
@@ -50,37 +34,33 @@ describe("application settings repository", () => {
 			key: SETTING_KEY,
 			value: INITIAL_SETTING_VALUE,
 		});
-		expect(
-			db
-				.select()
-				.from(schema.applicationSettings)
-				.where(eq(schema.applicationSettings.key, SETTING_KEY))
-				.get(),
-		).toEqual(savedSetting);
+		const [stored] = await db
+			.select()
+			.from(schema.applicationSettings)
+			.where(eq(schema.applicationSettings.key, SETTING_KEY));
+		expect(stored).toEqual(savedSetting);
 	});
 
-	it("reads an existing setting", () => {
-		db.insert(schema.applicationSettings)
-			.values({ key: SETTING_KEY, value: INITIAL_SETTING_VALUE })
-			.run();
+	it("reads an existing setting", async () => {
+		await db
+			.insert(schema.applicationSettings)
+			.values({ key: SETTING_KEY, value: INITIAL_SETTING_VALUE });
 
-		expect(findApplicationSetting(SETTING_KEY, db)).toMatchObject({
+		expect(await findApplicationSetting(SETTING_KEY, db)).toMatchObject({
 			key: SETTING_KEY,
 			value: INITIAL_SETTING_VALUE,
 		});
 	});
 
-	it("updates the value and updatedAt without changing createdAt", () => {
-		db.insert(schema.applicationSettings)
-			.values({
-				key: SETTING_KEY,
-				value: INITIAL_SETTING_VALUE,
-				createdAt: ORIGINAL_TIMESTAMP,
-				updatedAt: ORIGINAL_TIMESTAMP,
-			})
-			.run();
+	it("updates the value and updatedAt without changing createdAt", async () => {
+		await db.insert(schema.applicationSettings).values({
+			key: SETTING_KEY,
+			value: INITIAL_SETTING_VALUE,
+			createdAt: ORIGINAL_TIMESTAMP,
+			updatedAt: ORIGINAL_TIMESTAMP,
+		});
 
-		const updatedSetting = saveApplicationSetting(
+		const updatedSetting = await saveApplicationSetting(
 			SETTING_KEY,
 			UPDATED_SETTING_VALUE,
 			db,
@@ -90,6 +70,17 @@ describe("application settings repository", () => {
 		expect(updatedSetting.createdAt).toEqual(ORIGINAL_TIMESTAMP);
 		expect(updatedSetting.updatedAt.getTime()).toBeGreaterThan(
 			ORIGINAL_TIMESTAMP.getTime(),
+		);
+	});
+
+	it("keeps the first value when concurrent callers initialize a setting", async () => {
+		const settings = await Promise.all([
+			getOrCreateApplicationSetting(SETTING_KEY, "first", db),
+			getOrCreateApplicationSetting(SETTING_KEY, "second", db),
+		]);
+		expect(settings[0].value).toBe(settings[1].value);
+		expect((await findApplicationSetting(SETTING_KEY, db))?.value).toBe(
+			settings[0].value,
 		);
 	});
 });

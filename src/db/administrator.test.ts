@@ -1,29 +1,28 @@
-import { Database } from "bun:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import { beforeEach, describe, expect, it } from "bun:test";
+import type { AppDatabase } from "~/db/database";
 import * as schema from "~/db/schema";
+import { setupTestDatabase } from "~/db/test-database";
 
 const OWNER_ID = 1;
 const SECOND_OWNER_ID = 2;
-const SESSION_EXPIRY = 1_800_000_000;
-let client: Database;
-let db: ReturnType<typeof drizzle<typeof schema>>;
+const SESSION_EXPIRY = 1_800_000_000_123;
+const OWNER = { id: OWNER_ID, username: "owner", passwordHash: "test-hash" };
+const SESSION = {
+	tokenHash: "test-token-hash",
+	administratorId: OWNER_ID,
+	expiresAt: SESSION_EXPIRY,
+};
+const createTestDatabase = setupTestDatabase();
+let db: AppDatabase;
 
-beforeEach(() => {
-	client = new Database(":memory:");
-	client.exec("PRAGMA foreign_keys = ON");
-	db = drizzle({ client, schema });
-	migrate(db, { migrationsFolder: "drizzle" });
+beforeEach(async () => {
+	({ db } = await createTestDatabase());
 });
-afterEach(() => client.close());
 
 describe("administrator schema", () => {
-	it("rejects a second installation-owner identity", () => {
-		db.insert(schema.administrator)
-			.values({ id: OWNER_ID, username: "owner", passwordHash: "test-hash" })
-			.run();
-		expect(() =>
+	it("rejects a second installation-owner identity", async () => {
+		await db.insert(schema.administrator).values(OWNER);
+		await expect(
 			db
 				.insert(schema.administrator)
 				.values({
@@ -31,38 +30,48 @@ describe("administrator schema", () => {
 					username: "another-owner",
 					passwordHash: "test-hash",
 				})
-				.run(),
-		).toThrow();
-		expect(db.select().from(schema.administrator).all()).toHaveLength(1);
+				.execute(),
+		).rejects.toThrow();
+		expect(await db.select().from(schema.administrator)).toEqual([OWNER]);
 	});
 
-	it("requires a session to reference the installation owner", () => {
-		expect(() =>
+	it("allows only one owner when bootstrap requests race", async () => {
+		const results = await Promise.all([
 			db
-				.insert(schema.administratorSessions)
-				.values({
-					tokenHash: "test-token-hash",
-					administratorId: OWNER_ID,
-					expiresAt: SESSION_EXPIRY,
-				})
-				.run(),
-		).toThrow();
+				.insert(schema.administrator)
+				.values(OWNER)
+				.onConflictDoNothing()
+				.returning(),
+			db
+				.insert(schema.administrator)
+				.values({ ...OWNER, username: "other-owner" })
+				.onConflictDoNothing()
+				.returning(),
+		]);
+		expect(results.flat()).toHaveLength(1);
+		expect(await db.select().from(schema.administrator)).toEqual(
+			results.flat(),
+		);
 	});
 
-	it("removes sessions when their owner is removed", () => {
-		db.insert(schema.administrator)
-			.values({ id: OWNER_ID, username: "owner", passwordHash: "test-hash" })
-			.run();
-		db.insert(schema.administratorSessions)
-			.values({
-				tokenHash: "test-token-hash",
-				administratorId: OWNER_ID,
-				expiresAt: SESSION_EXPIRY,
-			})
-			.run();
-		db.delete(schema.administrator).run();
-		expect(db.select().from(schema.administratorSessions).all()).toHaveLength(
-			0,
-		);
+	it("requires a session to reference the installation owner", async () => {
+		await expect(
+			db.insert(schema.administratorSessions).values(SESSION).execute(),
+		).rejects.toThrow();
+		await db.insert(schema.administrator).values(OWNER);
+		await db.insert(schema.administratorSessions).values(SESSION);
+		expect(await db.select().from(schema.administratorSessions)).toEqual([
+			SESSION,
+		]);
+	});
+
+	it("removes sessions when their owner is removed", async () => {
+		await db.insert(schema.administrator).values(OWNER);
+		await db.insert(schema.administratorSessions).values(SESSION);
+		expect(await db.select().from(schema.administratorSessions)).toEqual([
+			SESSION,
+		]);
+		await db.delete(schema.administrator);
+		expect(await db.select().from(schema.administratorSessions)).toEqual([]);
 	});
 });

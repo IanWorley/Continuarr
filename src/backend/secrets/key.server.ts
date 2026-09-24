@@ -8,12 +8,8 @@ import {
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import {
-	DEFAULT_DATABASE_URL,
-	getDatabaseUrl,
-	IN_MEMORY_DATABASE_URL,
-} from "~/db/config";
+import { join, resolve } from "node:path";
+import { getDataDirectory } from "~/db/config";
 import { CREDENTIAL_KEY_BYTES, createSecretStorage } from "./storage";
 
 const KEY_FILENAME = "credential-encryption.key";
@@ -47,20 +43,14 @@ function readSavedKey(keyPath: string): string {
 
 export function loadCredentialEncryptionKey(
 	deploymentKey = process.env.CREDENTIAL_ENCRYPTION_KEY,
-	databaseUrl = getDatabaseUrl(),
+	dataDirectory = getDataDirectory(),
 ): string {
 	if (deploymentKey) {
 		createSecretStorage(deploymentKey);
 		return deploymentKey;
 	}
 
-	const directory = dirname(
-		resolve(
-			databaseUrl === IN_MEMORY_DATABASE_URL
-				? DEFAULT_DATABASE_URL
-				: databaseUrl,
-		),
-	);
+	const directory = resolve(dataDirectory);
 	const keyPath = join(directory, KEY_FILENAME);
 	let encodedKey: string;
 	try {

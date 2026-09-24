@@ -155,7 +155,8 @@ describe("server startup", () => {
 					env: {
 						...process.env,
 						CREDENTIAL_ENCRYPTION_KEY: deploymentKey,
-						DATABASE_URL: join(directory, "app.db"),
+						DATA_DIRECTORY: directory,
+						DATABASE_URL: "postgresql://unused:unused@localhost/unused",
 					},
 				},
 			);

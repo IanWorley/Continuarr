@@ -92,12 +92,12 @@ export function createAdministratorService(
 			return repository.isConfigured();
 		},
 		async bootstrap(username: string, password: string) {
-			if (this.isConfigured()) return false;
+			if (await this.isConfigured()) return false;
 			const passwordHash = await hashPassword(password);
-			return repository.createOwner(username, passwordHash);
+			return await repository.createOwner(username, passwordHash);
 		},
 		async signIn(username: string, password: string) {
-			const owner = repository.getOwner();
+			const owner = await repository.getOwner();
 			// Always derive a key so unknown usernames do not skip the expensive password check.
 			const [salt, storedKey] = owner?.passwordHash.split(":") ?? [
 				"unconfigured",
@@ -112,21 +112,21 @@ export function createAdministratorService(
 				return null;
 			const token = randomBytes(TOKEN_BYTES).toString("hex");
 			const timestamp = now();
-			repository.deleteExpiredSessions(timestamp);
-			repository.createSession(
+			await repository.deleteExpiredSessions(timestamp);
+			await repository.createSession(
 				tokenHash(token),
 				timestamp + SESSION_DURATION_SECONDS,
 			);
 			return token;
 		},
-		authenticate(request: Request) {
+		async authenticate(request: Request) {
 			const token = readSessionToken(request);
 			if (!token) return false;
-			return repository.hasActiveSession(tokenHash(token), now());
+			return await repository.hasActiveSession(tokenHash(token), now());
 		},
-		signOut(request: Request) {
+		async signOut(request: Request) {
 			const token = readSessionToken(request);
-			if (token) repository.deleteSession(tokenHash(token));
+			if (token) await repository.deleteSession(tokenHash(token));
 		},
 	};
 }

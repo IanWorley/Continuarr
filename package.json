@@ -37,10 +37,11 @@
     "@tanstack/react-router": "latest",
     "@tanstack/react-router-ssr-query": "^1.167.1",
     "@tanstack/react-start": "latest",
-    "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "elysia": "^1.4.29",
+    "fast-xml-parser": "^5.11.1",
+    "pg": "^8.23.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^4.4.3"
@@ -49,9 +50,9 @@
     "@biomejs/biome": "2.5.14",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-cli": "^1.132.0",
-    "@types/better-sqlite3": "^9.6.0",
     "@types/bun": "^1.4.0",
     "@types/node": "^26.0.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
@@ -62,13 +63,11 @@
     "vite": "^8.0.0"
   },
   "trustedDependencies": [
-    "better-sqlite3",
     "esbuild",
     "lightningcss"
   ],
   "pnpm": {
     "onlyBuiltDependencies": [
-      "better-sqlite3",
       "esbuild",
       "lightningcss"
     ]
