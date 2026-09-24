@@ -141,7 +141,9 @@ const server = Bun.serve({
 		}
 		if (
 			path.startsWith("/jellyfin/") &&
-			request.headers.get("x-emby-token") !== "fixture-jellyfin-token"
+			!request.headers
+				.get("authorization")
+				?.endsWith(', Token="fixture-jellyfin-token"')
 		)
 			return new Response(null, { status: 401 });
 		if (path === "/jellyfin/Users/Me")

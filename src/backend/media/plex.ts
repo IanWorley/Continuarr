@@ -265,13 +265,8 @@ export function createPlexProvider(options: {
 			});
 			return resources
 				.filter((resource) => resource.provides.split(",").includes("server"))
-				.map((resource) => {
-					if (!resource.accessToken || !resource.connections) {
-						throw new MediaError(
-							"Plex returned incomplete server access.",
-							502,
-						);
-					}
+				.flatMap((resource) => {
+					if (!resource.accessToken || !resource.connections?.length) return [];
 					return {
 						id: resource.clientIdentifier,
 						name: resource.name,

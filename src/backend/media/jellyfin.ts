@@ -41,11 +41,9 @@ const targetSchema = z.object({
 });
 
 function jellyfinHeaders(clientIdentifier: string, token?: string): Headers {
-	const headers = new Headers({
-		Authorization: `MediaBrowser Client="${CLIENT_NAME}", Device="server", DeviceId="${clientIdentifier}", Version="${CLIENT_VERSION}"`,
+	return new Headers({
+		Authorization: `MediaBrowser Client="${CLIENT_NAME}", Device="server", DeviceId="${clientIdentifier}", Version="${CLIENT_VERSION}"${token ? `, Token="${token}"` : ""}`,
 	});
-	if (token) headers.set("X-Emby-Token", token);
-	return headers;
 }
 
 function toMediaItem(item: z.infer<typeof itemSchema>): MediaItem {

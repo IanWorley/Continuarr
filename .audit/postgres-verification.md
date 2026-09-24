@@ -17,3 +17,9 @@ Foundational Thinking shaped the bigint epoch columns and separate credential di
 Repeat the browser scenario with `bun scripts/media-fixture.ts`. Normal setup is documented in README.md.
 
 Independent PostgreSQL review by GPT-6 Luna found no blockers in async authentication, persistence, scheduler coordination, timestamp precision, schema constraints, test isolation, or credential storage. The completion checklist is now updated.
+
+## PR review follow-up
+
+Accepted three findings on PR #112: skip Plex server resources without usable access, use Jellyfin's MediaBrowser Authorization token parameter, and let requests continue when scheduler initialization fails. Provider tests passed with inaccessible Plex resources and strict Jellyfin authorization fixtures. Type checking, lint, build, and diff checks passed. With PostgreSQL unreachable, two live health requests returned success and each scheduler attempt logged a sanitized retry message.
+
+Skipped removal of the SQLite migration artifacts because the migration deliberately preserves the earlier SQLite history. They are outside the active PostgreSQL migration directory.

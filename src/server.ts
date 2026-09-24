@@ -9,7 +9,11 @@ import { startMediaScheduler } from "~/backend/media/runtime.server";
 const handle = createStartHandler(defaultStreamHandler);
 export default {
 	async fetch(request: Request) {
-		await startMediaScheduler();
+		await startMediaScheduler().catch(() => {
+			console.error(
+				"Automatic sync scheduler could not start. It will retry on the next request.",
+			);
+		});
 		return handle(request);
 	},
 };

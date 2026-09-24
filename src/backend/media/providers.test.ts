@@ -25,6 +25,59 @@ afterEach(() => {
 });
 
 describe("Plex provider", () => {
+	it("skips inaccessible servers without hiding usable resources", async () => {
+		const baseUrl = serve(() =>
+			json([
+				{
+					clientIdentifier: "missing-token",
+					name: "No access",
+					provides: "server",
+					connections: [{ uri: "https://example.com" }],
+				},
+				{
+					clientIdentifier: "missing-connections",
+					name: "Offline",
+					provides: "server",
+					accessToken: "unused",
+				},
+				{
+					clientIdentifier: "empty-connections",
+					name: "Offline",
+					provides: "server",
+					accessToken: "unused",
+					connections: [],
+				},
+				{
+					clientIdentifier: "usable",
+					name: "Available",
+					provides: "server",
+					accessToken: "server-token",
+					connections: [{ uri: "https://example.com" }],
+				},
+			]),
+		);
+		const provider = createPlexProvider({
+			clientIdentifier: PLEX_IDENTIFIER,
+			plexUrl: baseUrl,
+		});
+		const resources = await provider.servers(new Secret("profile-token"));
+		expect(
+			resources.map(({ id, name, connections, token }) => ({
+				id,
+				name,
+				connections,
+				token: token.reveal(),
+			})),
+		).toEqual([
+			{
+				id: "usable",
+				name: "Available",
+				connections: ["https://example.com"],
+				token: "server-token",
+			},
+		]);
+	});
+
 	it("keeps Home and server tokens separate while reading every page and marking once", async () => {
 		let baseUrl = "";
 		let scrobbles = 0;
@@ -249,7 +302,10 @@ describe("Jellyfin provider", () => {
 					User: { Id: "user-1", Name: "Ian" },
 					ServerId: "server-1",
 				});
-			if (request.headers.get("X-Emby-Token") !== "user-token")
+			if (
+				request.headers.get("Authorization") !==
+				'MediaBrowser Client="Continuarr", Device="server", DeviceId="jellyfin-client", Version="1.0.0", Token="user-token"'
+			)
 				return json({}, 401);
 			if (url.pathname === "/jf/Users/Me")
 				return json({ Id: "user-1", Name: "Ian" });
