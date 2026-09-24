@@ -425,12 +425,11 @@ function PlexConnect({
 													value={selectedUserId}
 													disabled={action.busy}
 													onChange={(event) => {
-														setUserId(event.target.value);
+														setUserId(event.target.value || null);
 														setPin("");
 														setSelection(null);
 													}}
 												>
-													<option value="">Choose a person</option>
 													{users.data.map((user) => (
 														<option key={user.id} value={user.id}>
 															{user.name}
