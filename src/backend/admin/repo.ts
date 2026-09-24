@@ -1,65 +1,59 @@
 import { and, eq, gt, lte } from "drizzle-orm";
-import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-import { getDatabase } from "~/db/database";
-import type * as schema from "~/db/schema";
+import { type AppDatabase, getDatabase } from "~/db/database";
 import { administrator, administratorSessions } from "~/db/schema";
 
 const OWNER_ID = 1;
-type Database = BaseSQLiteDatabase<"sync", unknown, typeof schema>;
 
 export function createAdministratorRepository(
-	database: () => Database = () => getDatabase().db,
+	database: () => AppDatabase = () => getDatabase().db,
 ) {
 	return {
-		isConfigured() {
-			return Boolean(
-				database().select({ id: administrator.id }).from(administrator).get(),
-			);
+		async isConfigured() {
+			const rows = await database()
+				.select({ id: administrator.id })
+				.from(administrator)
+				.limit(1);
+			return rows.length !== 0;
 		},
-		getOwner() {
-			return database().select().from(administrator).get();
+		async getOwner() {
+			const [owner] = await database().select().from(administrator).limit(1);
+			return owner;
 		},
-		createOwner(username: string, passwordHash: string) {
-			return Boolean(
-				database()
-					.insert(administrator)
-					.values({ id: OWNER_ID, username, passwordHash })
-					.onConflictDoNothing()
-					.returning({ id: administrator.id })
-					.get(),
-			);
+		async createOwner(username: string, passwordHash: string) {
+			const rows = await database()
+				.insert(administrator)
+				.values({ id: OWNER_ID, username, passwordHash })
+				.onConflictDoNothing()
+				.returning({ id: administrator.id });
+			return rows.length !== 0;
 		},
-		deleteExpiredSessions(now: number) {
-			database()
+		async deleteExpiredSessions(now: number) {
+			await database()
 				.delete(administratorSessions)
-				.where(lte(administratorSessions.expiresAt, now))
-				.run();
+				.where(lte(administratorSessions.expiresAt, now));
 		},
-		createSession(tokenHash: string, expiresAt: number) {
-			database()
+		async createSession(tokenHash: string, expiresAt: number) {
+			await database()
 				.insert(administratorSessions)
-				.values({ tokenHash, administratorId: OWNER_ID, expiresAt })
-				.run();
+				.values({ tokenHash, administratorId: OWNER_ID, expiresAt });
 		},
-		hasActiveSession(tokenHash: string, now: number) {
-			return Boolean(
-				database()
-					.select({ tokenHash: administratorSessions.tokenHash })
-					.from(administratorSessions)
-					.where(
-						and(
-							eq(administratorSessions.tokenHash, tokenHash),
-							gt(administratorSessions.expiresAt, now),
-						),
-					)
-					.get(),
-			);
+		async hasActiveSession(tokenHash: string, now: number) {
+			const rows = await database()
+				.select({ tokenHash: administratorSessions.tokenHash })
+				.from(administratorSessions)
+				.where(
+					and(
+						eq(administratorSessions.tokenHash, tokenHash),
+						gt(administratorSessions.expiresAt, now),
+					),
+				)
+				.limit(1);
+			return rows.length !== 0;
 		},
-		deleteSession(tokenHash: string) {
-			database()
+		async deleteSession(tokenHash: string) {
+			await database()
 				.delete(administratorSessions)
-				.where(eq(administratorSessions.tokenHash, tokenHash))
-				.run();
+				.where(eq(administratorSessions.tokenHash, tokenHash));
 		},
 	};
 }

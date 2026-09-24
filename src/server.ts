@@ -4,4 +4,12 @@ import {
 } from "@tanstack/react-start/server";
 import "~/backend/secrets/storage.server";
 
-export default { fetch: createStartHandler(defaultStreamHandler) };
+import { startMediaScheduler } from "~/backend/media/runtime.server";
+
+const handle = createStartHandler(defaultStreamHandler);
+export default {
+	async fetch(request: Request) {
+		await startMediaScheduler();
+		return handle(request);
+	},
+};

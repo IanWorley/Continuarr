@@ -1,41 +1,54 @@
 import { eq } from "drizzle-orm";
-import { getDatabase } from "~/db/database";
+import { type AppDatabase, getDatabase } from "~/db/database";
 import { type ApplicationSetting, applicationSettings } from "~/db/schema";
 
-type Database = ReturnType<typeof getDatabase>["db"];
-
-function findApplicationSetting(
+async function findApplicationSetting(
 	key: string,
-	db: Database = getDatabase().db,
-): ApplicationSetting | null {
-	const result = db
+	db: AppDatabase = getDatabase().db,
+): Promise<ApplicationSetting | null> {
+	const [setting] = await db
 		.select()
 		.from(applicationSettings)
 		.where(eq(applicationSettings.key, key))
-		.limit(1)
-		.get();
-
-	if (!result) {
-		return null;
-	}
-
-	return result;
+		.limit(1);
+	return setting ?? null;
 }
 
-function saveApplicationSetting(
+async function saveApplicationSetting(
 	key: string,
 	value: string,
-	db: Database = getDatabase().db,
-): ApplicationSetting {
-	return db
+	db: AppDatabase = getDatabase().db,
+): Promise<ApplicationSetting> {
+	const [setting] = await db
 		.insert(applicationSettings)
 		.values({ key, value })
 		.onConflictDoUpdate({
 			target: applicationSettings.key,
-			set: { value },
+			set: { value, updatedAt: new Date() },
 		})
-		.returning()
-		.get();
+		.returning();
+	if (!setting) throw new Error("Unable to save application setting.");
+	return setting;
 }
 
-export { findApplicationSetting, saveApplicationSetting };
+async function getOrCreateApplicationSetting(
+	key: string,
+	value: string,
+	db: AppDatabase = getDatabase().db,
+): Promise<ApplicationSetting> {
+	const [created] = await db
+		.insert(applicationSettings)
+		.values({ key, value })
+		.onConflictDoNothing()
+		.returning();
+	if (created) return created;
+	const existing = await findApplicationSetting(key, db);
+	if (!existing) throw new Error("Unable to read application setting.");
+	return existing;
+}
+
+export {
+	findApplicationSetting,
+	getOrCreateApplicationSetting,
+	saveApplicationSetting,
+};

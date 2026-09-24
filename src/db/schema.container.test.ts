@@ -1,118 +1,115 @@
-/// <reference types="bun" />
-
 import { describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { GenericContainer, Wait } from "testcontainers";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import * as schema from "~/db/schema";
+import { setupTestDatabase } from "~/db/test-database";
 
-const SQLITE_IMAGE =
-	"keinos/sqlite3:3.53.4@sha256:6addaf450aea7e098e7d6f059d43501c317ec70494c1ace3cc94bfe1631cbfa5";
+const createTestDatabase = setupTestDatabase();
 const MIGRATIONS_FOLDER = fileURLToPath(
-	new URL("../../drizzle", import.meta.url),
+	new URL("../../drizzle/postgres", import.meta.url),
 );
-const CONTAINER_MIGRATIONS_FOLDER = "/migrations";
-const CONTAINER_DATABASE_FILE = "/tmp/continuarr.db";
-const CONTAINER_READY_MESSAGE = "sqlite-ready";
-const CONTAINER_TEST_TIMEOUT_MS = 120_000;
-const EXPECTED_SETTING = {
-	key: "database-provider",
-	value: "sqlite",
-};
-const INITIAL_MIGRATION_FILE = "0000_initial.sql";
-const TIMESTAMP_MIGRATION_FILE = "0001_flippant_mariko_yashida.sql";
+const EXPECTED_SETTING = { key: "database-provider", value: "postgresql" };
+const SAVED_TIMESTAMP = new Date("2026-09-24T01:23:45.678Z");
+const RUN_STARTED_AT = 1_790_211_825_678;
+const RUN_FINISHED_AT = 1_790_211_830_789;
 
-async function startSqliteContainer() {
-	return new GenericContainer(SQLITE_IMAGE)
-		.withCommand([
-			"/bin/sh",
-			"-c",
-			`echo ${CONTAINER_READY_MESSAGE} && tail -f /dev/null`,
-		])
-		.withCopyDirectoriesToContainer([
+describe("PostgreSQL schema migrations", () => {
+	it("preserves existing settings and timestamps when migrations run again", async () => {
+		const { db } = await createTestDatabase();
+		const setting = {
+			...EXPECTED_SETTING,
+			createdAt: SAVED_TIMESTAMP,
+			updatedAt: SAVED_TIMESTAMP,
+		};
+		await db.insert(schema.applicationSettings).values(setting);
+		await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+		expect(await db.select().from(schema.applicationSettings)).toEqual([
+			setting,
+		]);
+	});
+
+	it("preserves linked profiles, pairing options, and millisecond run times when migrations run again", async () => {
+		const { db } = await createTestDatabase();
+		const account = {
+			id: "account",
+			userId: "plex-owner",
+			name: "Owner",
+			token: "encrypted-account-token",
+		};
+		const plexProfile = {
+			id: "plex-profile",
+			accountId: account.id,
+			userId: "plex-home-user",
+			name: "Ian",
+			serverId: "plex-server",
+			serverName: "Plex",
+			url: "http://plex.test",
+			token: "encrypted-profile-token",
+		};
+		const jellyfinProfile = {
+			id: "jellyfin-profile",
+			userId: "jellyfin-user",
+			name: "Ian",
+			serverId: "jellyfin-server",
+			url: "http://jellyfin.test",
+			token: "encrypted-user-token",
+		};
+		await db.insert(schema.plexAccounts).values(account);
+		await db.insert(schema.plexProfiles).values(plexProfile);
+		await db.insert(schema.jellyfinProfiles).values(jellyfinProfile);
+		await db.insert(schema.syncPairings).values({
+			id: "pairing",
+			plexProfileId: plexProfile.id,
+			jellyfinProfileId: jellyfinProfile.id,
+		});
+		expect(await db.select().from(schema.syncPairings)).toEqual([
 			{
-				source: MIGRATIONS_FOLDER,
-				target: CONTAINER_MIGRATIONS_FOLDER,
+				id: "pairing",
+				plexProfileId: plexProfile.id,
+				jellyfinProfileId: jellyfinProfile.id,
+				automatic: false,
+				lastAttemptAt: 0,
 			},
-		])
-		.withWaitStrategy(Wait.forLogMessage(CONTAINER_READY_MESSAGE))
-		.start();
-}
-
-describe("SQLite schema migrations", () => {
-	it(
-		"applies every generated migration in an isolated container",
-		async () => {
-			const container = await startSqliteContainer();
-
-			try {
-				const migrationResult = await container.exec([
-					"/bin/sh",
-					"-c",
-					`cat ${CONTAINER_MIGRATIONS_FOLDER}/*.sql | sqlite3 ${CONTAINER_DATABASE_FILE}`,
-				]);
-
-				expect(migrationResult.exitCode).toBe(0);
-
-				const queryResult = await container.exec([
-					"sqlite3",
-					"-json",
-					CONTAINER_DATABASE_FILE,
-					`INSERT INTO application_settings (key, value) VALUES ('${EXPECTED_SETTING.key}', '${EXPECTED_SETTING.value}'); SELECT key, value FROM application_settings;`,
-				]);
-
-				expect(queryResult.exitCode).toBe(0);
-				expect(JSON.parse(queryResult.output)).toEqual([EXPECTED_SETTING]);
-			} finally {
-				await container.stop();
-			}
-		},
-		CONTAINER_TEST_TIMEOUT_MS,
-	);
-
-	it(
-		"preserves existing settings when adding timestamps",
-		async () => {
-			const container = await startSqliteContainer();
-
-			try {
-				const initialMigrationResult = await container.exec([
-					"/bin/sh",
-					"-c",
-					`cat ${CONTAINER_MIGRATIONS_FOLDER}/${INITIAL_MIGRATION_FILE} | sqlite3 ${CONTAINER_DATABASE_FILE}`,
-				]);
-				expect(initialMigrationResult.exitCode).toBe(0);
-
-				const insertResult = await container.exec([
-					"sqlite3",
-					CONTAINER_DATABASE_FILE,
-					`INSERT INTO application_settings (key, value) VALUES ('${EXPECTED_SETTING.key}', '${EXPECTED_SETTING.value}');`,
-				]);
-				expect(insertResult.exitCode).toBe(0);
-
-				const timestampMigrationResult = await container.exec([
-					"/bin/sh",
-					"-c",
-					`cat ${CONTAINER_MIGRATIONS_FOLDER}/${TIMESTAMP_MIGRATION_FILE} | sqlite3 ${CONTAINER_DATABASE_FILE}`,
-				]);
-				expect(timestampMigrationResult.exitCode).toBe(0);
-
-				const queryResult = await container.exec([
-					"sqlite3",
-					"-json",
-					CONTAINER_DATABASE_FILE,
-					"SELECT key, value, typeof(created_at) AS created_at_type, typeof(updated_at) AS updated_at_type FROM application_settings;",
-				]);
-				expect(queryResult.exitCode).toBe(0);
-				expect(JSON.parse(queryResult.output)).toEqual([
-					{
-						...EXPECTED_SETTING,
-						created_at_type: "integer",
-						updated_at_type: "integer",
-					},
-				]);
-			} finally {
-				await container.stop();
-			}
-		},
-		CONTAINER_TEST_TIMEOUT_MS,
-	);
+		]);
+		await db
+			.update(schema.syncPairings)
+			.set({ automatic: true, lastAttemptAt: RUN_STARTED_AT });
+		await db.insert(schema.syncRuns).values({
+			id: "run",
+			pairingId: "pairing",
+			startedAt: RUN_STARTED_AT,
+			finishedAt: RUN_FINISHED_AT,
+			status: "completed",
+			planned: 2,
+			applied: 2,
+			summary: "Two watched updates completed.",
+		});
+		await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+		expect(await db.select().from(schema.plexAccounts)).toEqual([account]);
+		expect(await db.select().from(schema.plexProfiles)).toEqual([plexProfile]);
+		expect(await db.select().from(schema.jellyfinProfiles)).toEqual([
+			jellyfinProfile,
+		]);
+		expect(await db.select().from(schema.syncPairings)).toEqual([
+			{
+				id: "pairing",
+				plexProfileId: plexProfile.id,
+				jellyfinProfileId: jellyfinProfile.id,
+				automatic: true,
+				lastAttemptAt: RUN_STARTED_AT,
+			},
+		]);
+		expect(await db.select().from(schema.syncRuns)).toEqual([
+			{
+				id: "run",
+				pairingId: "pairing",
+				startedAt: RUN_STARTED_AT,
+				finishedAt: RUN_FINISHED_AT,
+				status: "completed",
+				planned: 2,
+				applied: 2,
+				summary: "Two watched updates completed.",
+			},
+		]);
+	});
 });

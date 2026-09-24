@@ -5,7 +5,7 @@ const requireAdministrator = createMiddleware().server(
 	async ({ request, next }) => {
 		const { guardRequest } = await import("~/backend/admin/guard");
 		setResponseHeader("Cache-Control", "no-store");
-		const rejection = guardRequest(request);
+		const rejection = await guardRequest(request);
 		return rejection ?? next();
 	},
 );

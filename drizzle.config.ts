@@ -1,13 +1,10 @@
 import { defineConfig } from "drizzle-kit";
-
-import { ensureDatabaseDirectory } from "~/db/config.ts";
+import { getDatabaseUrl } from "~/db/config.ts";
 
 export default defineConfig({
-	dbCredentials: {
-		url: ensureDatabaseDirectory(),
-	},
-	dialect: "sqlite",
-	out: "./drizzle",
+	dbCredentials: { url: getDatabaseUrl() },
+	dialect: "postgresql",
+	out: "./drizzle/postgres",
 	schema: "./src/db/schema.ts",
 	strict: true,
 	verbose: true,

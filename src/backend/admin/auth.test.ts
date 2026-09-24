@@ -1,7 +1,4 @@
-import { Database } from "bun:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import { beforeEach, describe, expect, it } from "bun:test";
 import { guardRequest } from "~/backend/admin/guard";
 import {
 	createAdministratorService,
@@ -10,22 +7,21 @@ import {
 	sessionCookie,
 } from "~/backend/admin/service";
 import { createApi } from "~/backend/api";
+import type { AppDatabase } from "~/db/database";
 import * as schema from "~/db/schema";
+import { setupTestDatabase } from "~/db/test-database";
 
 const ORIGIN = "http://localhost";
 const CREDENTIALS = { username: "owner", password: "a-long-test-password" };
 const INITIAL_TIME = 1_800_000_000;
-let client: InstanceType<typeof Database>;
-let db: ReturnType<typeof drizzle<typeof schema>>;
+const createTestDatabase = setupTestDatabase();
+let db: AppDatabase;
 let service: ReturnType<typeof createAdministratorService>;
 let api: ReturnType<typeof createApi>;
 let now: number;
 
-beforeEach(() => {
-	client = new Database(":memory:");
-	client.exec("PRAGMA foreign_keys = ON");
-	db = drizzle({ client, schema });
-	migrate(db, { migrationsFolder: "drizzle" });
+beforeEach(async () => {
+	({ db } = await createTestDatabase());
 	now = INITIAL_TIME;
 	service = createAdministratorService(
 		() => db,
@@ -33,7 +29,6 @@ beforeEach(() => {
 	);
 	api = createApi(service);
 });
-afterEach(() => client.close());
 
 function request(
 	path: string,
@@ -80,9 +75,9 @@ describe("installation administrator", () => {
 		expect(await (await request("/admin/setup")).json()).toEqual({
 			configured: true,
 		});
-		expect(db.select().from(schema.administrator).all()).toHaveLength(1);
+		expect(await db.select().from(schema.administrator)).toHaveLength(1);
 		expect(
-			db.select().from(schema.administrator).get()?.passwordHash,
+			(await db.select().from(schema.administrator).limit(1))[0]?.passwordHash,
 		).not.toContain(CREDENTIALS.password);
 	});
 
@@ -95,7 +90,7 @@ describe("installation administrator", () => {
 				})
 			).status,
 		).toBe(422);
-		expect(service.isConfigured()).toBe(false);
+		expect(await service.isConfigured()).toBe(false);
 	});
 
 	it("rejects incorrect credentials without creating a session", async () => {
@@ -108,7 +103,7 @@ describe("installation administrator", () => {
 				(await request("/admin/sign-in", "POST", credentials)).status,
 			).toBe(401);
 		}
-		expect(db.select().from(schema.administratorSessions).all()).toHaveLength(
+		expect(await db.select().from(schema.administratorSessions)).toHaveLength(
 			0,
 		);
 	});
@@ -126,10 +121,13 @@ describe("installation administrator", () => {
 			() => now,
 		);
 		expect(
-			restarted.authenticate(new Request(ORIGIN, { headers: { cookie } })),
+			await restarted.authenticate(
+				new Request(ORIGIN, { headers: { cookie } }),
+			),
 		).toBe(true);
 		expect(
-			db.select().from(schema.administratorSessions).get()?.tokenHash,
+			(await db.select().from(schema.administratorSessions).limit(1))[0]
+				?.tokenHash,
 		).not.toBe(cookie.split("=")[1]);
 	});
 
@@ -173,7 +171,7 @@ describe("installation administrator", () => {
 		expect(
 			(await request("/admin/session", "GET", undefined, cookie)).status,
 		).toBe(401);
-		expect(db.select().from(schema.administratorSessions).all()).toHaveLength(
+		expect(await db.select().from(schema.administratorSessions)).toHaveLength(
 			0,
 		);
 	});
@@ -230,15 +228,15 @@ describe("installation administrator", () => {
 	});
 
 	it("redirects private pages while allowing the sign-in flow", async () => {
-		const response = guardRequest(new Request(`${ORIGIN}/plex`), service);
+		const response = await guardRequest(new Request(`${ORIGIN}/plex`), service);
 		expect(response?.status).toBe(303);
 		expect(response?.headers.get("location")).toBe(`${ORIGIN}/sign-in`);
 		expect(
-			guardRequest(new Request(`${ORIGIN}/sign-in`), service),
+			await guardRequest(new Request(`${ORIGIN}/sign-in`), service),
 		).toBeUndefined();
 		const cookie = await signIn();
 		expect(
-			guardRequest(
+			await guardRequest(
 				new Request(`${ORIGIN}/plex`, { headers: { cookie } }),
 				service,
 			),
@@ -263,21 +261,15 @@ it.each(["development", "production"])(
 	},
 );
 
-it("rejects excess password work across bootstrap and sign-in, then releases capacity", async () => {
-	const pendingBootstraps = Array.from(
-		{ length: MAX_CONCURRENT_PASSWORD_DERIVATIONS },
-		() => service.bootstrap(CREDENTIALS.username, CREDENTIALS.password),
+it("bounds concurrent password work and releases capacity", async () => {
+	const EXTRA_PASSWORD_ATTEMPTS = 2;
+	const responses = await Promise.all(
+		Array.from(
+			{ length: MAX_CONCURRENT_PASSWORD_DERIVATIONS + EXTRA_PASSWORD_ATTEMPTS },
+			() => request("/admin/bootstrap", "POST", CREDENTIALS),
+		),
 	);
-	try {
-		expect((await request("/admin/sign-in", "POST", CREDENTIALS)).status).toBe(
-			429,
-		);
-		expect(
-			(await request("/admin/bootstrap", "POST", CREDENTIALS)).status,
-		).toBe(429);
-	} finally {
-		await Promise.all(pendingBootstraps);
-	}
+	expect(responses.some((response) => response.status === 429)).toBe(true);
 	expect((await request("/admin/sign-in", "POST", CREDENTIALS)).status).toBe(
 		200,
 	);

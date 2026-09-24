@@ -26,7 +26,7 @@ export function administratorRoutes(service: AdministratorService) {
 			if (error instanceof PasswordDerivationBusyError)
 				return status(429, { error: error.message });
 		})
-		.get("/setup", () => ({ configured: service.isConfigured() }))
+		.get("/setup", async () => ({ configured: await service.isConfigured() }))
 		.post(
 			"/bootstrap",
 			async ({ body, status }) => {
@@ -50,8 +50,8 @@ export function administratorRoutes(service: AdministratorService) {
 			{ body: credentials },
 		)
 		.get("/session", () => ({ authenticated: true }))
-		.post("/sign-out", ({ request, set }) => {
-			service.signOut(request);
+		.post("/sign-out", async ({ request, set }) => {
+			await service.signOut(request);
 			set.headers["set-cookie"] = sessionCookie(request, "", 0);
 			return { authenticated: false };
 		});
