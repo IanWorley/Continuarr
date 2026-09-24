@@ -188,21 +188,29 @@ function PlexConnect({
 	const [authorization, setAuthorization] = useState<Authorization>({
 		kind: "idle",
 	});
-	const [accountId, setAccountId] = useState("");
-	const [userId, setUserId] = useState("");
+	const [accountId, setAccountId] = useState<string | null>(null);
+	const [userId, setUserId] = useState<string | null>(null);
 	const [pin, setPin] = useState("");
 	const [selection, setSelection] = useState<PlexSelection | null>(null);
 	const [serverId, setServerId] = useState("");
 	const [serverUrl, setServerUrl] = useState("");
 	const [message, setMessage] = useState("");
+	const selectedAccountId =
+		accountId ?? (accounts.length === 1 ? accounts[0].id : "");
+	const selectedAccount = accounts.find(
+		(account) => account.id === selectedAccountId,
+	);
 	const users = useQuery({
-		queryKey: ["plex-home-users", accountId],
+		queryKey: ["plex-home-users", selectedAccountId],
 		queryFn: async () =>
-			responseData(await getApi().v1.media.plex({ id: accountId }).users.get()),
-		enabled: accountId !== "",
+			responseData(
+				await getApi().v1.media.plex({ id: selectedAccountId }).users.get(),
+			),
+		enabled: selectedAccountId !== "",
 		retry: false,
 	});
-	const selectedUser = users.data?.find((user) => user.id === userId);
+	const selectedUserId = userId ?? selectedAccount?.userId ?? "";
+	const selectedUser = users.data?.find((user) => user.id === selectedUserId);
 	const selectedServer = selection?.servers.find(
 		(server) => server.id === serverId,
 	);
@@ -229,7 +237,7 @@ function PlexConnect({
 				if (result.status === "linked") {
 					setAuthorization({ kind: "linked" });
 					setAccountId(result.accountId);
-					setUserId("");
+					setUserId(null);
 					setSelection(null);
 					setPin("");
 					await refresh();
@@ -273,8 +281,8 @@ function PlexConnect({
 			</div>
 			<div className="space-y-4">
 				<p className="text-sm leading-6 text-slate-400">
-					Sign in with Plex, then choose a Home profile and its server.
-					Protected profiles require their PIN.
+					Link a Plex account, then find its server. The account owner is
+					selected by default.
 				</p>
 				<button
 					type="button"
@@ -321,7 +329,7 @@ function PlexConnect({
 				)}
 				{authorization.kind === "linked" && (
 					<p role="status" className="text-sm text-emerald-300">
-						Account linked. Choose a profile below.
+						Account linked. Find a server below.
 					</p>
 				)}
 				{authorization.kind === "failed" && (
@@ -337,8 +345,8 @@ function PlexConnect({
 								try {
 									const result = responseData(
 										await getApi().v1.media.plex.select.post({
-											accountId,
-											userId,
+											accountId: selectedAccountId,
+											userId: selectedUserId,
 											...(pin ? { pin } : {}),
 										}),
 									);
@@ -360,11 +368,11 @@ function PlexConnect({
 								id="plex-account"
 								className={fieldClass}
 								required
-								value={accountId}
+								value={selectedAccountId}
 								disabled={action.busy}
 								onChange={(event) => {
 									setAccountId(event.target.value);
-									setUserId("");
+									setUserId(null);
 									setPin("");
 									setSelection(null);
 								}}
@@ -377,80 +385,97 @@ function PlexConnect({
 								))}
 							</select>
 						</label>
-						{accountId && (
+						{selectedAccountId && (
 							<>
-								{users.isFetching && (
-									<p role="status" className="text-sm text-slate-400">
-										Loading Home profiles…
-									</p>
-								)}
-								{users.isError && (
-									<>
-										<ErrorMessage message={users.error.message} />
-										<button
-											type="button"
-											className={secondaryClass}
-											onClick={() => void users.refetch()}
+								<p className="text-sm text-slate-400">
+									Using {selectedUser?.name ?? selectedAccount?.name} as the
+									Plex profile.
+								</p>
+								<details className="rounded-lg border border-slate-800 p-3">
+									<summary className="cursor-pointer text-sm text-slate-300">
+										Use a different Plex Home profile
+									</summary>
+									<div className="mt-4 space-y-4">
+										{users.isFetching && (
+											<p role="status" className="text-sm text-slate-400">
+												Loading Home profiles…
+											</p>
+										)}
+										{users.isError && (
+											<>
+												<ErrorMessage message={users.error.message} />
+												<button
+													type="button"
+													className={secondaryClass}
+													onClick={() => void users.refetch()}
+												>
+													Retry profiles
+												</button>
+											</>
+										)}
+										{users.data && (
+											<label
+												className="block text-sm text-slate-300"
+												htmlFor="plex-profile"
+											>
+												Home profile
+												<select
+													id="plex-profile"
+													className={fieldClass}
+													value={selectedUserId}
+													disabled={action.busy}
+													onChange={(event) => {
+														setUserId(event.target.value);
+														setPin("");
+														setSelection(null);
+													}}
+												>
+													<option value="">Choose a person</option>
+													{users.data.map((user) => (
+														<option key={user.id} value={user.id}>
+															{user.name}
+															{user.protected &&
+															user.id !== selectedAccount?.userId
+																? " (PIN required)"
+																: ""}
+														</option>
+													))}
+												</select>
+											</label>
+										)}
+									</div>
+								</details>
+								{selectedUser?.protected &&
+									selectedUser.id !== selectedAccount?.userId && (
+										<label
+											className="block text-sm text-slate-300"
+											htmlFor="plex-pin"
 										>
-											Retry profiles
-										</button>
-									</>
-								)}
-								{users.data && (
-									<label
-										className="block text-sm text-slate-300"
-										htmlFor="plex-profile"
-									>
-										Home profile
-										<select
-											id="plex-profile"
-											className={fieldClass}
-											required
-											value={userId}
-											disabled={action.busy}
-											onChange={(event) => {
-												setUserId(event.target.value);
-												setPin("");
-												setSelection(null);
-											}}
-										>
-											<option value="">Choose a person</option>
-											{users.data.map((user) => (
-												<option key={user.id} value={user.id}>
-													{user.name}
-													{user.protected ? " (PIN required)" : ""}
-												</option>
-											))}
-										</select>
-									</label>
-								)}
-								{selectedUser?.protected && (
-									<label
-										className="block text-sm text-slate-300"
-										htmlFor="plex-pin"
-									>
-										Profile PIN
-										<input
-											id="plex-pin"
-											type="password"
-											inputMode="numeric"
-											autoComplete="off"
-											className={fieldClass}
-											value={pin}
-											required
-											disabled={action.busy}
-											onChange={(event) => setPin(event.target.value)}
-										/>
-									</label>
-								)}
+											Profile PIN
+											<input
+												id="plex-pin"
+												type="password"
+												inputMode="numeric"
+												autoComplete="off"
+												className={fieldClass}
+												value={pin}
+												required
+												disabled={action.busy}
+												onChange={(event) => setPin(event.target.value)}
+											/>
+										</label>
+									)}
 								<button
 									type="submit"
 									className={secondaryClass}
-									disabled={action.busy || !selectedUser}
+									disabled={
+										action.busy ||
+										!selectedAccount ||
+										!selectedUserId ||
+										(userId !== null && !selectedUser)
+									}
 								>
-									{action.busy
-										? "Checking profile…"
-										: "Find servers for this profile"}
+									{action.busy ? "Checking profile…" : "Find Plex servers"}
 								</button>
 							</>
 						)}
