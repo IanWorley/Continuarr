@@ -26,7 +26,7 @@ type Authorization =
 			kind: "waiting";
 			attempt: Awaited<ReturnType<MediaService["startLogin"]>>;
 	  }
-	| { kind: "linked" }
+	| { kind: "linked"; accountId: string }
 	| { kind: "failed"; message: string };
 
 function responseData<T>(response: {
@@ -158,7 +158,10 @@ function Home() {
 						</div>
 						<div className="grid gap-5 lg:grid-cols-2">
 							<PlexConnect
-								accounts={state.data.accounts}
+								key={state.data.activePlexAccountId ?? "unlinked"}
+								account={state.data.accounts.find(
+									(account) => account.id === state.data.activePlexAccountId,
+								)}
 								profiles={state.data.plexProfiles}
 								refresh={refresh}
 							/>
@@ -176,11 +179,11 @@ function Home() {
 }
 
 function PlexConnect({
-	accounts,
+	account,
 	profiles,
 	refresh,
 }: {
-	accounts: MediaState["accounts"];
+	account: MediaState["accounts"][number] | undefined;
 	profiles: MediaState["plexProfiles"];
 	refresh: () => Promise<void>;
 }) {
@@ -188,32 +191,19 @@ function PlexConnect({
 	const [authorization, setAuthorization] = useState<Authorization>({
 		kind: "idle",
 	});
-	const [accountId, setAccountId] = useState<string | null>(null);
-	const [userId, setUserId] = useState<string | null>(null);
-	const [pin, setPin] = useState("");
 	const [selection, setSelection] = useState<PlexSelection | null>(null);
 	const [serverId, setServerId] = useState("");
 	const [serverUrl, setServerUrl] = useState("");
 	const [message, setMessage] = useState("");
-	const selectedAccountId =
-		accountId ?? (accounts.length === 1 ? accounts[0].id : "");
-	const selectedAccount = accounts.find(
-		(account) => account.id === selectedAccountId,
-	);
-	const users = useQuery({
-		queryKey: ["plex-home-users", selectedAccountId],
-		queryFn: async () =>
-			responseData(
-				await getApi().v1.media.plex({ id: selectedAccountId }).users.get(),
-			),
-		enabled: selectedAccountId !== "",
-		retry: false,
-	});
-	const selectedUserId = userId ?? selectedAccount?.userId ?? "";
-	const selectedUser = users.data?.find((user) => user.id === selectedUserId);
 	const selectedServer = selection?.servers.find(
 		(server) => server.id === serverId,
 	);
+	const activeAccount =
+		account &&
+		authorization.kind !== "waiting" &&
+		(authorization.kind !== "linked" || account.id === authorization.accountId)
+			? account
+			: null;
 
 	useEffect(() => {
 		if (authorization.kind !== "waiting") return;
@@ -235,11 +225,8 @@ function PlexConnect({
 				);
 				if (cancelled) return;
 				if (result.status === "linked") {
-					setAuthorization({ kind: "linked" });
-					setAccountId(result.accountId);
-					setUserId(null);
+					setAuthorization({ kind: "linked", accountId: result.accountId });
 					setSelection(null);
-					setPin("");
 					await refresh();
 				} else if (result.status === "expired") {
 					setAuthorization({
@@ -281,8 +268,7 @@ function PlexConnect({
 			</div>
 			<div className="space-y-4">
 				<p className="text-sm leading-6 text-slate-400">
-					Link a Plex account, then find its server. The account owner is
-					selected by default.
+					Sign in to Plex, then find a server for your account.
 				</p>
 				<button
 					type="button"
@@ -298,11 +284,7 @@ function PlexConnect({
 						})
 					}
 				>
-					{action.busy
-						? "Connecting…"
-						: accounts.length
-							? "Link another Plex account"
-							: "Link Plex account"}
+					{action.busy ? "Connecting…" : "Sign in to Plex"}
 				</button>
 				{authorization.kind === "waiting" && (
 					<div className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4">
@@ -335,152 +317,38 @@ function PlexConnect({
 				{authorization.kind === "failed" && (
 					<ErrorMessage message={authorization.message} />
 				)}
-				{accounts.length > 0 && (
+				{activeAccount && (
 					<form
 						className="space-y-4"
 						onSubmit={(event) => {
 							event.preventDefault();
 							void action.perform(async () => {
 								setMessage("");
-								try {
-									const result = responseData(
-										await getApi().v1.media.plex.select.post({
-											accountId: selectedAccountId,
-											userId: selectedUserId,
-											...(pin ? { pin } : {}),
-										}),
-									);
-									setSelection(result);
-									setServerId("");
-									setServerUrl("");
-								} finally {
-									setPin("");
-								}
+								const result = responseData(
+									await getApi().v1.media.plex.select.post({
+										accountId: activeAccount.id,
+										userId: activeAccount.userId,
+									}),
+								);
+								setSelection(result);
+								setServerId("");
+								setServerUrl("");
 							});
 						}}
 					>
-						<label
-							className="block text-sm text-slate-300"
-							htmlFor="plex-account"
+						<p className="text-sm text-slate-400">
+							Using {activeAccount.name} as the Plex profile.
+						</p>
+						<button
+							type="submit"
+							className={secondaryClass}
+							disabled={action.busy}
 						>
-							Plex account
-							<select
-								id="plex-account"
-								className={fieldClass}
-								required
-								value={selectedAccountId}
-								disabled={action.busy}
-								onChange={(event) => {
-									setAccountId(event.target.value);
-									setUserId(null);
-									setPin("");
-									setSelection(null);
-								}}
-							>
-								<option value="">Choose an account</option>
-								{accounts.map((account) => (
-									<option key={account.id} value={account.id}>
-										{account.name}
-									</option>
-								))}
-							</select>
-						</label>
-						{selectedAccountId && (
-							<>
-								<p className="text-sm text-slate-400">
-									Using {selectedUser?.name ?? selectedAccount?.name} as the
-									Plex profile.
-								</p>
-								<details className="rounded-lg border border-slate-800 p-3">
-									<summary className="cursor-pointer text-sm text-slate-300">
-										Use a different Plex Home profile
-									</summary>
-									<div className="mt-4 space-y-4">
-										{users.isFetching && (
-											<p role="status" className="text-sm text-slate-400">
-												Loading Home profiles…
-											</p>
-										)}
-										{users.isError && (
-											<>
-												<ErrorMessage message={users.error.message} />
-												<button
-													type="button"
-													className={secondaryClass}
-													onClick={() => void users.refetch()}
-												>
-													Retry profiles
-												</button>
-											</>
-										)}
-										{users.data && (
-											<label
-												className="block text-sm text-slate-300"
-												htmlFor="plex-profile"
-											>
-												Home profile
-												<select
-													id="plex-profile"
-													className={fieldClass}
-													value={selectedUserId}
-													disabled={action.busy}
-													onChange={(event) => {
-														setUserId(event.target.value || null);
-														setPin("");
-														setSelection(null);
-													}}
-												>
-													{users.data.map((user) => (
-														<option key={user.id} value={user.id}>
-															{user.name}
-															{user.protected &&
-															user.id !== selectedAccount?.userId
-																? " (PIN required)"
-																: ""}
-														</option>
-													))}
-												</select>
-											</label>
-										)}
-									</div>
-								</details>
-								{selectedUser?.protected &&
-									selectedUser.id !== selectedAccount?.userId && (
-										<label
-											className="block text-sm text-slate-300"
-											htmlFor="plex-pin"
-										>
-											Profile PIN
-											<input
-												id="plex-pin"
-												type="password"
-												inputMode="numeric"
-												autoComplete="off"
-												className={fieldClass}
-												value={pin}
-												required
-												disabled={action.busy}
-												onChange={(event) => setPin(event.target.value)}
-											/>
-										</label>
-									)}
-								<button
-									type="submit"
-									className={secondaryClass}
-									disabled={
-										action.busy ||
-										!selectedAccount ||
-										!selectedUserId ||
-										(userId !== null && !selectedUser)
-									}
-								>
-									{action.busy ? "Checking profile…" : "Find Plex servers"}
-								</button>
-							</>
-						)}
+							{action.busy ? "Checking profile…" : "Find Plex servers"}
+						</button>
 					</form>
 				)}
-				{selection && (
+				{activeAccount && selection && (
 					<form
 						className="space-y-4 border-t border-slate-800 pt-4"
 						onSubmit={(event) => {

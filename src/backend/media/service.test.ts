@@ -29,6 +29,11 @@ async function setup() {
 		jellyfin: [movie("j1", false)],
 		failRead: false,
 		failWrite: false,
+		plexLogin: {
+			userId: "owner",
+			name: "Owner",
+			token: new Secret("owner-token"),
+		},
 		homePin: "",
 		writes: [] as string[],
 	};
@@ -39,11 +44,7 @@ async function setup() {
 			expiresIn: 600,
 			authorizationUrl: "https://app.plex.tv/auth/",
 		}),
-		pollLogin: async () => ({
-			userId: "owner",
-			name: "Owner",
-			token: new Secret("owner-token"),
-		}),
+		pollLogin: async () => state.plexLogin,
 		homeUsers: async () => [{ id: "child", name: "Child", protected: true }],
 		switchUser: async ({ userId, pin }) => {
 			state.homePin = pin ?? "";
@@ -117,6 +118,28 @@ async function setup() {
 }
 
 describe("media account and sync service", () => {
+	it("uses the most recently signed-in Plex account after a restart", async () => {
+		const { repo, secrets, plex, jellyfin, service, state } = await setup();
+		const firstAttempt = await service.startLogin();
+		const firstLogin = await service.pollLogin(firstAttempt.id);
+		if (firstLogin.status !== "linked") throw new Error("Expected Plex login");
+		expect((await service.state()).activePlexAccountId).toBe(
+			firstLogin.accountId,
+		);
+
+		state.plexLogin = {
+			userId: "other-owner",
+			name: "Other owner",
+			token: new Secret("other-owner-token"),
+		};
+		const secondAttempt = await service.startLogin();
+		const secondLogin = await service.pollLogin(secondAttempt.id);
+		if (secondLogin.status !== "linked") throw new Error("Expected Plex login");
+		const restarted = createMediaService({ repo, secrets, plex, jellyfin });
+		expect((await restarted.state()).activePlexAccountId).toBe(
+			secondLogin.accountId,
+		);
+	});
 	it("persists encrypted profile tokens and exposes no credentials", async () => {
 		const { service, repo, state, pair } = await setup();
 		await pair();
