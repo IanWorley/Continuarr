@@ -13,6 +13,27 @@ const HTTP_TOO_MANY_REQUESTS = 429;
 const FIELD_CLASS_NAME =
 	"mt-2 block w-full rounded-xl border border-slate-700/80 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 hover:border-slate-500 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/10 aria-invalid:border-rose-400/70 aria-invalid:focus:ring-rose-400/10 disabled:opacity-60";
 
+type Credentials = { username: string; password: string };
+
+function validateCredentials(credentials: Credentials) {
+	return {
+		username: !credentials.username
+			? "Enter your username."
+			: /\s/.test(credentials.username)
+				? "Your username cannot contain spaces."
+				: credentials.username.length > MAX_USERNAME_LENGTH
+					? `Use ${MAX_USERNAME_LENGTH} characters or fewer.`
+					: "",
+		password: !credentials.password
+			? "Enter your password."
+			: credentials.password.length < MIN_PASSWORD_LENGTH
+				? `Use at least ${MIN_PASSWORD_LENGTH} characters for your password.`
+				: credentials.password.length > MAX_PASSWORD_LENGTH
+					? `Use ${MAX_PASSWORD_LENGTH} characters or fewer.`
+					: "",
+	};
+}
+
 export const Route = createFileRoute("/sign-in")({
 	loader: async () => {
 		const { data, error } = await getApi().v1.admin.setup.get();
@@ -32,26 +53,18 @@ function SignIn() {
 		password: "",
 	});
 	const [touched, setTouched] = useState({ username: false, password: false });
-	const fieldErrors = {
-		username: !credentials.username
-			? "Enter your username."
-			: /\s/.test(credentials.username)
-				? "Your username cannot contain spaces."
-				: credentials.username.length > MAX_USERNAME_LENGTH
-					? `Use ${MAX_USERNAME_LENGTH} characters or fewer.`
-					: "",
-		password: !credentials.password
-			? "Enter your password."
-			: credentials.password.length < MIN_PASSWORD_LENGTH
-				? `Use at least ${MIN_PASSWORD_LENGTH} characters for your password.`
-				: credentials.password.length > MAX_PASSWORD_LENGTH
-					? `Use ${MAX_PASSWORD_LENGTH} characters or fewer.`
-					: "",
-	};
+	const fieldErrors = validateCredentials(credentials);
 
 	async function submit(event: React.SubmitEvent<HTMLFormElement>) {
 		event.preventDefault();
 		if (pending) return;
+		const form = new FormData(event.currentTarget);
+		const credentials = {
+			username: String(form.get("username") ?? ""),
+			password: String(form.get("password") ?? ""),
+		};
+		const fieldErrors = validateCredentials(credentials);
+		setCredentials(credentials);
 		setTouched({ username: true, password: true });
 		if (fieldErrors.username || fieldErrors.password) {
 			const field = fieldErrors.username ? "username" : "password";
@@ -153,13 +166,16 @@ function SignIn() {
 							disabled={pending}
 							value={credentials.username}
 							onChange={(event) => {
-								setCredentials({
-									...credentials,
-									username: event.target.value,
-								});
+								const value = event.target.value;
+								setCredentials((current) => ({
+									...current,
+									username: value,
+								}));
 								setError("");
 							}}
-							onBlur={() => setTouched({ ...touched, username: true })}
+							onBlur={() =>
+								setTouched((current) => ({ ...current, username: true }))
+							}
 							aria-invalid={touched.username && !!fieldErrors.username}
 							aria-describedby={
 								touched.username && fieldErrors.username
@@ -197,13 +213,16 @@ function SignIn() {
 							disabled={pending}
 							value={credentials.password}
 							onChange={(event) => {
-								setCredentials({
-									...credentials,
-									password: event.target.value,
-								});
+								const value = event.target.value;
+								setCredentials((current) => ({
+									...current,
+									password: value,
+								}));
 								setError("");
 							}}
-							onBlur={() => setTouched({ ...touched, password: true })}
+							onBlur={() =>
+								setTouched((current) => ({ ...current, password: true }))
+							}
 							aria-invalid={touched.password && !!fieldErrors.password}
 							aria-describedby={
 								touched.password && fieldErrors.password
