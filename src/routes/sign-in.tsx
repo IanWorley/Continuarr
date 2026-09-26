@@ -11,7 +11,7 @@ const HTTP_CONFLICT = 409;
 const HTTP_UNAUTHORIZED = 401;
 const HTTP_TOO_MANY_REQUESTS = 429;
 const FIELD_CLASS_NAME =
-	"mt-2 block w-full rounded-xl border border-slate-700/80 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 hover:border-slate-500 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/10 aria-invalid:border-rose-400/70 aria-invalid:focus:ring-rose-400/10 disabled:opacity-60";
+	"mt-2 block w-full rounded-xl border border-slate-700/80 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 hover:border-slate-500 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/10 aria-invalid:border-rose-400/70 aria-invalid:focus:ring-rose-400/10 read-only:opacity-60";
 
 type Credentials = { username: string; password: string };
 
@@ -187,7 +187,7 @@ function SignIn() {
 							autoCapitalize="none"
 							spellCheck={false}
 							placeholder="Your username"
-							disabled={pending}
+							readOnly={pending}
 							aria-invalid={touched.username && !!fieldErrors.username}
 							aria-describedby={
 								touched.username && fieldErrors.username
@@ -222,7 +222,7 @@ function SignIn() {
 							maxLength={MAX_PASSWORD_LENGTH}
 							autoComplete={configured ? "current-password" : "new-password"}
 							placeholder="Your password"
-							disabled={pending}
+							readOnly={pending}
 							aria-invalid={touched.password && !!fieldErrors.password}
 							aria-describedby={
 								touched.password && fieldErrors.password
