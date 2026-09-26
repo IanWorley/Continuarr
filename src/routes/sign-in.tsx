@@ -8,6 +8,10 @@ import {
 import { getApi } from "~/routes/api.$";
 
 const HTTP_CONFLICT = 409;
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_TOO_MANY_REQUESTS = 429;
+const FIELD_CLASS_NAME =
+	"mt-2 block w-full rounded-xl border border-slate-700/80 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 hover:border-slate-500 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/10 aria-invalid:border-rose-400/70 aria-invalid:focus:ring-rose-400/10 disabled:opacity-60";
 
 export const Route = createFileRoute("/sign-in")({
 	loader: async () => {
@@ -23,14 +27,39 @@ function SignIn() {
 	const [configured, setConfigured] = useState(initial.configured);
 	const [error, setError] = useState("");
 	const [pending, setPending] = useState(false);
+	const [credentials, setCredentials] = useState({
+		username: "",
+		password: "",
+	});
+	const [touched, setTouched] = useState({ username: false, password: false });
+	const fieldErrors = {
+		username: !credentials.username
+			? "Enter your username."
+			: /\s/.test(credentials.username)
+				? "Your username cannot contain spaces."
+				: credentials.username.length > MAX_USERNAME_LENGTH
+					? `Use ${MAX_USERNAME_LENGTH} characters or fewer.`
+					: "",
+		password: !credentials.password
+			? "Enter your password."
+			: credentials.password.length < MIN_PASSWORD_LENGTH
+				? `Use at least ${MIN_PASSWORD_LENGTH} characters for your password.`
+				: credentials.password.length > MAX_PASSWORD_LENGTH
+					? `Use ${MAX_PASSWORD_LENGTH} characters or fewer.`
+					: "",
+	};
 
 	async function submit(event: React.SubmitEvent<HTMLFormElement>) {
 		event.preventDefault();
-		const form = new FormData(event.currentTarget);
-		const credentials = {
-			username: String(form.get("username")),
-			password: String(form.get("password")),
-		};
+		if (pending) return;
+		setTouched({ username: true, password: true });
+		if (fieldErrors.username || fieldErrors.password) {
+			const field = fieldErrors.username ? "username" : "password";
+			event.currentTarget
+				.querySelector<HTMLInputElement>(`[name="${field}"]`)
+				?.focus();
+			return;
+		}
 		setPending(true);
 		setError("");
 		try {
@@ -46,73 +75,189 @@ function SignIn() {
 				setConfigured(true);
 			}
 			const result = await getApi().v1.admin["sign-in"].post(credentials);
-			if (result.error)
-				throw new Error("Unable to sign in. Check your username and password.");
+			if (result.error) {
+				throw new Error(
+					result.status === HTTP_UNAUTHORIZED
+						? "That username and password don't match. Check your details and try again."
+						: result.status === HTTP_TOO_MANY_REQUESTS
+							? "Sign-in is busy right now. Wait a moment and try again."
+							: "We couldn't sign you in. Please try again in a moment.",
+				);
+			}
 			window.location.assign("/");
 		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : "Unable to sign in.");
+			setError(
+				cause instanceof TypeError
+					? "We couldn't reach Continuarr. Check your connection and try again."
+					: cause instanceof Error
+						? cause.message
+						: "We couldn't sign you in. Please try again.",
+			);
 		} finally {
 			setPending(false);
 		}
 	}
 
 	return (
-		<main className="mx-auto max-w-md px-6 py-16">
-			<h1 className="mb-6 text-3xl font-bold">
-				{configured ? "Sign in to Continuarr" : "Set up Continuarr"}
-			</h1>
-			<p className="mb-6 text-slate-300">
-				{configured
-					? "Use your installation-owner account."
-					: "Create the single installation-owner account. This is separate from your Plex or Jellyfin account."}
-			</p>
-			<form onSubmit={submit} className="flex flex-col gap-4">
-				<label>
-					Username
-					<input
-						name="username"
-						required
-						maxLength={MAX_USERNAME_LENGTH}
-						pattern="\S+"
-						autoComplete="username"
-						className="mt-1 block w-full rounded bg-slate-800 p-3"
-					/>
-				</label>
-				<label>
-					Password
-					<input
-						name="password"
-						type="password"
-						required
-						minLength={MIN_PASSWORD_LENGTH}
-						maxLength={MAX_PASSWORD_LENGTH}
-						autoComplete={configured ? "current-password" : "new-password"}
-						className="mt-1 block w-full rounded bg-slate-800 p-3"
-					/>
-				</label>
-				{!configured && (
-					<p className="text-sm text-slate-400">
-						Use {MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_LENGTH} characters for your
-						password.
-					</p>
-				)}
-				{error && (
-					<p role="alert" className="text-red-400">
-						{error}
-					</p>
-				)}
-				<button
-					type="submit"
-					disabled={pending}
-					className="rounded bg-cyan-700 p-3 disabled:opacity-50"
+		<main className="flex min-h-svh flex-col items-center justify-center bg-[radial-gradient(ellipse_at_top,rgba(8,145,178,0.10),transparent_60%)] px-5 py-12">
+			<div className="mb-8 flex items-center gap-3">
+				<span
+					aria-hidden="true"
+					className="flex size-9 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-lg font-semibold text-cyan-300"
 				>
-					{pending
-						? "Please wait…"
-						: configured
-							? "Sign in"
-							: "Create owner and sign in"}
-				</button>
-			</form>
+					C
+				</span>
+				<span className="text-lg font-semibold tracking-tight">Continuarr</span>
+			</div>
+			<section
+				aria-labelledby="sign-in-title"
+				className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-2xl shadow-black/20 sm:p-9"
+			>
+				<p className="mb-3 text-xs font-medium tracking-widest text-cyan-300 uppercase">
+					{configured ? "Your media, in sync" : "Welcome to Continuarr"}
+				</p>
+				<h1
+					id="sign-in-title"
+					className="text-3xl font-semibold tracking-tight"
+				>
+					{configured ? "Welcome back" : "Make yourself at home"}
+				</h1>
+				<p className="mt-3 text-sm leading-6 text-slate-400">
+					{configured
+						? "Sign in with your installation-owner account."
+						: "Create your installation-owner account. This is separate from your Plex or Jellyfin account."}
+				</p>
+				<form
+					noValidate
+					onSubmit={submit}
+					aria-busy={pending}
+					className="mt-8 flex flex-col gap-5"
+				>
+					<div>
+						<label
+							htmlFor="username"
+							className="text-sm font-medium text-slate-200"
+						>
+							Username
+						</label>
+						<input
+							id="username"
+							name="username"
+							required
+							maxLength={MAX_USERNAME_LENGTH}
+							pattern="\S+"
+							autoComplete="username"
+							autoCapitalize="none"
+							spellCheck={false}
+							placeholder="Your username"
+							disabled={pending}
+							value={credentials.username}
+							onChange={(event) => {
+								setCredentials({
+									...credentials,
+									username: event.target.value,
+								});
+								setError("");
+							}}
+							onBlur={() => setTouched({ ...touched, username: true })}
+							aria-invalid={touched.username && !!fieldErrors.username}
+							aria-describedby={
+								touched.username && fieldErrors.username
+									? "username-error"
+									: undefined
+							}
+							className={FIELD_CLASS_NAME}
+						/>
+						{touched.username && fieldErrors.username && (
+							<p
+								id="username-error"
+								role="alert"
+								className="mt-2 text-xs leading-5 text-rose-300"
+							>
+								{fieldErrors.username}
+							</p>
+						)}
+					</div>
+					<div>
+						<label
+							htmlFor="password"
+							className="text-sm font-medium text-slate-200"
+						>
+							Password
+						</label>
+						<input
+							id="password"
+							name="password"
+							type="password"
+							required
+							minLength={MIN_PASSWORD_LENGTH}
+							maxLength={MAX_PASSWORD_LENGTH}
+							autoComplete={configured ? "current-password" : "new-password"}
+							placeholder="Your password"
+							disabled={pending}
+							value={credentials.password}
+							onChange={(event) => {
+								setCredentials({
+									...credentials,
+									password: event.target.value,
+								});
+								setError("");
+							}}
+							onBlur={() => setTouched({ ...touched, password: true })}
+							aria-invalid={touched.password && !!fieldErrors.password}
+							aria-describedby={
+								touched.password && fieldErrors.password
+									? "password-error"
+									: !configured
+										? "password-hint"
+										: undefined
+							}
+							className={FIELD_CLASS_NAME}
+						/>
+						{touched.password && fieldErrors.password ? (
+							<p
+								id="password-error"
+								role="alert"
+								className="mt-2 text-xs leading-5 text-rose-300"
+							>
+								{fieldErrors.password}
+							</p>
+						) : (
+							!configured && (
+								<p
+									id="password-hint"
+									className="mt-2 text-xs leading-5 text-slate-400"
+								>
+									Use {MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_LENGTH} characters.
+								</p>
+							)
+						)}
+					</div>
+					{error && (
+						<div
+							role="alert"
+							className="rounded-xl border border-rose-400/20 bg-rose-400/5 px-4 py-3 text-sm leading-6 text-rose-200"
+						>
+							{error}
+						</div>
+					)}
+					<button
+						type="submit"
+						disabled={pending}
+						className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 active:bg-cyan-400 disabled:cursor-wait disabled:opacity-60"
+					>
+						{pending
+							? "Signing you in…"
+							: configured
+								? "Sign in"
+								: "Create owner and sign in"}
+						{!pending && <span aria-hidden="true">→</span>}
+					</button>
+				</form>
+			</section>
+			<p className="mt-6 text-xs text-slate-500">
+				One place for your Plex and Jellyfin sync.
+			</p>
 		</main>
 	);
 }
