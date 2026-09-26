@@ -1,8 +1,13 @@
 import { desc, eq } from "drizzle-orm";
+import {
+	findApplicationSetting,
+	saveApplicationSetting,
+} from "~/backend/shared/repo";
 import { type AppDatabase, getDatabase } from "~/db/database";
 import * as schema from "~/db/schema";
 
 const RECENT_RUN_LIMIT = 50;
+const ACTIVE_PLEX_ACCOUNT_KEY = "active_plex_account_id";
 
 export type MediaDatabase = AppDatabase;
 export function createMediaRepository(
@@ -17,6 +22,12 @@ export function createMediaRepository(
 	} = schema;
 	return {
 		accounts: async () => await database().select().from(plexAccounts),
+		activePlexAccountId: async () =>
+			(await findApplicationSetting(ACTIVE_PLEX_ACCOUNT_KEY, database()))
+				?.value ?? null,
+		saveActivePlexAccountId: async (id: string) => {
+			await saveApplicationSetting(ACTIVE_PLEX_ACCOUNT_KEY, id, database());
+		},
 		account: async (id: string) => {
 			const [row] = await database()
 				.select()

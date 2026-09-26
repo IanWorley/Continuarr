@@ -1,6 +1,6 @@
 # Continuarr
 
-Sync watched movies and episodes between a Plex profile and a Jellyfin user, including managed and PIN-protected Plex Home profiles. Continuarr merges watched status in both directions. It never marks an item unwatched.
+Sync watched movies and episodes between a Plex account owner and a Jellyfin user. Continuarr merges watched status in both directions. It never marks an item unwatched.
 
 Built with:
 
@@ -27,8 +27,8 @@ The API is available at <http://localhost:3000/api/v1/health>.
 
 ## Connect your media accounts
 
-1. Sign in to Continuarr and choose **Link Plex account**. Authorize Continuarr in the Plex tab, then return to the dashboard. Continuarr checks for approval until the login expires.
-2. Select the linked Plex account and the owner or a Plex Home profile. Enter the profile PIN when required. Choose an accessible Plex server and connection address, then save the profile. Repeat for each family member.
+1. Sign in to Continuarr and choose **Sign in to Plex**. Authorize Continuarr in the Plex tab, then return to the dashboard. Continuarr checks for approval until the login expires.
+2. Continuarr uses the Plex account you signed in with. Choose an accessible Plex server and connection address, then save the profile. To connect another person's account, sign in to Plex again with that account.
 3. Enter the Jellyfin server URL and that person's Jellyfin username and password. Include a reverse proxy path, such as `https://media.example/jellyfin`, when your server uses one. Continuarr saves the returned user token and discards the password.
 4. Pair the saved Plex profile with the saved Jellyfin user. Each profile can belong to one pairing, so a shared profile cannot accidentally merge two people's histories.
 5. Preview the pairing, then run sync. A run reads both libraries again and applies the current watched-state union. Check the run result for completed updates and skipped items.

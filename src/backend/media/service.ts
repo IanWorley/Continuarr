@@ -105,15 +105,25 @@ export function createMediaService({
 	}
 	const service = {
 		async state() {
-			const [accounts, plexProfiles, jellyfinProfiles, pairings, runs] =
-				await Promise.all([
-					repo.accounts(),
-					repo.plexProfiles(),
-					repo.jellyfinProfiles(),
-					repo.pairings(),
-					repo.runs(),
-				]);
+			const [
+				accounts,
+				activePlexAccountId,
+				plexProfiles,
+				jellyfinProfiles,
+				pairings,
+				runs,
+			] = await Promise.all([
+				repo.accounts(),
+				repo.activePlexAccountId(),
+				repo.plexProfiles(),
+				repo.jellyfinProfiles(),
+				repo.pairings(),
+				repo.runs(),
+			]);
 			return {
+				activePlexAccountId:
+					activePlexAccountId ??
+					(accounts.length === 1 ? accounts[0].id : null),
 				accounts: accounts.map(({ id, userId, name }) => ({
 					id,
 					userId,
@@ -184,6 +194,7 @@ export function createMediaService({
 					name: identity.name,
 					token: secrets.encrypt(id, identity.token),
 				});
+				await repo.saveActivePlexAccountId(id);
 				return id;
 			});
 			attempt.accountId = accountId;
