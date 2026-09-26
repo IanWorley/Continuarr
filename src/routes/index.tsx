@@ -189,8 +189,6 @@ function PlexConnect({
 		kind: "idle",
 	});
 	const [accountId, setAccountId] = useState<string | null>(null);
-	const [userId, setUserId] = useState<string | null>(null);
-	const [pin, setPin] = useState("");
 	const [selection, setSelection] = useState<PlexSelection | null>(null);
 	const [serverId, setServerId] = useState("");
 	const [serverUrl, setServerUrl] = useState("");
@@ -200,17 +198,6 @@ function PlexConnect({
 	const selectedAccount = accounts.find(
 		(account) => account.id === selectedAccountId,
 	);
-	const users = useQuery({
-		queryKey: ["plex-home-users", selectedAccountId],
-		queryFn: async () =>
-			responseData(
-				await getApi().v1.media.plex({ id: selectedAccountId }).users.get(),
-			),
-		enabled: selectedAccountId !== "",
-		retry: false,
-	});
-	const selectedUserId = userId ?? selectedAccount?.userId ?? "";
-	const selectedUser = users.data?.find((user) => user.id === selectedUserId);
 	const selectedServer = selection?.servers.find(
 		(server) => server.id === serverId,
 	);
@@ -237,9 +224,7 @@ function PlexConnect({
 				if (result.status === "linked") {
 					setAuthorization({ kind: "linked" });
 					setAccountId(result.accountId);
-					setUserId(null);
 					setSelection(null);
-					setPin("");
 					await refresh();
 				} else if (result.status === "expired") {
 					setAuthorization({
@@ -342,20 +327,15 @@ function PlexConnect({
 							event.preventDefault();
 							void action.perform(async () => {
 								setMessage("");
-								try {
-									const result = responseData(
-										await getApi().v1.media.plex.select.post({
-											accountId: selectedAccountId,
-											userId: selectedUserId,
-											...(pin ? { pin } : {}),
-										}),
-									);
-									setSelection(result);
-									setServerId("");
-									setServerUrl("");
-								} finally {
-									setPin("");
-								}
+								const result = responseData(
+									await getApi().v1.media.plex.select.post({
+										accountId: selectedAccountId,
+										userId: selectedAccount?.userId ?? "",
+									}),
+								);
+								setSelection(result);
+								setServerId("");
+								setServerUrl("");
 							});
 						}}
 					>
@@ -372,8 +352,6 @@ function PlexConnect({
 								disabled={action.busy}
 								onChange={(event) => {
 									setAccountId(event.target.value);
-									setUserId(null);
-									setPin("");
 									setSelection(null);
 								}}
 							>
@@ -388,91 +366,12 @@ function PlexConnect({
 						{selectedAccountId && (
 							<>
 								<p className="text-sm text-slate-400">
-									Using {selectedUser?.name ?? selectedAccount?.name} as the
-									Plex profile.
+									Using {selectedAccount?.name} as the Plex profile.
 								</p>
-								<details className="rounded-lg border border-slate-800 p-3">
-									<summary className="cursor-pointer text-sm text-slate-300">
-										Use a different Plex Home profile
-									</summary>
-									<div className="mt-4 space-y-4">
-										{users.isFetching && (
-											<p role="status" className="text-sm text-slate-400">
-												Loading Home profiles…
-											</p>
-										)}
-										{users.isError && (
-											<>
-												<ErrorMessage message={users.error.message} />
-												<button
-													type="button"
-													className={secondaryClass}
-													onClick={() => void users.refetch()}
-												>
-													Retry profiles
-												</button>
-											</>
-										)}
-										{users.data && (
-											<label
-												className="block text-sm text-slate-300"
-												htmlFor="plex-profile"
-											>
-												Home profile
-												<select
-													id="plex-profile"
-													className={fieldClass}
-													value={selectedUserId}
-													disabled={action.busy}
-													onChange={(event) => {
-														setUserId(event.target.value || null);
-														setPin("");
-														setSelection(null);
-													}}
-												>
-													{users.data.map((user) => (
-														<option key={user.id} value={user.id}>
-															{user.name}
-															{user.protected &&
-															user.id !== selectedAccount?.userId
-																? " (PIN required)"
-																: ""}
-														</option>
-													))}
-												</select>
-											</label>
-										)}
-									</div>
-								</details>
-								{selectedUser?.protected &&
-									selectedUser.id !== selectedAccount?.userId && (
-										<label
-											className="block text-sm text-slate-300"
-											htmlFor="plex-pin"
-										>
-											Profile PIN
-											<input
-												id="plex-pin"
-												type="password"
-												inputMode="numeric"
-												autoComplete="off"
-												className={fieldClass}
-												value={pin}
-												required
-												disabled={action.busy}
-												onChange={(event) => setPin(event.target.value)}
-											/>
-										</label>
-									)}
 								<button
 									type="submit"
 									className={secondaryClass}
-									disabled={
-										action.busy ||
-										!selectedAccount ||
-										!selectedUserId ||
-										(userId !== null && !selectedUser)
-									}
+									disabled={action.busy || !selectedAccount}
 								>
 									{action.busy ? "Checking profile…" : "Find Plex servers"}
 								</button>
