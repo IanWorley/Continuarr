@@ -26,7 +26,7 @@ type Authorization =
 			kind: "waiting";
 			attempt: Awaited<ReturnType<MediaService["startLogin"]>>;
 	  }
-	| { kind: "linked" }
+	| { kind: "linked"; accountId: string }
 	| { kind: "failed"; message: string };
 
 function responseData<T>(response: {
@@ -198,6 +198,12 @@ function PlexConnect({
 	const selectedServer = selection?.servers.find(
 		(server) => server.id === serverId,
 	);
+	const activeAccount =
+		account &&
+		authorization.kind !== "waiting" &&
+		(authorization.kind !== "linked" || account.id === authorization.accountId)
+			? account
+			: null;
 
 	useEffect(() => {
 		if (authorization.kind !== "waiting") return;
@@ -219,7 +225,7 @@ function PlexConnect({
 				);
 				if (cancelled) return;
 				if (result.status === "linked") {
-					setAuthorization({ kind: "linked" });
+					setAuthorization({ kind: "linked", accountId: result.accountId });
 					setSelection(null);
 					await refresh();
 				} else if (result.status === "expired") {
@@ -311,7 +317,7 @@ function PlexConnect({
 				{authorization.kind === "failed" && (
 					<ErrorMessage message={authorization.message} />
 				)}
-				{account && (
+				{activeAccount && (
 					<form
 						className="space-y-4"
 						onSubmit={(event) => {
@@ -320,8 +326,8 @@ function PlexConnect({
 								setMessage("");
 								const result = responseData(
 									await getApi().v1.media.plex.select.post({
-										accountId: account.id,
-										userId: account.userId,
+										accountId: activeAccount.id,
+										userId: activeAccount.userId,
 									}),
 								);
 								setSelection(result);
@@ -331,7 +337,7 @@ function PlexConnect({
 						}}
 					>
 						<p className="text-sm text-slate-400">
-							Using {account.name} as the Plex profile.
+							Using {activeAccount.name} as the Plex profile.
 						</p>
 						<button
 							type="submit"
@@ -342,7 +348,7 @@ function PlexConnect({
 						</button>
 					</form>
 				)}
-				{selection && (
+				{activeAccount && selection && (
 					<form
 						className="space-y-4 border-t border-slate-800 pt-4"
 						onSubmit={(event) => {
