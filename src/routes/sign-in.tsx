@@ -15,6 +15,14 @@ const FIELD_CLASS_NAME =
 
 type Credentials = { username: string; password: string };
 
+function readCredentials(form: HTMLFormElement): Credentials {
+	const data = new FormData(form);
+	return {
+		username: String(data.get("username") ?? ""),
+		password: String(data.get("password") ?? ""),
+	};
+}
+
 function validateCredentials(credentials: Credentials) {
 	return {
 		username: !credentials.username
@@ -48,23 +56,18 @@ function SignIn() {
 	const [configured, setConfigured] = useState(initial.configured);
 	const [error, setError] = useState("");
 	const [pending, setPending] = useState(false);
-	const [credentials, setCredentials] = useState({
+	const [fieldErrors, setFieldErrors] = useState({
 		username: "",
 		password: "",
 	});
 	const [touched, setTouched] = useState({ username: false, password: false });
-	const fieldErrors = validateCredentials(credentials);
 
 	async function submit(event: React.SubmitEvent<HTMLFormElement>) {
 		event.preventDefault();
 		if (pending) return;
-		const form = new FormData(event.currentTarget);
-		const credentials = {
-			username: String(form.get("username") ?? ""),
-			password: String(form.get("password") ?? ""),
-		};
+		const credentials = readCredentials(event.currentTarget);
 		const fieldErrors = validateCredentials(credentials);
-		setCredentials(credentials);
+		setFieldErrors(fieldErrors);
 		setTouched({ username: true, password: true });
 		if (fieldErrors.username || fieldErrors.password) {
 			const field = fieldErrors.username ? "username" : "password";
@@ -81,7 +84,9 @@ function SignIn() {
 				if (result.error) {
 					if (result.status !== HTTP_CONFLICT) {
 						throw new Error(
-							"Unable to create the owner. The installation may already be configured.",
+							result.status === HTTP_TOO_MANY_REQUESTS
+								? "Owner setup is busy right now. Wait a moment and try again."
+								: "Unable to create the owner. Please try again in a moment.",
 						);
 					}
 				}
@@ -143,6 +148,25 @@ function SignIn() {
 				<form
 					noValidate
 					onSubmit={submit}
+					onChange={(event) => {
+						setFieldErrors(
+							validateCredentials(readCredentials(event.currentTarget)),
+						);
+						setError("");
+					}}
+					onBlur={(event) => {
+						const field = event.target;
+						if (
+							field instanceof HTMLInputElement &&
+							(field.name === "username" || field.name === "password")
+						) {
+							const name = field.name;
+							setTouched((current) => ({ ...current, [name]: true }));
+							setFieldErrors(
+								validateCredentials(readCredentials(event.currentTarget)),
+							);
+						}
+					}}
 					aria-busy={pending}
 					className="mt-8 flex flex-col gap-5"
 				>
@@ -164,18 +188,6 @@ function SignIn() {
 							spellCheck={false}
 							placeholder="Your username"
 							disabled={pending}
-							value={credentials.username}
-							onChange={(event) => {
-								const value = event.target.value;
-								setCredentials((current) => ({
-									...current,
-									username: value,
-								}));
-								setError("");
-							}}
-							onBlur={() =>
-								setTouched((current) => ({ ...current, username: true }))
-							}
 							aria-invalid={touched.username && !!fieldErrors.username}
 							aria-describedby={
 								touched.username && fieldErrors.username
@@ -211,18 +223,6 @@ function SignIn() {
 							autoComplete={configured ? "current-password" : "new-password"}
 							placeholder="Your password"
 							disabled={pending}
-							value={credentials.password}
-							onChange={(event) => {
-								const value = event.target.value;
-								setCredentials((current) => ({
-									...current,
-									password: value,
-								}));
-								setError("");
-							}}
-							onBlur={() =>
-								setTouched((current) => ({ ...current, password: true }))
-							}
 							aria-invalid={touched.password && !!fieldErrors.password}
 							aria-describedby={
 								touched.password && fieldErrors.password
