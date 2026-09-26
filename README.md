@@ -13,6 +13,8 @@ Built with:
 
 ## Run locally
 
+If you already use the PostgreSQL 17 Compose service, [upgrade your database](#upgrade-from-postgresql-17) before running these commands. PostgreSQL 18 uses a new volume and does not import your existing data automatically.
+
 ```bash
 bun install
 cp .env.example .env
@@ -120,6 +122,47 @@ bun run db:migrate
 Each integration-test file starts an isolated PostgreSQL container. Each test receives a fresh database with the real migrations applied. Tests cover persistent sessions, owner and pairing constraints, timestamp updates, encrypted tokens, and repeatable sync. Docker must be running for `bun test`; tests do not use the configured application database.
 
 `DATA_DIRECTORY` controls the application credential-key location. Keep the same key across application restarts. `DATABASE_URL` accepts only `postgres:` or `postgresql:` URLs. The server uses one connection pool with up to ten connections and awaits database operations throughout authentication and sync.
+
+### Upgrade from PostgreSQL 17
+
+Follow these steps **before updating your checkout** from PostgreSQL 17 to 18. Keep the same Compose project name and working directory throughout. These commands use the default local database and credentials. Adapt them if you customized the service.
+
+1. Stop the Continuarr application and any other database writers. Leave PostgreSQL 17 running. Save its Compose configuration outside the checkout so you can restart it if needed:
+
+   ```bash
+   upgrade_backup_dir="$(mktemp -d "$PWD/../continuarr-postgres17.XXXXXX")"
+   cp compose.yaml "$upgrade_backup_dir/compose.postgres17.yaml"
+   printf 'Keep this backup directory: %s\n' "$upgrade_backup_dir"
+   ```
+
+2. Export the database, including Drizzle's migration history. Run the remaining commands in the same shell:
+
+   ```bash
+   docker compose exec -T postgres pg_dump -U continuarr -d continuarr --format=custom > "$upgrade_backup_dir/continuarr.dump"
+   docker compose exec -T postgres pg_restore --list < "$upgrade_backup_dir/continuarr.dump"
+   ```
+
+   Both commands must succeed. This exports the application database, not cluster-wide roles or other databases. Export those separately if you added them.
+
+3. Stop PostgreSQL 17, then update your checkout to the PostgreSQL 18 version:
+
+   ```bash
+   docker compose stop postgres
+   ```
+
+4. Start PostgreSQL 18 and restore into its fresh database **before starting the application or running migrations**:
+
+   ```bash
+   docker compose up -d --wait postgres
+   docker compose exec -T postgres pg_restore -U continuarr -d continuarr --exit-on-error --single-transaction < "$upgrade_backup_dir/continuarr.dump"
+   bun run db:migrate
+   ```
+
+   The new `postgres18-data` volume mounts at `/var/lib/postgresql`; PostgreSQL stores its data under `18/docker`. The old `postgres-data` volume remains intact. Do not use `docker compose down -v` or delete either volume during the upgrade.
+
+5. Start Continuarr with your existing `.env` and credential key. Verify that you can sign in and that your accounts and pairings are present before allowing normal writes. Keep the dump and PostgreSQL 17 volume until you have verified the upgrade.
+
+If the restore fails, keep the application stopped. To restart PostgreSQL 17, first stop the PostgreSQL 18 service, then restore the saved Compose configuration to `compose.yaml` and run `docker compose up -d --wait postgres`. PostgreSQL 17 uses the original `postgres-data` volume. Do not switch back after accepting writes on PostgreSQL 18 without a plan to preserve those new writes.
 
 ## Continuous integration
 
