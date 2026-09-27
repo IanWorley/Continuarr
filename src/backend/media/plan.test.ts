@@ -105,3 +105,42 @@ describe("planWatchedUnion", () => {
 		).toEqual({ writes: [], matched: 0, unmatched: 2, ambiguous: 0 });
 	});
 });
+
+describe("manual watched-union matches", () => {
+	it("uses a manual pair before metadata and reserves both items", () => {
+		const ids: MediaItem["ids"] = [{ provider: "tmdb", value: "123" }];
+		expect(
+			planWatchedUnion({
+				plex: [movie("p1", true, ids), movie("p2", true, [])],
+				jellyfin: [movie("j1", false, ids), movie("j2", false, [])],
+				manualMatches: [
+					{ pairingId: "person", plexItemId: "p1", jellyfinItemId: "j2" },
+				],
+			}),
+		).toEqual({
+			writes: [{ target: "jellyfin", itemId: "j2", title: "j2" }],
+			matched: 1,
+			unmatched: 2,
+			ambiguous: 0,
+			staleManualMatches: 0,
+		});
+	});
+	it("reserves a surviving manual item when its counterpart disappears", () => {
+		const ids: MediaItem["ids"] = [{ provider: "tvdb", value: "123" }];
+		expect(
+			planWatchedUnion({
+				plex: [episode("p1", true, ids)],
+				jellyfin: [episode("replacement", false, ids)],
+				manualMatches: [
+					{ pairingId: "person", plexItemId: "p1", jellyfinItemId: "missing" },
+				],
+			}),
+		).toEqual({
+			writes: [],
+			matched: 0,
+			unmatched: 2,
+			ambiguous: 0,
+			staleManualMatches: 1,
+		});
+	});
+});

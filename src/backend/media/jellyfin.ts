@@ -27,6 +27,11 @@ const providerIdsSchema = z.record(z.string(), z.string());
 const itemSchema = z.object({
 	Id: z.string().min(1),
 	Name: z.string().default(""),
+	Path: z.string().nullish(),
+	SeriesId: z.string().nullish(),
+	SeriesName: z.string().nullish(),
+	ParentIndexNumber: z.number().int().nonnegative().nullish(),
+	IndexNumber: z.number().int().nonnegative().nullish(),
 	Type: z.enum(["Movie", "Episode"]),
 	ProviderIds: providerIdsSchema.optional(),
 	UserData: z.object({ Played: z.boolean() }),
@@ -54,12 +59,26 @@ function toMediaItem(item: z.infer<typeof itemSchema>): MediaItem {
 			if (value) ids.push({ provider, value });
 		}
 	}
+	const details: NonNullable<MediaItem["details"]> = {
+		paths: item.Path ? [item.Path] : undefined,
+		...(item.Type === "Episode"
+			? {
+					showId: item.SeriesId ?? undefined,
+					showTitle: item.SeriesName ?? undefined,
+					season: item.ParentIndexNumber ?? undefined,
+					episode: item.IndexNumber ?? undefined,
+				}
+			: {}),
+	};
 	return {
 		id: item.Id,
 		kind: item.Type === "Movie" ? "movie" : "episode",
 		title: item.Name,
 		ids,
 		watched: item.UserData.Played,
+		...(Object.values(details).some((value) => value !== undefined)
+			? { details }
+			: {}),
 	};
 }
 
@@ -127,7 +146,7 @@ export function createJellyfinProvider(options: {
 				);
 				url.searchParams.set("Recursive", "true");
 				url.searchParams.set("IncludeItemTypes", "Movie,Episode");
-				url.searchParams.set("Fields", "ProviderIds");
+				url.searchParams.set("Fields", "ProviderIds,Path");
 				url.searchParams.set("StartIndex", String(offset));
 				url.searchParams.set("Limit", String(PAGE_SIZE));
 				const page = await requestJson({

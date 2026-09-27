@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { createSecretStorage } from "~/backend/secrets/storage";
 import {
 	type JellyfinProvider,
+	type ManualMatch,
 	MediaError,
 	type PlexIdentity,
 	type PlexPin,
@@ -100,10 +101,60 @@ export function createMediaService({
 		return {
 			plexAccess,
 			jellyfinAccess,
-			plan: planWatchedUnion({ plex: plexItems, jellyfin: jellyfinItems }),
+			plex: plexItems,
+			jellyfin: jellyfinItems,
+			plan: planWatchedUnion({
+				plex: plexItems,
+				jellyfin: jellyfinItems,
+				manualMatches: await repo.manualMatches(id),
+			}),
 		};
 	}
 	const service = {
+		async library(id: string) {
+			const { plex, jellyfin } = await snapshot(id);
+			return { plex, jellyfin, matches: await repo.manualMatches(id) };
+		},
+		async removeManualMatch(input: ManualMatch) {
+			await pairing(input.pairingId);
+			return withConnectionWrite(async () => {
+				ensureIdle();
+				await repo.removeManualMatch(input);
+				return { removed: true };
+			});
+		},
+		async saveManualMatch(input: ManualMatch) {
+			ensureIdle();
+			const library = await snapshot(input.pairingId);
+			const p = library.plex.find((item) => item.id === input.plexItemId);
+			const j = library.jellyfin.find(
+				(item) => item.id === input.jellyfinItemId,
+			);
+			if (!p || !j)
+				throw new MediaError(
+					"An item is no longer available. Reload both libraries and select again.",
+					404,
+				);
+			if (p.kind !== j.kind)
+				throw new MediaError(
+					"Match movies with movies, or episodes with episodes.",
+				);
+			return withConnectionWrite(async () => {
+				ensureIdle();
+				const inserted = await repo.addManualMatch(input);
+				if (inserted) return inserted;
+				const existing = (await repo.manualMatches(input.pairingId)).find(
+					(match) =>
+						match.plexItemId === input.plexItemId &&
+						match.jellyfinItemId === input.jellyfinItemId,
+				);
+				if (existing) return existing;
+				throw new MediaError(
+					"One of these items already has a manual match. Select an unmatched item.",
+					409,
+				);
+			});
+		},
 		async state() {
 			const [
 				accounts,
@@ -422,7 +473,7 @@ export function createMediaService({
 				applied++;
 				await repo.updateRun(runId, { applied });
 			}
-			const summary = `${applied} updates completed. ${result.plan.matched} matched pairs; ${result.plan.unmatched} unmatched items; ${result.plan.ambiguous} ambiguous items skipped.`;
+			const summary = `${applied} updates completed. ${result.plan.matched} matched pairs; ${result.plan.unmatched} unmatched items; ${result.plan.ambiguous} ambiguous items skipped. ${result.plan.staleManualMatches ?? 0} unavailable manual matches skipped.`;
 			await repo.updateRun(runId, {
 				status: "completed",
 				finishedAt: now(),

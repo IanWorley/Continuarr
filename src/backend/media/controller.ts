@@ -21,6 +21,24 @@ export function mediaRoutes(
 					"Unable to contact the media service. Check the connection and try again.",
 			});
 		})
+		.get("/pairings/:id/library", async ({ params }) =>
+			(await getService()).library(params.id),
+		)
+		.post(
+			"/pairings/:id/matches",
+			async ({ params, body }) =>
+				(await getService()).saveManualMatch({ pairingId: params.id, ...body }),
+			{ body: t.Object({ plexItemId: id, jellyfinItemId: id }) },
+		)
+		.delete(
+			"/pairings/:id/matches",
+			async ({ params, body }) =>
+				(await getService()).removeManualMatch({
+					pairingId: params.id,
+					...body,
+				}),
+			{ body: t.Object({ plexItemId: id, jellyfinItemId: id }) },
+		)
 		.get("/state", async () => (await getService()).state())
 		.post("/plex/start", async () => (await getService()).startLogin())
 		.post(

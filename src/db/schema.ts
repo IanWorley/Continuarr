@@ -124,3 +124,21 @@ export const syncRuns = pgTable("sync_runs", {
 	applied: integer("applied").notNull().default(0),
 	summary: text("summary").notNull(),
 });
+
+export const manualMatches = pgTable(
+	"manual_matches",
+	{
+		pairingId: text("pairing_id")
+			.notNull()
+			.references(() => syncPairings.id),
+		plexItemId: text("plex_item_id").notNull(),
+		jellyfinItemId: text("jellyfin_item_id").notNull(),
+	},
+	(table) => [
+		uniqueIndex("manual_match_plex").on(table.pairingId, table.plexItemId),
+		uniqueIndex("manual_match_jellyfin").on(
+			table.pairingId,
+			table.jellyfinItemId,
+		),
+	],
+);

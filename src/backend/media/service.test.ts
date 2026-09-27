@@ -444,3 +444,135 @@ it("retains successful writes when a later write fails and retries only the rema
 	});
 	expect(state.writes).toEqual(["jellyfin:j1", "jellyfin:j2"]);
 });
+
+describe("manual library matching", () => {
+	it("persists a manual choice across service restart without changing watched status", async () => {
+		const { service, repo, secrets, plex, jellyfin, state, pair } =
+			await setup();
+		const pairing = await pair();
+		state.jellyfin[0].ids = [];
+		const match = {
+			pairingId: pairing.id,
+			plexItemId: "p1",
+			jellyfinItemId: "j1",
+		};
+		await service.saveManualMatch(match);
+		await service.saveManualMatch(match);
+		expect(state.writes).toEqual([]);
+		const restarted = createMediaService({ repo, secrets, plex, jellyfin });
+		expect((await restarted.library(pairing.id)).matches).toEqual([match]);
+		expect((await restarted.preview(pairing.id)).writes).toEqual([
+			{ target: "jellyfin", itemId: "j1", title: "Arrival" },
+		]);
+		await restarted.run(pairing.id);
+		expect(state.writes).toEqual(["jellyfin:j1"]);
+	});
+	it("rejects either side of an existing pair even with concurrent saves", async () => {
+		const { service, repo, state, pair } = await setup();
+		const pairing = await pair();
+		state.plex.push(movie("p2", false));
+		state.jellyfin.push(movie("j2", false));
+		const first = {
+			pairingId: pairing.id,
+			plexItemId: "p1",
+			jellyfinItemId: "j1",
+		};
+		const second = { ...first, jellyfinItemId: "j2" };
+		const outcomes = await Promise.allSettled([
+			service.saveManualMatch(first),
+			service.saveManualMatch(second),
+		]);
+		expect(outcomes.map((result) => result.status).sort()).toEqual([
+			"fulfilled",
+			"rejected",
+		]);
+		const [saved] = await repo.manualMatches(pairing.id);
+		await expect(
+			service.saveManualMatch({ ...saved, plexItemId: "p2" }),
+		).rejects.toThrow("already has a manual match");
+		expect(
+			await repo.addManualMatch({ ...saved, plexItemId: "p2" }),
+		).toBeUndefined();
+		expect(
+			await repo.addManualMatch({
+				...saved,
+				jellyfinItemId: saved.jellyfinItemId === "j1" ? "j2" : "j1",
+			}),
+		).toBeUndefined();
+		expect(state.writes).toEqual([]);
+	});
+	it("validates current existence and content kind before saving", async () => {
+		const { service, repo, state, pair } = await setup();
+		const pairing = await pair();
+		state.jellyfin[0].kind = "episode";
+		const match = {
+			pairingId: pairing.id,
+			plexItemId: "p1",
+			jellyfinItemId: "j1",
+		};
+		await expect(service.saveManualMatch(match)).rejects.toThrow(
+			"Match movies with movies",
+		);
+		state.jellyfin = [];
+		await expect(service.saveManualMatch(match)).rejects.toThrow(
+			"no longer available",
+		);
+		expect(await repo.manualMatches(pairing.id)).toEqual([]);
+	});
+});
+
+it("removes only the specified manual pair and allows correction without watched writes", async () => {
+	const { service, repo, state, pair } = await setup();
+	const pairing = await pair();
+	state.jellyfin.push({ ...movie("j2", false), ids: [] });
+	const match = {
+		pairingId: pairing.id,
+		plexItemId: "p1",
+		jellyfinItemId: "j1",
+	};
+	await service.saveManualMatch(match);
+	await service.removeManualMatch({ ...match, jellyfinItemId: "j2" });
+	expect(await repo.manualMatches(pairing.id)).toEqual([match]);
+	await service.removeManualMatch(match);
+	await service.removeManualMatch(match);
+	const corrected = { ...match, jellyfinItemId: "j2" };
+	await service.saveManualMatch(corrected);
+	expect(await repo.manualMatches(pairing.id)).toEqual([corrected]);
+	expect(state.writes).toEqual([]);
+});
+
+it("keeps identical provider item IDs independent across people", async () => {
+	const { service, repo, pair } = await setup();
+	const firstPairing = await pair();
+	const plexProfile = await repo.plexProfile(firstPairing.plexProfileId);
+	const jellyfinProfile = await repo.jellyfinProfile(
+		firstPairing.jellyfinProfileId,
+	);
+	if (!plexProfile || !jellyfinProfile)
+		throw new Error("Expected connected profiles");
+	await repo.savePlexProfile({
+		...plexProfile,
+		id: "other-plex",
+		userId: "other-plex-user",
+	});
+	await repo.saveJellyfinProfile({
+		...jellyfinProfile,
+		id: "other-jellyfin",
+		userId: "other-jellyfin-user",
+	});
+	const secondPairing = await service.addPairing({
+		plexProfileId: "other-plex",
+		jellyfinProfileId: "other-jellyfin",
+	});
+	const first = {
+		pairingId: firstPairing.id,
+		plexItemId: "p1",
+		jellyfinItemId: "j1",
+	};
+	const second = { ...first, pairingId: secondPairing.id };
+	await repo.addManualMatch(first);
+	await repo.addManualMatch(second);
+	await service.removeManualMatch(second);
+	expect(await repo.manualMatches(firstPairing.id)).toEqual([first]);
+	expect(await repo.manualMatches(secondPairing.id)).toEqual([]);
+});

@@ -1,5 +1,5 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import type { MediaService } from "~/backend/media/service";
@@ -126,6 +126,12 @@ function Home() {
 					Sign out
 				</button>
 			</header>
+			<Link
+				to="/matches"
+				className="mb-6 inline-block text-sm font-medium text-cyan-300 underline"
+			>
+				Manually match Plex and Jellyfin content
+			</Link>
 			<ErrorMessage message={signOut.error} />
 			{state.isPending && (
 				<p role="status" className="py-12 text-slate-400">
@@ -791,8 +797,9 @@ function PairingCard({
 			)}
 			<p className="mt-5 text-sm leading-6 text-slate-400">
 				Preview compares both libraries without making changes. Sync checks them
-				again before updating watched status. Items without a unique matching
-				movie or episode ID are skipped.
+				again before updating watched status. Saved manual matches take
+				priority. Other items need a unique matching movie or episode ID or they
+				are skipped.
 			</p>
 			<div className="mt-4 flex flex-wrap gap-3">
 				<button
@@ -858,6 +865,13 @@ function PairingCard({
 						<p className="mt-1 text-xs leading-5 text-slate-400">
 							{preview.matched} matched pairs · {preview.unmatched} unmatched
 							items · {preview.ambiguous} ambiguous items skipped
+							{Boolean(preview.staleManualMatches) && (
+								<>
+									{" "}
+									· {preview.staleManualMatches} unavailable manual matches
+									skipped
+								</>
+							)}
 						</p>
 					</div>
 					{preview.writes.length === 0 ? (

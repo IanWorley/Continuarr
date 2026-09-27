@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
 	findApplicationSetting,
 	saveApplicationSetting,
@@ -19,8 +19,33 @@ export function createMediaRepository(
 		jellyfinProfiles,
 		syncPairings,
 		syncRuns,
+		manualMatches,
 	} = schema;
 	return {
+		manualMatches: async (pairingId: string) =>
+			await database()
+				.select()
+				.from(manualMatches)
+				.where(eq(manualMatches.pairingId, pairingId)),
+		removeManualMatch: async (row: typeof manualMatches.$inferInsert) =>
+			await database()
+				.delete(manualMatches)
+				.where(
+					and(
+						eq(manualMatches.pairingId, row.pairingId),
+						eq(manualMatches.plexItemId, row.plexItemId),
+						eq(manualMatches.jellyfinItemId, row.jellyfinItemId),
+					),
+				)
+				.execute(),
+		addManualMatch: async (row: typeof manualMatches.$inferInsert) => {
+			const [inserted] = await database()
+				.insert(manualMatches)
+				.values(row)
+				.onConflictDoNothing()
+				.returning();
+			return inserted;
+		},
 		accounts: async () => await database().select().from(plexAccounts),
 		activePlexAccountId: async () =>
 			(await findApplicationSetting(ACTIVE_PLEX_ACCOUNT_KEY, database()))
