@@ -501,7 +501,6 @@ export function createMediaRepository(
 						name: candidate.externalId,
 						url: candidate.url,
 						token: secrets.encrypt(id, new Secret(candidate.token)),
-						nextAttemptAt: 0,
 					});
 					for (const profileId of candidate.ids)
 						await transaction

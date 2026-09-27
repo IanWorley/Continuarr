@@ -93,6 +93,18 @@ export function createMediaService({
 				409,
 			);
 	}
+	function canReadJellyfinProfile(
+		profile: NonNullable<
+			Awaited<ReturnType<MediaRepository["jellyfinProfile"]>>
+		>,
+	) {
+		return Boolean(
+			profile.connectionId &&
+				!profile.disabled &&
+				(profile.presence === "present" ||
+					(profile.presence === "unverified" && profile.url && profile.token)),
+		);
+	}
 	async function snapshot(id: string) {
 		const pair = await pairing(id);
 		const [p, j] = await Promise.all([
@@ -106,7 +118,7 @@ export function createMediaService({
 			(p.presence !== "present" || p.accessStatus !== "available")
 		)
 			throw new MediaError("This Plex user is missing or has no server grant.");
-		if (j.presence !== "present" || j.disabled || !j.connectionId)
+		if (!canReadJellyfinProfile(j) || !j.connectionId)
 			throw new MediaError(
 				"This Jellyfin user is missing, disabled, or awaiting refresh.",
 			);
@@ -285,7 +297,6 @@ export function createMediaService({
 							409,
 						);
 					const updated = await withConnectionWrite(async () => {
-						ensureIdle();
 						return repo.finishJellyfinRefresh(
 							id,
 							claim.revision,
@@ -412,7 +423,6 @@ export function createMediaService({
 						serverId: claim.server.externalId,
 					});
 					const updated = await withConnectionWrite(async () => {
-						ensureIdle();
 						return repo.finishPlexRefresh(
 							id,
 							claim.server.revision,
@@ -577,29 +587,19 @@ export function createMediaService({
 						accessStatus,
 					}),
 				),
-				jellyfinProfiles: jellyfinProfiles.map(
-					({
-						id,
-						userId,
-						name,
-						serverId,
-						url,
-						connectionId,
-						presence,
-						disabled,
-					}) => ({
-						id,
-						userId,
-						name,
-						serverId,
-						url:
-							jellyfinServers.find((server) => server.id === connectionId)
-								?.url ?? url,
-						connectionId,
-						presence,
-						disabled,
-					}),
-				),
+				jellyfinProfiles: jellyfinProfiles.map((profile) => ({
+					id: profile.id,
+					userId: profile.userId,
+					name: profile.name,
+					serverId: profile.serverId,
+					url:
+						jellyfinServers.find((server) => server.id === profile.connectionId)
+							?.url ?? profile.url,
+					connectionId: profile.connectionId,
+					presence: profile.presence,
+					disabled: profile.disabled,
+					canSync: canReadJellyfinProfile(profile),
+				})),
 				pairings,
 				runs,
 				running,
@@ -792,9 +792,10 @@ export function createMediaService({
 			ensureIdle();
 			running = true;
 			try {
-				await connectionWrites;
-				await pairing(id);
-				return await executeRun(id);
+				return await withConnectionWrite(async () => {
+					await pairing(id);
+					return executeRun(id);
+				});
 			} finally {
 				running = false;
 			}
@@ -810,8 +811,8 @@ export function createMediaService({
 					const profile = await repo.jellyfinProfile(pair.jellyfinProfileId);
 					if (
 						pair.automatic &&
-						profile?.presence === "present" &&
-						!profile.disabled &&
+						profile &&
+						canReadJellyfinProfile(profile) &&
 						now() - pair.lastAttemptAt >= SYNC_INTERVAL_MS
 					) {
 						if (running) return;

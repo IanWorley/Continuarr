@@ -72,9 +72,7 @@ function PairingCard({
 		!plex ||
 		plex.presence === "missing" ||
 		plex.accessStatus === "unavailable" ||
-		!jellyfin ||
-		jellyfin.presence !== "present" ||
-		jellyfin.disabled;
+		!jellyfin?.canSync;
 	const recentRuns = state.runs
 		.filter((run) => run.pairingId === pair.id)
 		.slice(0, RECENT_RUN_LIMIT);

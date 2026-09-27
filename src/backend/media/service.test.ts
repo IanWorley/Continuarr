@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { setImmediate } from "node:timers/promises";
+import { eq } from "drizzle-orm";
 import { createAdministratorService } from "~/backend/admin/service";
 import { createApi } from "~/backend/api";
 import { createSecretStorage, Secret } from "~/backend/secrets/storage";
@@ -479,6 +481,158 @@ describe("media account and sync service", () => {
 		]);
 		expect((await repo.jellyfinServers())[0]?.lastError).toBeNull();
 	});
+	for (const order of ["run first", "directory first"] as const) {
+		it(`commits both scheduled directories after an overlapping watched run: ${order}`, async () => {
+			const { service, repo, pair, plex, jellyfin } = await setup();
+			const pairing = await pair();
+			const runEntered = Promise.withResolvers<void>();
+			const releaseRun = Promise.withResolvers<void>();
+			const plexDirectoryEntered = Promise.withResolvers<void>();
+			const jellyfinDirectoryEntered = Promise.withResolvers<void>();
+			const releaseDirectories = Promise.withResolvers<void>();
+			const originalItems = plex.items;
+			plex.items = async (access) => {
+				runEntered.resolve();
+				await releaseRun.promise;
+				return originalItems(access);
+			};
+			const originalPlexDirectory = plex.directory;
+			plex.directory = async (input) => {
+				plexDirectoryEntered.resolve();
+				await releaseDirectories.promise;
+				return (await originalPlexDirectory(input)).map((user) => ({
+					...user,
+					name: "Updated Plex user",
+				}));
+			};
+			const originalJellyfinDirectory = jellyfin.directory;
+			jellyfin.directory = async (input) => {
+				jellyfinDirectoryEntered.resolve();
+				await releaseDirectories.promise;
+				const directory = await originalJellyfinDirectory(input);
+				return {
+					...directory,
+					users: directory.users.map((user) => ({
+						...user,
+						name: "Updated Jellyfin user",
+					})),
+				};
+			};
+			const directoriesEntered = Promise.all([
+				plexDirectoryEntered.promise,
+				jellyfinDirectoryEntered.promise,
+			]);
+			const run = order === "run first" ? service.run(pairing.id) : undefined;
+			if (run) await runEntered.promise;
+			const tick = service.tick();
+			await directoriesEntered;
+			const activeRun = run ?? service.run(pairing.id);
+			await runEntered.promise;
+			releaseDirectories.resolve();
+			await setImmediate();
+			releaseRun.resolve();
+			expect((await activeRun).status).toBe("completed");
+			await tick;
+			expect((await repo.plexProfile(pairing.plexProfileId))?.name).toBe(
+				"Updated Plex user",
+			);
+			expect(
+				(await repo.jellyfinProfile(pairing.jellyfinProfileId))?.name,
+			).toBe("Updated Jellyfin user");
+			expect((await repo.plexServers())[0]?.lastError).toBeNull();
+			expect((await repo.jellyfinServers())[0]?.lastError).toBeNull();
+		});
+	}
+	for (const operation of ["preview", "run", "automatic"] as const) {
+		it(`preserves migrated Jellyfin credentials for ${operation} until the directory succeeds`, async () => {
+			const { db, service, repo, secrets, pair, jellyfin, state } =
+				await setup();
+			const pairing = await pair();
+			await db
+				.update(schema.jellyfinProfiles)
+				.set({
+					connectionId: null,
+					presence: "unverified",
+					serverId: "legacy-server",
+					url: "http://legacy-jellyfin",
+					token: secrets.encrypt(
+						pairing.jellyfinProfileId,
+						new Secret("j-token"),
+					),
+				})
+				.where(eq(schema.jellyfinProfiles.id, pairing.jellyfinProfileId));
+			await repo.backfillJellyfinServers(secrets);
+			jellyfin.directory = async () => {
+				throw new MediaError("Directory unavailable.", 502);
+			};
+			const originalItems = jellyfin.items;
+			jellyfin.items = async (access) => {
+				expect(access.url).toBe("http://legacy-jellyfin");
+				expect(access.token.reveal()).toBe("j-token");
+				return originalItems(access);
+			};
+			const profile = await repo.jellyfinProfile(pairing.jellyfinProfileId);
+			if (!profile?.connectionId) throw new Error("Missing migrated server");
+			expect(
+				(await service.state()).jellyfinProfiles.find(
+					({ id }) => id === profile.id,
+				),
+			).toMatchObject({ canSync: true });
+			expect(
+				(await service.refreshJellyfinUsers(profile.connectionId)).kind,
+			).toBe("failed");
+			if (operation === "preview") {
+				expect((await service.preview(pairing.id)).writes).toHaveLength(1);
+			} else if (operation === "run") {
+				expect((await service.run(pairing.id)).status).toBe("completed");
+				expect(state.writes).toEqual(["jellyfin:j1"]);
+			} else {
+				await service.automatic(pairing.id, true);
+				await service.tick();
+				expect(state.writes).toEqual(["jellyfin:j1"]);
+			}
+			jellyfin.directory = async () => ({
+				server: { id: "legacy-server", name: "Legacy" },
+				users: [],
+			});
+			expect(
+				(await service.refreshJellyfinUsers(profile.connectionId)).kind,
+			).toBe("updated");
+			expect(
+				(await service.state()).jellyfinProfiles.find(
+					({ id }) => id === profile.id,
+				),
+			).toMatchObject({ canSync: false });
+			await expect(service.preview(pairing.id)).rejects.toThrow(
+				"missing, disabled, or awaiting refresh",
+			);
+			jellyfin.directory = async () => ({
+				server: { id: "legacy-server", name: "Legacy" },
+				users: [
+					{
+						id: "j-child",
+						name: "Child",
+						disabled: true,
+						administrator: false,
+						lastActivityDate: null,
+						lastLoginDate: null,
+						details: {},
+					},
+				],
+			});
+			expect(
+				(await service.refreshJellyfinUsers(profile.connectionId)).kind,
+			).toBe("updated");
+			expect(
+				(await service.state()).jellyfinProfiles.find(
+					({ id }) => id === profile.id,
+				),
+			).toMatchObject({ canSync: false });
+			await expect(service.preview(pairing.id)).rejects.toThrow(
+				"missing, disabled, or awaiting refresh",
+			);
+		});
+	}
 	it("backfills shared credentials without changing profile or pairing IDs", async () => {
 		const { db, repo, secrets } = await setup();
 		await db.insert(schema.plexAccounts).values({

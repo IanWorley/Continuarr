@@ -129,33 +129,17 @@ export const jellyfinProfiles = pgTable(
 	],
 );
 
-export const jellyfinServers = pgTable(
-	"jellyfin_servers",
-	{
-		id: text("id").primaryKey(),
-		externalId: text("external_id").notNull().unique(),
-		name: text("name").notNull(),
-		url: text("url").notNull(),
-		token: text("token").notNull(),
-		revision: bigint("revision", { mode: "number" }).notNull().default(0),
-		pollEnabled: boolean("poll_enabled").notNull().default(true),
-		intervalMinutes: integer("interval_minutes")
-			.notNull()
-			.default(DEFAULT_USER_POLL_MINUTES),
-		nextAttemptAt: bigint("next_attempt_at", { mode: "number" })
-			.notNull()
-			.default(0),
-		lastAttemptAt: bigint("last_attempt_at", { mode: "number" }),
-		lastSuccessAt: bigint("last_success_at", { mode: "number" }),
-		lastError: text("last_error"),
-	},
-	(table) => [
-		check(
-			"jellyfin_poll_interval",
-			sql`${table.intervalMinutes} between ${sql.raw(String(MIN_USER_POLL_MINUTES))} and ${sql.raw(String(MAX_USER_POLL_MINUTES))}`,
-		),
-	],
-);
+export const jellyfinServers = pgTable("jellyfin_servers", {
+	id: text("id").primaryKey(),
+	externalId: text("external_id").notNull().unique(),
+	name: text("name").notNull(),
+	url: text("url").notNull(),
+	token: text("token").notNull(),
+	revision: bigint("revision", { mode: "number" }).notNull().default(0),
+	lastAttemptAt: bigint("last_attempt_at", { mode: "number" }),
+	lastSuccessAt: bigint("last_success_at", { mode: "number" }),
+	lastError: text("last_error"),
+});
 
 export const directoryPolling = pgTable(
 	"directory_polling",
