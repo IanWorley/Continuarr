@@ -3,11 +3,12 @@ import { endpoint, requestEmpty, requestJson } from "~/backend/media/http";
 import {
 	type JellyfinAccess,
 	type JellyfinProvider,
+	jsonObjectSchema,
+	type MediaAccess,
 	MediaError,
 	type MediaItem,
 	serverUrl,
 } from "~/backend/media/model";
-import { Secret } from "~/backend/secrets/storage";
 
 const PAGE_SIZE = 100;
 const CLIENT_NAME = "Continuarr";
@@ -17,7 +18,22 @@ const publicInfoSchema = z.object({
 	Id: z.string().min(1),
 	ServerName: z.string().min(1),
 });
-const userSchema = z.object({ Id: z.string().min(1), Name: z.string().min(1) });
+const userSchema = z
+	.object({
+		Id: z.string().min(1),
+		Name: z.string().min(1),
+		ServerId: z.string().min(1).nullish(),
+		Policy: z
+			.object({
+				IsDisabled: z.boolean().optional(),
+				IsAdministrator: z.boolean().optional(),
+			})
+			.catchall(z.json())
+			.nullish(),
+		LastActivityDate: z.string().nullish(),
+		LastLoginDate: z.string().nullish(),
+	})
+	.catchall(z.json());
 const providerIdsSchema = z.record(z.string(), z.string());
 const itemSchema = z.object({
 	Id: z.string().min(1),
@@ -82,48 +98,56 @@ export function createJellyfinProvider(options: {
 	fetch?: typeof globalThis.fetch;
 }): JellyfinProvider {
 	const fetcher = options.fetch ?? globalThis.fetch;
-	async function server({ url, apiKey }: { url: string; apiKey: string }) {
+	async function server({ url, token }: MediaAccess) {
 		const info = await requestJson({
 			fetch: fetcher,
 			url: endpoint(serverUrl(url), "System/Info"),
 			schema: publicInfoSchema,
-			headers: jellyfinHeaders(options.clientIdentifier, apiKey),
+			headers: jellyfinHeaders(options.clientIdentifier, token.reveal()),
 		});
 		return { id: info.Id, name: info.ServerName };
 	}
 
 	return {
-		server,
-		async users({ url, apiKey }) {
+		async directory(access) {
+			const serverIdentity = await server(access);
 			const users = await requestJson({
 				fetch: fetcher,
-				url: endpoint(serverUrl(url), "Users"),
-				schema: z.array(userSchema),
-				headers: jellyfinHeaders(options.clientIdentifier, apiKey),
+				url: endpoint(serverUrl(access.url), "Users"),
+				schema: z.array(jsonObjectSchema),
+				headers: jellyfinHeaders(
+					options.clientIdentifier,
+					access.token.reveal(),
+				),
 			});
-			return users.map((user) => ({ id: user.Id, name: user.Name }));
-		},
-		async connect({ url, apiKey, userId }) {
-			const normalizedUrl = serverUrl(url);
-			const headers = jellyfinHeaders(options.clientIdentifier, apiKey);
-			const info = await server({ url: normalizedUrl, apiKey });
-			const profile = await requestJson({
-				fetch: fetcher,
-				url: endpoint(normalizedUrl, `Users/${encodeURIComponent(userId)}`),
-				schema: userSchema,
-				headers,
+			const seen = new Set<string>();
+			const parsedUsers = users.map((raw) => {
+				const parsed = userSchema.safeParse(raw);
+				if (!parsed.success)
+					throw new MediaError("Jellyfin returned an unexpected user.", 502);
+				return { raw, data: parsed.data };
 			});
-			if (profile.Id !== userId)
-				throw new MediaError(
-					"Jellyfin returned a different user identity.",
-					502,
-				);
+			for (const { data: user } of parsedUsers) {
+				if (user.ServerId && user.ServerId !== serverIdentity.id)
+					throw new MediaError(
+						"Jellyfin returned a user from a different server.",
+						502,
+					);
+				if (seen.has(user.Id))
+					throw new MediaError("Jellyfin returned a duplicate user.", 502);
+				seen.add(user.Id);
+			}
 			return {
-				url: normalizedUrl,
-				token: new Secret(apiKey),
-				userId: profile.Id,
-				serverId: info.id,
-				name: profile.Name,
+				server: serverIdentity,
+				users: parsedUsers.map(({ raw, data: user }) => ({
+					id: user.Id,
+					name: user.Name,
+					disabled: user.Policy?.IsDisabled ?? false,
+					administrator: user.Policy?.IsAdministrator ?? false,
+					lastActivityDate: user.LastActivityDate ?? null,
+					lastLoginDate: user.LastLoginDate ?? null,
+					details: raw,
+				})),
 			};
 		},
 

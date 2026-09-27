@@ -1,17 +1,24 @@
 import { Elysia, t } from "elysia";
+import { MAX_USER_POLL_MINUTES, MIN_USER_POLL_MINUTES } from "./constants";
 import { MediaError } from "./model";
 import type { MediaService } from "./service";
 
 const id = t.String({ minLength: 1, maxLength: 200 });
 const MAX_SERVER_URL_LENGTH = 2048;
 const MAX_API_KEY_LENGTH = 1024;
-const jellyfinSource = t.Union([
+const jellyfinConnection = t.Union([
 	t.Object({
 		kind: t.Literal("new"),
 		url: t.String({ minLength: 1, maxLength: MAX_SERVER_URL_LENGTH }),
 		apiKey: t.String({ minLength: 1, maxLength: MAX_API_KEY_LENGTH }),
 	}),
-	t.Object({ kind: t.Literal("saved"), profileId: id }),
+	t.Object({
+		kind: t.Literal("replace"),
+		id,
+		revision: t.Number({ minimum: 0 }),
+		url: t.String({ minLength: 1, maxLength: MAX_SERVER_URL_LENGTH }),
+		apiKey: t.String({ minLength: 1, maxLength: MAX_API_KEY_LENGTH }),
+	}),
 ]);
 export function mediaRoutes(
 	service?: MediaService | (() => Promise<MediaService>),
@@ -58,18 +65,11 @@ export function mediaRoutes(
 				body: t.Object({ id }),
 			},
 		)
-		.get("/plex/:id/users", async ({ params }) =>
-			(await getService()).plexUsers(params.id),
-		)
 		.post(
 			"/plex/select",
-			async ({ body }) => (await getService()).selectProfile(body),
+			async ({ body }) => (await getService()).selectPlexServer(body),
 			{
-				body: t.Object({
-					accountId: id,
-					userId: id,
-					pin: t.Optional(t.String({ maxLength: 20 })),
-				}),
+				body: t.Object({ accountId: id }),
 			},
 		)
 		.post(
@@ -83,22 +83,30 @@ export function mediaRoutes(
 				}),
 			},
 		)
-		.post(
-			"/jellyfin/users",
-			async ({ body }) => (await getService()).jellyfinUsers(body),
-			{
-				body: t.Object({
-					source: jellyfinSource,
-				}),
-			},
+		.get("/jellyfin/directory", async () =>
+			(await getService()).jellyfinDirectory(),
 		)
 		.post(
-			"/jellyfin/connect",
-			async ({ body }) => (await getService()).connectJellyfin(body),
+			"/jellyfin/import",
+			async ({ body }) => (await getService()).importJellyfin(body),
+			{ body: jellyfinConnection },
+		)
+		.post("/jellyfin/:id/refresh", async ({ params }) =>
+			(await getService()).refreshJellyfinUsers(params.id),
+		)
+		.post("/directory/refresh", async () =>
+			(await getService()).refreshDirectories(),
+		)
+		.post(
+			"/directory/polling",
+			async ({ body }) => (await getService()).configureDirectoryPolling(body),
 			{
 				body: t.Object({
-					source: jellyfinSource,
-					userId: id,
+					enabled: t.Boolean(),
+					intervalMinutes: t.Integer({
+						minimum: MIN_USER_POLL_MINUTES,
+						maximum: MAX_USER_POLL_MINUTES,
+					}),
 				}),
 			},
 		)

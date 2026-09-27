@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type { MediaService } from "~/backend/media/service";
 import {
@@ -12,7 +11,7 @@ import {
 } from "~/components/media/shared";
 import { getApi } from "~/routes/api.$";
 
-type PlexSelection = Awaited<ReturnType<MediaService["selectProfile"]>>;
+type PlexSelection = Awaited<ReturnType<MediaService["selectPlexServer"]>>;
 type Authorization =
 	| { kind: "idle" }
 	| {
@@ -24,11 +23,11 @@ type Authorization =
 
 export function PlexConnect({
 	account,
-	profiles,
+	servers,
 	refresh,
 }: {
 	account: MediaState["accounts"][number] | undefined;
-	profiles: MediaState["plexProfiles"];
+	servers: MediaState["plexServers"];
 	refresh: () => Promise<void>;
 }) {
 	const action = useAction();
@@ -39,8 +38,6 @@ export function PlexConnect({
 	const [serverId, setServerId] = useState("");
 	const [serverUrl, setServerUrl] = useState("");
 	const [message, setMessage] = useState("");
-	const [userId, setUserId] = useState("");
-	const [pin, setPin] = useState("");
 	const selectedServer = selection?.servers.find(
 		(server) => server.id === serverId,
 	);
@@ -50,18 +47,6 @@ export function PlexConnect({
 		(authorization.kind !== "linked" || account.id === authorization.accountId)
 			? account
 			: null;
-
-	const directory = useQuery({
-		queryKey: ["plex-users", activeAccount?.id],
-		enabled: !!activeAccount,
-		queryFn: async () => {
-			if (!activeAccount) throw new Error("Sign in to Plex first.");
-			return responseData(
-				await getApi().v1.media.plex({ id: activeAccount.id }).users.get(),
-			);
-		},
-	});
-	const chosenUser = directory.data?.users.find((user) => user.id === userId);
 
 	useEffect(() => {
 		if (authorization.kind !== "waiting") return;
@@ -85,8 +70,6 @@ export function PlexConnect({
 				if (result.status === "linked") {
 					setAuthorization({ kind: "linked", accountId: result.accountId });
 					setSelection(null);
-					setUserId("");
-					setPin("");
 					await refresh();
 				} else if (result.status === "expired") {
 					setAuthorization({
@@ -128,8 +111,8 @@ export function PlexConnect({
 			</div>
 			<div className="space-y-4">
 				<p className="text-sm leading-6 text-slate-400">
-					Choose your account, a Plex Home member, or a shared user, then find
-					their server.
+					Sign in as the server owner, then save a server to import its users.
+					No Plex Home PIN is needed.
 				</p>
 				<button
 					type="button"
@@ -172,109 +155,39 @@ export function PlexConnect({
 				)}
 				{authorization.kind === "linked" && (
 					<p role="status" className="text-sm text-emerald-300">
-						Account linked. Choose a person below.
+						Account linked. Find your servers below.
 					</p>
 				)}
 				{authorization.kind === "failed" && (
 					<ErrorMessage message={authorization.message} />
 				)}
 				{activeAccount && (
-					<form
-						className="space-y-4"
-						onSubmit={(event) => {
-							event.preventDefault();
-							void action.perform(async () => {
-								setMessage("");
-								const result = responseData(
-									await getApi().v1.media.plex.select.post({
-										accountId: activeAccount.id,
-										userId,
-										pin:
-											chosenUser?.kind === "home" && chosenUser.protected
-												? pin
-												: undefined,
-									}),
-								);
-								setSelection(result);
-								setPin("");
-								setServerId("");
-								setServerUrl("");
-							});
-						}}
-					>
-						<label className="block text-sm text-slate-300" htmlFor="plex-user">
-							Plex user
-							<select
-								id="plex-user"
-								className={fieldClass}
-								value={userId}
-								required
-								disabled={action.busy || directory.isPending}
-								onChange={(event) => {
-									setUserId(event.target.value);
-									setPin("");
-									setSelection(null);
-									setMessage("");
-								}}
-							>
-								<option value="">
-									{directory.isPending
-										? "Loading Plex users…"
-										: "Choose a person"}
-								</option>
-								{directory.data?.users.map((user) => (
-									<option key={user.id} value={user.id}>
-										{user.name} ·{" "}
-										{user.kind === "owner"
-											? "Signed-in account"
-											: user.kind === "home"
-												? "Plex Home"
-												: "Shared user"}
-									</option>
-								))}
-							</select>
-						</label>
-						{chosenUser?.kind === "home" && chosenUser.protected && (
-							<label
-								className="block text-sm text-slate-300"
-								htmlFor="plex-home-pin"
-							>
-								Plex Home PIN
-								<input
-									id="plex-home-pin"
-									className={fieldClass}
-									type="password"
-									inputMode="numeric"
-									autoComplete="off"
-									required
-									value={pin}
-									disabled={action.busy}
-									onChange={(event) => setPin(event.target.value)}
-								/>
-							</label>
-						)}
-						{directory.error && (
-							<ErrorMessage message={directory.error.message} />
-						)}
-						{directory.data?.issues.map((issue) => (
-							<ErrorMessage key={issue} message={issue} />
-						))}
+					<div className="space-y-3">
+						<p className="text-sm text-slate-300">
+							Signed in as {activeAccount.name}
+						</p>
 						<button
 							type="button"
-							className="block text-sm text-slate-400 underline underline-offset-4"
-							disabled={directory.isFetching}
-							onClick={() => void directory.refetch()}
-						>
-							Refresh Plex users
-						</button>
-						<button
-							type="submit"
 							className={secondaryClass}
-							disabled={action.busy || !chosenUser}
+							disabled={action.busy}
+							onClick={() =>
+								void action.perform(async () => {
+									setMessage("");
+									setSelection(
+										responseData(
+											await getApi().v1.media.plex.select.post({
+												accountId: activeAccount.id,
+											}),
+										),
+									);
+									setServerId("");
+									setServerUrl("");
+								})
+							}
 						>
-							{action.busy ? "Checking profile…" : "Find Plex servers"}
+							{action.busy ? "Finding servers…" : "Find Plex servers"}
 						</button>
-					</form>
+					</div>
 				)}
 				{activeAccount && selection && (
 					<form
@@ -291,7 +204,7 @@ export function PlexConnect({
 								);
 								setSelection(null);
 								setMessage(
-									"Plex profile connected. Pair it with a Jellyfin profile below.",
+									"Plex server saved and users imported. Open Users to pair people.",
 								);
 								await refresh();
 							});
@@ -299,8 +212,8 @@ export function PlexConnect({
 					>
 						{selection.servers.length === 0 ? (
 							<p className="text-sm text-amber-200">
-								This profile has no accessible Plex servers. Check its library
-								access in Plex, then select the profile again.
+								No owned Plex servers were found. Sign in with the account that
+								owns your server.
 							</p>
 						) : (
 							<>
@@ -358,7 +271,7 @@ export function PlexConnect({
 									className={buttonClass}
 									disabled={action.busy || !serverUrl}
 								>
-									{action.busy ? "Connecting…" : "Save Plex profile"}
+									{action.busy ? "Connecting…" : "Save server and import users"}
 								</button>
 							</>
 						)}
@@ -370,18 +283,22 @@ export function PlexConnect({
 						{message}
 					</p>
 				)}
-				{profiles.length > 0 && (
+				{servers.length > 0 && (
 					<div className="border-t border-slate-800 pt-4">
 						<h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
-							Saved profiles
+							Saved servers
 						</h4>
-						<ul className="space-y-2">
-							{profiles.map((profile) => (
-								<li key={profile.id} className="text-sm">
-									<span className="text-slate-200">{profile.name}</span>
-									<span className="ml-2 text-slate-500">
-										on {profile.serverName}
-									</span>
+						<ul className="space-y-4">
+							{servers.map((server) => (
+								<li key={server.id} className="text-sm">
+									<p className="font-medium text-slate-200">{server.name}</p>
+									<p className="mt-1 break-all text-slate-400">{server.url}</p>
+									<p className="mt-2 text-slate-300">
+										{server.lastSuccessAt
+											? `Last imported ${new Date(server.lastSuccessAt).toLocaleString()}`
+											: "Waiting for first import"}
+									</p>
+									<ErrorMessage message={server.lastError ?? ""} />
 								</li>
 							))}
 						</ul>

@@ -15,6 +15,34 @@
       "when": 1790467405002,
       "tag": "0001_dusty_goliath",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790471667616,
+      "tag": "0002_fast_living_mummy",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790474181059,
+      "tag": "0003_lowly_black_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790474549956,
+      "tag": "0004_lazy_morbius",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790475725653,
+      "tag": "0005_remove_unused_jellyfin_polling",
+      "breakpoints": true
     }
   ]
 }

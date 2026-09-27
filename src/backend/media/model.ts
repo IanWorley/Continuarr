@@ -25,25 +25,36 @@ export const mediaItemSchema = z.object({
 export type MediaItem = z.infer<typeof mediaItemSchema>;
 export type MediaAccess = { url: string; token: Secret };
 export type JellyfinAccess = MediaAccess & { userId: string };
+export const jsonObjectSchema = z.record(z.string(), z.json());
+export type JsonObject = z.infer<typeof jsonObjectSchema>;
 export type PlexHomeUser = { id: string; name: string; protected: boolean };
-export type PlexUserOption =
-	| { kind: "owner"; id: string; name: string }
-	| ({ kind: "home" } & PlexHomeUser)
-	| { kind: "shared"; id: string; name: string };
+export type PlexDirectoryUser = {
+	id: string;
+	name: string;
+	access:
+		| { kind: "owner" }
+		| { kind: "shared_grant"; token: Secret }
+		| { kind: "unavailable" };
+};
 export type PlexServer = {
 	id: string;
 	name: string;
 	token: Secret;
 	connections: string[];
 };
-export type PlexSharedUser = {
+export type JellyfinUser = {
 	id: string;
 	name: string;
-	servers: PlexServer[];
+	disabled: boolean;
+	administrator: boolean;
+	lastActivityDate: string | null;
+	lastLoginDate: string | null;
+	details: JsonObject;
 };
-export type JellyfinSource =
-	| { kind: "new"; url: string; apiKey: string }
-	| { kind: "saved"; profileId: string };
+export type JellyfinDirectory = {
+	server: { id: string; name: string };
+	users: JellyfinUser[];
+};
 export type PlexIdentity = { userId: string; name: string; token: Secret };
 export type PlexPin = {
 	id: number;
@@ -55,33 +66,18 @@ export interface PlexProvider {
 	startLogin(): Promise<PlexPin>;
 	pollLogin(pin: Pick<PlexPin, "id" | "code">): Promise<PlexIdentity | null>;
 	homeUsers(token: Secret): Promise<PlexHomeUser[]>;
-	sharedUsers(
-		token: Secret,
-	): Promise<{ users: PlexSharedUser[]; issues: string[] }>;
-	switchUser(input: {
+	directory(input: {
 		token: Secret;
-		userId: string;
-		pin?: string;
-	}): Promise<PlexIdentity>;
+		owner: Pick<PlexIdentity, "userId" | "name">;
+		serverId: string;
+	}): Promise<PlexDirectoryUser[]>;
 	servers(token: Secret): Promise<PlexServer[]>;
 	verifyServer(access: MediaAccess, serverId: string): Promise<void>;
 	items(access: MediaAccess): Promise<MediaItem[]>;
 	markWatched(access: MediaAccess, itemId: string): Promise<void>;
 }
 export interface JellyfinProvider {
-	server(input: {
-		url: string;
-		apiKey: string;
-	}): Promise<{ id: string; name: string }>;
-	users(input: {
-		url: string;
-		apiKey: string;
-	}): Promise<{ id: string; name: string }[]>;
-	connect(input: {
-		url: string;
-		apiKey: string;
-		userId: string;
-	}): Promise<JellyfinAccess & { serverId: string; name: string }>;
+	directory(access: MediaAccess): Promise<JellyfinDirectory>;
 	items(access: JellyfinAccess): Promise<MediaItem[]>;
 	markWatched(access: JellyfinAccess, itemId: string): Promise<void>;
 }

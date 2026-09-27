@@ -1,6 +1,6 @@
 # Continuarr
 
-Sync watched movies and episodes between a Plex account owner and a Jellyfin user. Continuarr merges watched status in both directions. It never marks an item unwatched.
+Sync watched movies and episodes for paired Plex and Jellyfin users. Continuarr merges watched status in both directions. It never marks an item unwatched.
 
 Built with:
 
@@ -30,13 +30,17 @@ The API is available at <http://localhost:3000/api/v1/health>.
 ## Connect your media accounts
 
 1. Sign in to Continuarr and choose **Sign in to Plex**. Authorize Continuarr in the Plex tab, then return to the dashboard. Continuarr checks for approval until the login expires.
-2. Choose your signed-in Plex account, a Plex Home member, or a shared user. Protected Home members require their Home PIN. Choose an accessible Plex server and connection address, then save the profile. Shared users are discovered on servers owned by the signed-in account and use their own server access tokens.
-3. Enter the Jellyfin server URL and an API key created in Jellyfin’s Dashboard → API Keys. Choose **Find Jellyfin users**, select the person to sync, then connect the profile. Include a reverse proxy path, such as `https://media.example/jellyfin`, when your server uses one. Continuarr encrypts the API key before saving it. API keys grant server-wide access; the selected user determines whose watched history is synced. Saved servers load their full user list automatically, so you can connect more people without entering the key again. Select **Add a server or replace an API key** to supply new credentials. Replacing the key refreshes credentials for all connected users on that Jellyfin server.
-4. Pair the saved Plex profile with the saved Jellyfin user. Each profile can belong to one pairing, so a shared profile cannot accidentally merge two people's histories.
-5. Preview the pairing, then run sync. A run reads both libraries again and applies the current watched-state union. Check the run result for completed updates and skipped items.
-6. Optionally enable hourly sync for each pairing. Keep the Continuarr server running. Automatic sync is off by default.
+2. Sign in as the Plex server owner, choose **Find Plex servers**, then choose an owned server and a reachable connection address. **Save server and import users** saves the connection and imports the owner, Home users, and users with accepted server grants. No Plex Home PIN is requested. Other users use their own server grant tokens, including Home members with a grant. A listed user without a grant remains visible but cannot sync watched status.
+3. On **Connections & sync**, enter the Jellyfin server URL and a key from Jellyfin Dashboard → API Keys. Continuarr verifies the server and imports every user returned by Jellyfin, including their complete UserDto details. Include a reverse proxy path in the URL when your server uses one. The key is encrypted in PostgreSQL and never returned by the API.
+4. On **Users**, review both directories and pair the same person across Plex and Jellyfin. Each user can belong to one pairing. Missing users, disabled Jellyfin users, and Plex users without watched access stay visible but cannot start a new pairing or sync.
+5. On **Users**, preview the pairing, then run sync. A run reads both libraries again and applies the current watched status. Check the run result for completed updates and skipped items.
+6. On **Connections & sync**, configure **Automatic user imports** for both services. One PostgreSQL setting controls the interval and enabled state, defaulting to every 60 minutes. **Refresh all users now** imports both directories immediately. Successful imports preserve user and pairing IDs; failures keep the last successful list. Watched sync remains separate and can be enabled hourly for each pairing.
 
-To replace expired credentials, repeat the relevant login and profile connection. Continuarr recognizes the same server and user identities and updates their credentials without changing the pairing. An expired Plex selection must be started again. Restarting Continuarr cancels pending login and profile selections.
+To replace expired Plex credentials, repeat the Plex login and server connection. An expired server selection must be started again. Restarting Continuarr cancels pending login and server selections. Previously saved Plex profiles and pairings remain usable; saving their server through the owner flow adopts their existing IDs and enables automatic user imports.
+
+### Repair conflicting legacy Jellyfin keys
+
+The first start after the directory migration groups existing Jellyfin profiles by server ID. It decrypts each profile's old key under that profile's ID and moves the shared key to a server record. If profiles for one server have different keys or URLs, the media service refuses to start and logs the affected profile IDs and leaves every row intact. Resolve which server URL and API key are correct, stop Continuarr, and run `bun scripts/repair-jellyfin-legacy.ts` with `JELLYFIN_SERVER_ID`, `JELLYFIN_URL`, and `JELLYFIN_API_KEY` supplied through your secret environment. The script verifies the key against Jellyfin and confirms the server identity before replacing credentials on those legacy profiles. It does not print the key. Restart Continuarr to complete the backfill. Keep the same `DATABASE_URL` and credential encryption key during repair.
 
 ### What sync transfers
 
@@ -46,7 +50,7 @@ Saved manual matches take priority. Other movies and individual episodes match b
 
 Choose **Manual matching** in the navigation bar, then choose a person pairing. On smaller screens, open the navigation menu first. Browse each library by show and season, or switch to movies. Select one item on each side and choose **Save manual match**. File paths, metadata IDs, and watched states help you compare the items. Missing file paths appear as unavailable.
 
-Each item can have one manual counterpart within that person pairing. Matches persist across restarts. To correct a choice, choose **Remove match**, confirm removal, and select another counterpart. Saving or removing a match does not change watched status. Return to the dashboard to preview and run sync, or let an enabled scheduled sync use the saved matches. Unavailable manual matches are skipped, and their remaining items are excluded from metadata matching until you remove the saved match.
+Each item can have one manual counterpart within that person pairing. Matches persist across restarts. To correct a choice, choose **Remove match**, confirm removal, and select another counterpart. Saving or removing a match does not change watched status. Return to Users to preview and run sync, or let an enabled scheduled sync use the saved matches. Unavailable manual matches are skipped, and their remaining items are excluded from metadata matching until you remove the saved match.
 
 ### Watched-state behavior
 
@@ -58,7 +62,7 @@ Both library scans must finish before any writes begin. A failed write stops the
 
 Run one Continuarr server process per database. Manual and automatic sync share a coordinator inside that process; multiple processes or replicas are not supported. The hourly scheduler starts when the server receives its first request and continues while the process runs. Avoid serverless deployments that suspend idle processes. Use a reverse proxy timeout long enough for full library scans and sync writes.
 
-Both servers must be reachable from the Continuarr host. Private LAN URLs are supported. Redirects are rejected when sending credentials; use the final server address. Plex server choices come from the selected profile's accessible resources and are checked against the selected server identity. No Plex Home profile uses the owner's token as a fallback.
+Both servers must be reachable from the Continuarr host. Private LAN URLs are supported. Redirects are rejected when sending credentials; use the final server address. Plex server choices come from the authorized owner's owned resources and are checked against the selected server identity. Another user's watched operations always use that user's grant token, never the owner's token as a fallback.
 
 ### Verify the integration
 
@@ -70,9 +74,9 @@ bun run db:check
 bun run build
 ```
 
-For a repeatable browser check, run `bun scripts/media-fixture.ts` and follow its printed startup instructions. It starts an isolated PostgreSQL container with a seeded Plex Home profile and two local media-server fixtures. Connect the fixture Jellyfin user in the dashboard, create a pairing, and confirm that preview shows two updates and a repeated sync shows zero.
+For a repeatable browser check, run `bun scripts/media-fixture.ts` and follow its printed startup instructions. It starts an isolated PostgreSQL container with a seeded Plex Home profile and two local media-server fixtures. Import the fixture Jellyfin server on Connections & sync, open Users, create a pairing, and confirm that preview shows two updates and a repeated sync shows zero.
 
-Provider tests run local HTTP fixtures for authentication, profile selection, paginated inventories, and watched updates. Service tests use migrated PostgreSQL and exercise encrypted persistence, pairing constraints, API authentication, retries, and automatic sync. These tests do not sign in to a real Plex or Jellyfin account.
+Provider tests run local HTTP fixtures for authentication, owner server selection, grant-based directories, paginated inventories, and watched updates. Service tests use migrated PostgreSQL and exercise encrypted persistence, pairing constraints, API authentication, retries, and automatic sync. These tests do not sign in to a real Plex or Jellyfin account.
 
 ## Installation-owner authentication
 
@@ -112,7 +116,7 @@ Persist `DATA_DIRECTORY` across application container replacements and back up t
 
 `CREDENTIAL_ENCRYPTION_KEY` remains an optional override for deployments that manage their own secrets. A nonempty override must be a base64-encoded 32-byte key and takes precedence over the file without changing it. Existing deployments using this variable should keep their current value, or save that exact value without a trailing newline in the key file before removing the override. On POSIX, ensure the file is owned by the service user and set its permissions to `600`. Never commit a key or expose it through a `VITE_` variable.
 
-`src/backend/secrets/storage.server.ts` provides the configured secret-storage boundary. Encrypt a `Secret` using the stable, unique connection ID before writing its returned string to PostgreSQL, and pass that same record ID when decrypting. Values use versioned AES-256-GCM with a fresh nonce and authenticated connection identity. Decryption returns a redacted `Secret`; call `reveal()` only when passing credentials to the media server, never in API responses or logs. Plex account tokens, selected Plex profile server tokens, and Jellyfin API keys are encrypted in the connection tables. Plex Home PINs are used only for authentication and are not saved.
+`src/backend/secrets/storage.server.ts` provides the configured secret-storage boundary. Encrypt a `Secret` using the stable, unique connection ID before writing its returned string to PostgreSQL, and pass that same record ID when decrypting. Values use versioned AES-256-GCM with a fresh nonce and authenticated connection identity. Decryption returns a redacted `Secret`; call `reveal()` only when passing credentials to the media server, never in API responses or logs. Plex account tokens, selected Plex profile server tokens, and Jellyfin API keys are encrypted in the connection tables. Jellyfin server rows own current API keys; existing profile ciphertext remains only to support additive migration and repair. Plex Home PINs are used only for authentication and are not saved.
 
 ## Database
 
