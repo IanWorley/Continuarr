@@ -2,10 +2,13 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
 	createRootRouteWithContext,
 	HeadContent,
+	Outlet,
 	redirect,
 	Scripts,
+	useRouterState,
 } from "@tanstack/react-router";
 
+import { AppNavigation } from "~/components/app-navigation";
 import { getApi } from "~/routes/api.$";
 
 import appCss from "~/styles.css?url";
@@ -40,8 +43,21 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 			},
 		],
 	}),
+	component: RootLayout,
 	shellComponent: RootDocument,
 });
+
+function RootLayout() {
+	const pathname = useRouterState({
+		select: (state) => state.location.pathname,
+	});
+	return (
+		<>
+			{pathname !== "/sign-in" && <AppNavigation key={pathname} />}
+			<Outlet />
+		</>
+	);
+}
 
 function RootDocument({ children }: { children: React.ReactNode }) {
 	return (

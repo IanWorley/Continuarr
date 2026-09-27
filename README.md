@@ -44,7 +44,7 @@ Saved manual matches take priority. Other movies and individual episodes match b
 
 ### Match content manually
 
-Open **Manually match Plex and Jellyfin content** from the dashboard, then choose a person pairing. Browse each library by show and season, or switch to movies. Select one item on each side and choose **Save manual match**. File paths, metadata IDs, and watched states help you compare the items. Missing file paths appear as unavailable.
+Choose **Manual matching** in the navigation bar, then choose a person pairing. On smaller screens, open the navigation menu first. Browse each library by show and season, or switch to movies. Select one item on each side and choose **Save manual match**. File paths, metadata IDs, and watched states help you compare the items. Missing file paths appear as unavailable.
 
 Each item can have one manual counterpart within that person pairing. Matches persist across restarts. To correct a choice, choose **Remove match**, confirm removal, and select another counterpart. Saving or removing a match does not change watched status. Return to the dashboard to preview and run sync, or let an enabled scheduled sync use the saved matches. Unavailable manual matches are skipped, and their remaining items are excluded from metadata matching until you remove the saved match.
 

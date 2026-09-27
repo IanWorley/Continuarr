@@ -1,5 +1,5 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import type { MediaService } from "~/backend/media/service";
@@ -91,48 +91,29 @@ export const Route = createFileRoute("/")({ component: Home });
 function Home() {
 	const state = useQuery(stateQuery);
 	const queryClient = useQueryClient();
-	const signOut = useAction();
 	const refresh = useCallback(async () => {
 		await queryClient.invalidateQueries({ queryKey: STATE_QUERY_KEY });
 	}, [queryClient]);
 	return (
-		<main className="mx-auto min-h-screen w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
+		<main
+			id="main-content"
+			tabIndex={-1}
+			className="mx-auto min-h-screen w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12"
+		>
 			<header className="mb-10 flex items-start justify-between gap-6 border-b border-slate-800 pb-7">
 				<div>
 					<p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
 						Your libraries, together
 					</p>
 					<h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-						Continuarr
+						Connections &amp; sync
 					</h1>
 					<p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
 						Keep watched movies and episodes in sync between Plex and Jellyfin,
 						for each person.
 					</p>
 				</div>
-				<button
-					type="button"
-					className={secondaryClass}
-					disabled={signOut.busy}
-					onClick={() =>
-						void signOut.perform(async () => {
-							const result = await getApi().v1.admin["sign-out"].post();
-							if (result.error && result.status !== HTTP_UNAUTHORIZED)
-								throw new Error("Unable to sign out. Please try again.");
-							window.location.assign("/sign-in");
-						})
-					}
-				>
-					Sign out
-				</button>
 			</header>
-			<Link
-				to="/matches"
-				className="mb-6 inline-block text-sm font-medium text-cyan-300 underline"
-			>
-				Manually match Plex and Jellyfin content
-			</Link>
-			<ErrorMessage message={signOut.error} />
 			{state.isPending && (
 				<p role="status" className="py-12 text-slate-400">
 					Loading your connections…

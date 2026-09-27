@@ -36,11 +36,12 @@ function Matches() {
 	});
 	const [pairingId, setPairingId] = useState("");
 	return (
-		<main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
-			<Link to="/" className="text-sm text-cyan-300">
-				Back to connections and sync
-			</Link>
-			<h1 className="mt-6 text-3xl font-semibold">Manual matching</h1>
+		<main
+			id="main-content"
+			tabIndex={-1}
+			className="mx-auto min-h-screen max-w-6xl px-5 py-10"
+		>
+			<h1 className="text-3xl font-semibold">Manual matching</h1>
 			<p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
 				Choose the same movie or episode in both libraries and save the pair.
 				Saving does not change watched status. Your saved matches are used by
