@@ -45,3 +45,11 @@ The final provider test verifies retained configuration, provider IDs, activity 
 The mobile users page was inspected at 390 CSS pixels. Document content width was 375 pixels, with no horizontal overflow. Test polling is restored to 60 minutes and enabled.
 
 Raw validation output remains at `/tmp/continuarr-jellyfin-design/validation.log`. The running fixture uses a minimal UserDto, so richer fields are verified through HTTP provider tests rather than claimed from the browser.
+
+## Paired-user card relocation
+
+Existing paired-user cards and their preview, watched-sync, automatic-sync, and recent-run controls now live on Users. Connections & sync retains Plex connection/profile selection. The manual matching return link and README point to Users.
+
+Browser verification confirmed no pairing cards or preview/sync buttons on Connections & sync, and both existing cards plus the pairing form and imported users on Users. The fixture card preview on Users returned zero watched updates, two matched pairs, six unmatched items, and zero ambiguous items. Mobile layout had no horizontal overflow. No real Plex sync was run.
+
+Typecheck, Biome for changed TSX files, and production build passed after relocation.

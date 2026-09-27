@@ -5,6 +5,7 @@ import {
 	JellyfinConnect,
 	JellyfinServerCard,
 } from "~/components/media/JellyfinConnect";
+import { Pairings } from "~/components/media/Pairings";
 import {
 	buttonClass,
 	ErrorMessage,
@@ -30,6 +31,7 @@ function Users() {
 	const state = useQuery({
 		queryKey: STATE_KEY,
 		queryFn: async () => responseData(await getApi().v1.media.state.get()),
+		refetchInterval: REFRESH_MS,
 	});
 	const refresh = useCallback(async () => {
 		await Promise.all([
@@ -165,6 +167,7 @@ function Users() {
 						)}
 						<ErrorMessage message={action.error} />
 					</section>
+					<Pairings state={state.data} refresh={refresh} />
 					<section aria-labelledby="users-heading">
 						<h2 id="users-heading" className="mb-4 text-xl font-semibold">
 							Imported Jellyfin users ({directory.data.users.length})

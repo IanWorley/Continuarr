@@ -338,8 +338,8 @@ function PairingMatches({ pairingId }: { pairingId: string }) {
 					})}
 					<p className="text-sm text-slate-400">
 						To sync watched status, return to{" "}
-						<Link to="/" className="text-cyan-300 underline">
-							connections and sync
+						<Link to="/users" className="text-cyan-300 underline">
+							Users
 						</Link>{" "}
 						and preview the changes. Sync marks an item watched when either side
 						is watched.
