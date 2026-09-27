@@ -331,6 +331,62 @@ describe("media account and sync service", () => {
 		).toHaveLength(2);
 	});
 
+	it("does not restore old Jellyfin credentials when a saved connect finishes after rotation", async () => {
+		const { service, repo, secrets, jellyfin } = await setup();
+		const child = await service.connectJellyfin({
+			source: { kind: "new", url: "http://jellyfin:8096", apiKey: "old-key" },
+			userId: "j-child",
+		});
+		let releaseSaved = () => {};
+		const savedBlocked = new Promise<void>((resolve) => {
+			releaseSaved = resolve;
+		});
+		let savedEntered = () => {};
+		const savedStarted = new Promise<void>((resolve) => {
+			savedEntered = resolve;
+		});
+		jellyfin.connect = async ({ url, apiKey, userId }) => {
+			if (userId === "mom") {
+				savedEntered();
+				await savedBlocked;
+			}
+			return {
+				url,
+				userId,
+				serverId: "j-server",
+				name: userId,
+				token: new Secret(apiKey),
+			};
+		};
+		const savedConnect = service.connectJellyfin({
+			source: { kind: "saved", profileId: child.id },
+			userId: "mom",
+		});
+		await savedStarted;
+		const rotatedUrl = "http://jellyfin-new:8096";
+		try {
+			await service.connectJellyfin({
+				source: { kind: "new", url: rotatedUrl, apiKey: "rotated-key" },
+				userId: "j-child",
+			});
+		} finally {
+			releaseSaved();
+		}
+		await expect(savedConnect).rejects.toMatchObject({
+			status: 409,
+			message: "The saved Jellyfin connection changed. Select it again and retry.",
+		});
+		const profiles = await repo.jellyfinProfiles();
+		expect(profiles).toHaveLength(1);
+		const [stored] = profiles;
+		if (!stored) throw new Error("Missing Jellyfin profile");
+		expect(stored.id).toBe(child.id);
+		expect(stored.url).toBe(rotatedUrl);
+		expect(secrets.decrypt(stored.id, stored.token).reveal()).toBe(
+			"rotated-key",
+		);
+	});
+
 	it("rolls back every Jellyfin credential update if one row fails", async () => {
 		const { repo, pair } = await setup();
 		const pairing = await pair();
