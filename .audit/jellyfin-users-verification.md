@@ -57,3 +57,7 @@ Typecheck, Biome for changed TSX files, and production build passed after reloca
 ## Jellyfin connection relocation
 
 Jellyfin API-key setup, server cards, polling settings, and manual import refresh now live on Connections & sync. Users retains the imported directory, pairing form, paired-user cards, and watched-sync controls. Browser checks confirmed these locations at mobile width with no horizontal overflow. Refresh now on Connections & sync advanced the fixture server refresh timestamp; Users still displayed both imported users. Typecheck, Biome, production build, and diff check passed.
+
+## Matching connection cards
+
+Plex and Jellyfin now share the desktop two-column layout, card spacing, heading treatment, and divided saved-connection sections. Jellyfin retains its API-key and polling controls inside its card. Desktop screenshot inspection passed; mobile cards have equal widths with no horizontal overflow. Fixture refresh succeeded after the layout change. Typecheck, Biome, production build, and diff check passed.

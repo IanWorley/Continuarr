@@ -35,15 +35,18 @@ export function JellyfinConnect({
 			aria-labelledby="jellyfin-heading"
 			className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6"
 		>
-			<h2 id="jellyfin-heading" className="text-xl font-semibold">
-				Jellyfin server
-			</h2>
-			<p className="mt-2 text-sm text-slate-400">
+			<div className="mb-5 flex items-center gap-3">
+				<span className="size-2 rounded-full bg-violet-400" />
+				<h3 id="jellyfin-heading" className="text-lg font-semibold">
+					Jellyfin
+				</h3>
+			</div>
+			<p className="text-sm leading-6 text-slate-400">
 				Create a server API key in Jellyfin Dashboard → API Keys. One connection
 				imports every user and stores the key encrypted.
 			</p>
 			<form
-				className="mt-5 space-y-4"
+				className="mt-4 space-y-4"
 				onSubmit={(event) => {
 					event.preventDefault();
 					void action.perform(async () => {
@@ -58,9 +61,7 @@ export function JellyfinConnect({
 							: { kind: "new" as const, url, apiKey };
 						responseData(await getApi().v1.media.jellyfin.import.post(input));
 						setApiKey("");
-						setMessage(
-							"Jellyfin users imported. Choose a person below to pair.",
-						);
+						setMessage("Jellyfin users imported. Open Users to pair people.");
 						await refresh();
 					});
 				}}
@@ -125,11 +126,27 @@ export function JellyfinConnect({
 					</p>
 				)}
 			</form>
+			{servers.length > 0 && (
+				<div className="mt-4 border-t border-slate-800 pt-4">
+					<h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
+						Saved servers
+					</h4>
+					<div className="space-y-4">
+						{servers.map((server) => (
+							<JellyfinServerCard
+								key={`${server.id}:${server.intervalMinutes}:${server.pollEnabled}`}
+								server={server}
+								refresh={refresh}
+							/>
+						))}
+					</div>
+				</div>
+			)}
 		</section>
 	);
 }
 
-export function JellyfinServerCard({
+function JellyfinServerCard({
 	server,
 	refresh,
 }: {
@@ -139,8 +156,8 @@ export function JellyfinServerCard({
 	const action = useAction();
 	const [minutes, setMinutes] = useState(server.intervalMinutes);
 	return (
-		<article className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
-			<h3 className="font-semibold">{server.name}</h3>
+		<article className="border-b border-slate-800 pb-4 last:border-0 last:pb-0">
+			<h5 className="text-sm font-medium text-slate-200">{server.name}</h5>
 			<p className="mt-1 break-all text-sm text-slate-400">{server.url}</p>
 			<p className="mt-2 text-sm text-slate-300">
 				{server.lastError

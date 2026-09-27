@@ -1,10 +1,7 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback } from "react";
-import {
-	JellyfinConnect,
-	JellyfinServerCard,
-} from "~/components/media/JellyfinConnect";
+import { JellyfinConnect } from "~/components/media/JellyfinConnect";
 import { PlexConnect } from "~/components/media/PlexConnect";
 import {
 	ErrorMessage,
@@ -60,62 +57,54 @@ function Home() {
 					</p>
 				</div>
 			</header>
-			{state.isPending && (
-				<p role="status" className="py-12 text-slate-400">
-					Loading your connections…
-				</p>
-			)}
-			{state.isError && (
-				<div className="space-y-3">
-					<ErrorMessage message={state.error.message} />
-					<button
-						type="button"
-						className={secondaryClass}
-						onClick={() => void state.refetch()}
-					>
-						Try again
-					</button>
+			<section aria-labelledby="connections-heading">
+				<div className="mb-5">
+					<h2 id="connections-heading" className="text-xl font-semibold">
+						Connect your servers
+					</h2>
+					<p className="mt-1 text-sm text-slate-400">
+						Connect your servers here, then pair people and sync watched status
+						on the Users page.
+					</p>
 				</div>
-			)}
-			{state.data && (
-				<div className="space-y-10">
-					<section aria-labelledby="connections-heading">
-						<div className="mb-5">
-							<h2 id="connections-heading" className="text-xl font-semibold">
-								Connect Plex
-							</h2>
-							<p className="mt-1 text-sm text-slate-400">
-								Connect your servers here, then pair people and sync watched
-								status on the Users page.
-							</p>
+				<div className="grid items-start gap-5 lg:grid-cols-2">
+					{state.isPending && <p role="status">Loading Plex connections…</p>}
+					{state.isError && (
+						<div className="space-y-3">
+							<ErrorMessage message={state.error.message} />
+							<button
+								type="button"
+								className={secondaryClass}
+								onClick={() => void state.refetch()}
+							>
+								Try again
+							</button>
 						</div>
-						<div className="grid gap-5 lg:grid-cols-2">
-							<PlexConnect
-								key={state.data.activePlexAccountId ?? "unlinked"}
-								account={state.data.accounts.find(
-									(account) => account.id === state.data.activePlexAccountId,
-								)}
-								profiles={state.data.plexProfiles}
-								refresh={refresh}
-							/>
-						</div>
-					</section>
-				</div>
-			)}
-			{directory.isPending && <p role="status">Loading Jellyfin servers…</p>}
-			<ErrorMessage message={directory.error?.message ?? ""} />
-			{directory.data && (
-				<div className="mt-10 space-y-8">
-					<JellyfinConnect servers={directory.data.servers} refresh={refresh} />
-					{directory.data.servers.map((server) => (
-						<JellyfinServerCard
-							key={`${server.id}:${server.intervalMinutes}:${server.pollEnabled}`}
-							server={server}
+					)}
+					{state.data && (
+						<PlexConnect
+							key={state.data.activePlexAccountId ?? "unlinked"}
+							account={state.data.accounts.find(
+								(account) => account.id === state.data.activePlexAccountId,
+							)}
+							profiles={state.data.plexProfiles}
 							refresh={refresh}
 						/>
-					))}
+					)}
+					{directory.isPending && (
+						<p role="status">Loading Jellyfin servers…</p>
+					)}
+					{directory.isError && (
+						<ErrorMessage message={directory.error.message} />
+					)}
+					{directory.data && (
+						<JellyfinConnect
+							servers={directory.data.servers}
+							refresh={refresh}
+						/>
+					)}
 				</div>
-			)}
+			</section>
 		</main>
 	);
 }
