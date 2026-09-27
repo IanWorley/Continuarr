@@ -2,8 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { createAdministratorService } from "~/backend/admin/service";
 import { createApi } from "~/backend/api";
 import { createSecretStorage, Secret } from "~/backend/secrets/storage";
+import * as schema from "~/db/schema";
 import { setupTestDatabase } from "~/db/test-database";
 import {
+	type JellyfinDirectory,
 	type JellyfinProvider,
 	MediaError,
 	type MediaItem,
@@ -20,8 +22,8 @@ const movie = (id: string, watched: boolean): MediaItem => ({
 	ids: [{ provider: "tmdb", value: "329865" }],
 	watched,
 });
-async function setup() {
-	const { db } = await createTestDatabase();
+async function setup(now: () => number = Date.now) {
+	const { db, client } = await createTestDatabase();
 	const repo = createMediaRepository(() => db);
 	const secrets = createSecretStorage(Buffer.alloc(32, 7).toString("base64"));
 	const state = {
@@ -72,14 +74,19 @@ async function setup() {
 		},
 	};
 	const jellyfin: JellyfinProvider = {
-		server: async () => ({ id: "j-server", name: "Jellyfin" }),
-		users: async () => [{ id: "j-child", name: "Child" }],
-		connect: async ({ url }) => ({
-			url,
-			userId: "j-child",
-			serverId: "j-server",
-			name: "Child",
-			token: new Secret("j-token"),
+		directory: async () => ({
+			server: { id: "j-server", name: "Jellyfin" },
+			users: [
+				{
+					id: "j-child",
+					name: "Child",
+					disabled: false,
+					administrator: false,
+					lastActivityDate: null,
+					lastLoginDate: null,
+					details: { Id: "j-child", Name: "Child" },
+				},
+			],
 		}),
 		items: async (access) => {
 			expect(access.userId).toBe("j-child");
@@ -95,7 +102,7 @@ async function setup() {
 			);
 		},
 	};
-	const service = createMediaService({ repo, secrets, plex, jellyfin });
+	const service = createMediaService({ repo, secrets, plex, jellyfin, now });
 	async function pair() {
 		const attempt = await service.startLogin();
 		const login = await service.pollLogin(attempt.id);
@@ -110,13 +117,26 @@ async function setup() {
 			serverId: "machine",
 			url: "http://plex:32400",
 		});
-		const j = await service.connectJellyfin({
-			source: { kind: "new", url: "http://jellyfin:8096", apiKey: "j-token" },
-			userId: "j-child",
+		await service.importJellyfin({
+			kind: "new",
+			url: "http://jellyfin:8096",
+			apiKey: "j-token",
 		});
+		const j = (await repo.jellyfinProfiles())[0];
+		if (!j) throw new Error("Missing Jellyfin profile");
 		return service.addPairing({ plexProfileId: p.id, jellyfinProfileId: j.id });
 	}
-	return { db, repo, secrets, service, state, pair, plex, jellyfin };
+	return {
+		db,
+		databaseUrl: client.options.connectionString ?? "",
+		repo,
+		secrets,
+		service,
+		state,
+		pair,
+		plex,
+		jellyfin,
+	};
 }
 
 describe("media account and sync service", () => {
@@ -231,186 +251,335 @@ describe("media account and sync service", () => {
 		).rejects.toThrow("Could not load Plex Home users");
 	});
 
-	it("reuses a saved Jellyfin key for another user and rejects a different server", async () => {
-		const { service, repo, secrets, jellyfin } = await setup();
-		let serverId = "j-server";
-		jellyfin.users = async ({ apiKey }) => {
-			expect(apiKey).toBe("shared-key");
-			return [
-				{ id: "dad", name: "Dad" },
-				{ id: "mom", name: "Mom" },
-			];
-		};
-		jellyfin.connect = async ({ url, apiKey, userId }) => {
-			expect(apiKey).toBe("shared-key");
-			return { url, token: new Secret(apiKey), userId, serverId, name: userId };
-		};
-		jellyfin.server = async () => ({ id: serverId, name: "Jellyfin" });
-		const first = await service.connectJellyfin({
-			source: {
-				kind: "new",
-				url: "http://jellyfin:8096",
-				apiKey: "shared-key",
+	it("imports every user and retains the full details", async () => {
+		const { service, jellyfin, repo } = await setup();
+		jellyfin.directory = async (): Promise<JellyfinDirectory> => ({
+			server: { id: "j-server", name: "Jellyfin" },
+			users: [
+				{
+					id: "dad",
+					name: "Dad",
+					disabled: false,
+					administrator: true,
+					lastActivityDate: null,
+					lastLoginDate: null,
+					details: {
+						Id: "dad",
+						Name: "Dad",
+						Policy: { IsAdministrator: true },
+						Custom: [1, 2],
+					},
+				},
+				{
+					id: "mom",
+					name: "Mom",
+					disabled: true,
+					administrator: false,
+					lastActivityDate: null,
+					lastLoginDate: null,
+					details: { Id: "mom", Name: "Mom", Policy: { IsDisabled: true } },
+				},
+			],
+		});
+		await service.importJellyfin({
+			kind: "new",
+			url: "http://jellyfin:8096",
+			apiKey: "j-token",
+		});
+		expect(
+			(await service.jellyfinDirectory()).users.map((user) => ({
+				name: user.name,
+				details: user.userDetails,
+				disabled: user.disabled,
+			})),
+		).toEqual([
+			{
+				name: "Dad",
+				details: {
+					Id: "dad",
+					Name: "Dad",
+					Policy: { IsAdministrator: true },
+					Custom: [1, 2],
+				},
+				disabled: false,
 			},
-			userId: "dad",
-		});
-		const saved = { kind: "saved" as const, profileId: first.id };
-		expect(await service.jellyfinUsers({ source: saved })).toEqual([
-			{ id: "dad", name: "Dad" },
-			{ id: "mom", name: "Mom" },
+			{
+				name: "Mom",
+				details: { Id: "mom", Name: "Mom", Policy: { IsDisabled: true } },
+				disabled: true,
+			},
 		]);
-		const second = await service.connectJellyfin({
-			source: saved,
-			userId: "mom",
+		expect(await repo.jellyfinServers()).toHaveLength(1);
+	});
+
+	it("keeps stable users and pairings when later snapshots omit users or fail", async () => {
+		const { service, repo, jellyfin, pair } = await setup();
+		const pairing = await pair();
+		const originalId = pairing.jellyfinProfileId;
+		jellyfin.directory = async () => ({
+			server: { id: "j-server", name: "Jellyfin" },
+			users: [],
 		});
-		const stored = await repo.jellyfinProfile(second.id);
-		if (!stored) throw new Error("Missing Jellyfin profile");
-		expect(stored.userId).toBe("mom");
-		expect(secrets.decrypt(stored.id, stored.token).reveal()).toBe(
+		const server = (await repo.jellyfinServers())[0];
+		if (!server) throw new Error("Missing server");
+		expect(await service.refreshJellyfinUsers(server.id)).toEqual({
+			kind: "updated",
+			importedCount: 0,
+		});
+		expect((await repo.jellyfinProfile(originalId))?.presence).toBe("missing");
+		expect((await repo.pairing(pairing.id))?.jellyfinProfileId).toBe(
+			originalId,
+		);
+		jellyfin.directory = async () => {
+			throw new MediaError("The media server request failed.", 502);
+		};
+		expect(await service.refreshJellyfinUsers(server.id)).toEqual({
+			kind: "failed",
+			message: "The media server request failed.",
+		});
+		expect((await repo.jellyfinProfile(originalId))?.presence).toBe("missing");
+		expect((await repo.jellyfinServer(server.id))?.lastSuccessAt).toBeTruthy();
+		await expect(service.preview(pairing.id)).rejects.toThrow(
+			"missing, disabled",
+		);
+	});
+
+	it("stores polling settings and polls only when due after service recreation", async () => {
+		let clock = 1_000_000;
+		const { service, repo, secrets, plex, jellyfin } = await setup(() => clock);
+		await service.importJellyfin({
+			kind: "new",
+			url: "http://jellyfin:8096",
+			apiKey: "j-token",
+		});
+		const server = (await repo.jellyfinServers())[0];
+		if (!server) throw new Error("Missing server");
+		let reads = 0;
+		const originalDirectory = jellyfin.directory;
+		jellyfin.directory = async (access) => {
+			reads++;
+			return originalDirectory(access);
+		};
+		await service.configureJellyfinPolling(server.id, true, 5);
+		const restarted = createMediaService({
+			repo,
+			secrets,
+			plex,
+			jellyfin,
+			now: () => clock,
+		});
+		clock += 5 * 60_000 - 1;
+		await restarted.tick();
+		expect(reads).toBe(0);
+		clock++;
+		await restarted.tick();
+		expect(reads).toBe(1);
+		expect((await repo.jellyfinServer(server.id))?.nextAttemptAt).toBe(
+			clock + 5 * 60_000,
+		);
+		await restarted.configureJellyfinPolling(server.id, false, 5);
+		clock += 5 * 60_000;
+		await restarted.tick();
+		expect(reads).toBe(1);
+	});
+
+	it("does not commit a refresh started before key replacement", async () => {
+		const { service, repo, jellyfin, secrets } = await setup();
+		const imported = await service.importJellyfin({
+			kind: "new",
+			url: "http://jellyfin:8096",
+			apiKey: "old-key",
+		});
+		let release = () => {};
+		let entered = () => {};
+		const blocked = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const started = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		jellyfin.directory = async (access) => {
+			if (access.token.reveal() === "old-key") {
+				entered();
+				await blocked;
+				return { server: { id: "j-server", name: "Old" }, users: [] };
+			}
+			return {
+				server: { id: "j-server", name: "New" },
+				users: [
+					{
+						id: "j-child",
+						name: "Fresh",
+						disabled: false,
+						administrator: false,
+						lastActivityDate: null,
+						lastLoginDate: null,
+						details: { Id: "j-child", Name: "Fresh" },
+					},
+				],
+			};
+		};
+		const pending = service.refreshJellyfinUsers(imported.id);
+		await started;
+		const current = await repo.jellyfinServer(imported.id);
+		if (!current) throw new Error("Missing server");
+		await service.importJellyfin({
+			kind: "replace",
+			id: imported.id,
+			revision: current.revision,
+			url: "http://jellyfin:8096",
+			apiKey: "new-key",
+		});
+		release();
+		expect(await pending).toEqual({ kind: "superseded" });
+		expect((await repo.jellyfinProfiles())[0]?.name).toBe("Fresh");
+		const updated = await repo.jellyfinServer(imported.id);
+		if (!updated) throw new Error("Missing server");
+		expect(secrets.decrypt(updated.id, updated.token).reveal()).toBe("new-key");
+	});
+
+	it("backfills shared credentials without changing profile or pairing IDs", async () => {
+		const { db, repo, secrets } = await setup();
+		await db.insert(schema.plexAccounts).values({
+			id: "account",
+			userId: "owner",
+			name: "Owner",
+			token: "legacy",
+		});
+		await db.insert(schema.plexProfiles).values({
+			id: "plex",
+			accountId: "account",
+			userId: "owner",
+			name: "Owner",
+			serverId: "plex-server",
+			serverName: "Plex",
+			url: "http://plex",
+			token: "legacy",
+		});
+		for (const id of ["legacy-a", "legacy-b"])
+			await db.insert(schema.jellyfinProfiles).values({
+				id,
+				userId: id,
+				name: id,
+				serverId: "legacy-server",
+				url: "http://jellyfin",
+				token: secrets.encrypt(id, new Secret("shared-key")),
+			});
+		await db.insert(schema.syncPairings).values({
+			id: "pair",
+			plexProfileId: "plex",
+			jellyfinProfileId: "legacy-a",
+		});
+		await repo.backfillJellyfinServers(secrets);
+		await repo.backfillJellyfinServers(secrets);
+		const servers = await repo.jellyfinServers();
+		expect(servers).toHaveLength(1);
+		expect(secrets.decrypt(servers[0].id, servers[0].token).reveal()).toBe(
 			"shared-key",
 		);
-		expect(JSON.stringify(await service.state())).not.toContain("shared-key");
-		serverId = "another-server";
-		await expect(service.jellyfinUsers({ source: saved })).rejects.toThrow(
-			"different server",
-		);
-		await expect(
-			service.connectJellyfin({ source: saved, userId: "mom" }),
-		).rejects.toThrow("different server");
-	});
-
-	it("rotates a new Jellyfin key across connected users without changing pairings", async () => {
-		const { service, repo, secrets, jellyfin, pair } = await setup();
-		const pairing = await pair();
-		const firstId = pairing.jellyfinProfileId;
-		jellyfin.connect = async ({ url, apiKey, userId }) => ({
-			url,
-			userId,
-			serverId: "j-server",
-			name: userId === "j-child" ? "Child refreshed" : "Mom",
-			token: new Secret(apiKey),
-		});
-		const mom = await service.connectJellyfin({
-			source: { kind: "saved", profileId: firstId },
-			userId: "mom",
-		});
-		const rotatedUrl = "http://jellyfin-new:8096";
-		const rotated = await service.connectJellyfin({
-			source: { kind: "new", url: rotatedUrl, apiKey: "rotated-key" },
-			userId: "j-child",
-		});
-		expect(rotated.id).toBe(firstId);
-		const profiles = await repo.jellyfinProfiles();
-		expect(profiles).toHaveLength(2);
-		for (const profile of profiles) {
-			expect(profile.url).toBe(rotatedUrl);
-			expect(secrets.decrypt(profile.id, profile.token).reveal()).toBe(
-				"rotated-key",
-			);
-		}
-		expect(profiles.find((profile) => profile.id === mom.id)?.name).toBe("Mom");
-		expect(profiles.find((profile) => profile.id === firstId)?.name).toBe(
-			"Child refreshed",
-		);
-		expect((await repo.pairing(pairing.id))?.jellyfinProfileId).toBe(firstId);
-		jellyfin.server = async ({ apiKey }) => {
-			expect(apiKey).toBe("rotated-key");
-			return { id: "j-server", name: "Jellyfin" };
-		};
-		jellyfin.users = async ({ apiKey }) => {
-			expect(apiKey).toBe("rotated-key");
-			return [
-				{ id: "j-child", name: "Child" },
-				{ id: "mom", name: "Mom" },
-			];
-		};
 		expect(
-			await service.jellyfinUsers({
-				source: { kind: "saved", profileId: mom.id },
-			}),
-		).toHaveLength(2);
+			(await repo.jellyfinProfiles()).map((profile) => profile.id).sort(),
+		).toEqual(["legacy-a", "legacy-b"]);
+		expect((await repo.pairing("pair"))?.jellyfinProfileId).toBe("legacy-a");
+		expect(
+			secrets
+				.decrypt(
+					"legacy-a",
+					(await repo.jellyfinProfile("legacy-a"))?.token ?? "",
+				)
+				.reveal(),
+		).toBe("shared-key");
 	});
 
-	const originalUrl = "http://jellyfin:8096";
-	const originalKey = "old-key";
-	for (const rotation of [
-		{ changed: "key", url: originalUrl, apiKey: "rotated-key" },
-		{ changed: "URL", url: "http://jellyfin-new:8096", apiKey: originalKey },
-	]) {
-		it(`does not restore old Jellyfin credentials when the ${rotation.changed} changes during a saved connect`, async () => {
-			const { service, repo, secrets, jellyfin } = await setup();
-			let releaseSaved = () => {};
-			const savedBlocked = new Promise<void>((resolve) => {
-				releaseSaved = resolve;
+	it("leaves conflicting legacy credentials unchanged for explicit repair", async () => {
+		const { db, repo, secrets } = await setup();
+		for (const [id, key] of [
+			["first", "key-one"],
+			["second", "key-two"],
+		])
+			await db.insert(schema.jellyfinProfiles).values({
+				id,
+				userId: id,
+				name: id,
+				serverId: "legacy-server",
+				url: "http://jellyfin",
+				token: secrets.encrypt(id, new Secret(key)),
 			});
-			let savedEntered = () => {};
-			const savedStarted = new Promise<void>((resolve) => {
-				savedEntered = resolve;
-			});
-			jellyfin.connect = async ({ url, apiKey, userId }) => {
-				if (userId === "mom") {
-					savedEntered();
-					await savedBlocked;
-				}
-				return {
-					url,
-					userId,
-					serverId: "j-server",
-					name: userId,
-					token: new Secret(apiKey),
-				};
-			};
-			const child = await service.connectJellyfin({
-				source: { kind: "new", url: originalUrl, apiKey: originalKey },
-				userId: "j-child",
-			});
-			const seeded = await repo.jellyfinProfile(child.id);
-			if (!seeded) throw new Error("Missing seeded Jellyfin profile");
-			expect(secrets.decrypt(seeded.id, seeded.token).reveal()).toBe(
-				originalKey,
-			);
-			const savedConnect = service.connectJellyfin({
-				source: { kind: "saved", profileId: child.id },
-				userId: "mom",
-			});
-			await savedStarted;
-			try {
-				await service.connectJellyfin({
-					source: { kind: "new", url: rotation.url, apiKey: rotation.apiKey },
-					userId: "j-child",
-				});
-			} finally {
-				releaseSaved();
-			}
-			await expect(savedConnect).rejects.toMatchObject({
-				status: 409,
-				message:
-					"The saved Jellyfin connection changed. Select it again and retry.",
-			});
-			const profiles = await repo.jellyfinProfiles();
-			expect(profiles).toHaveLength(1);
-			const [stored] = profiles;
-			if (!stored) throw new Error("Missing Jellyfin profile");
-			expect(stored.id).toBe(child.id);
-			expect(stored.url).toBe(rotation.url);
-			expect(secrets.decrypt(stored.id, stored.token).reveal()).toBe(
-				rotation.apiKey,
-			);
-		});
-	}
+		await expect(repo.backfillJellyfinServers(secrets)).rejects.toThrow(
+			"first, second",
+		);
+		expect(await repo.jellyfinServers()).toEqual([]);
+		expect((await repo.jellyfinProfile("first"))?.connectionId).toBeNull();
+		expect(
+			secrets
+				.decrypt("second", (await repo.jellyfinProfile("second"))?.token ?? "")
+				.reveal(),
+		).toBe("key-two");
+	});
 
-	it("rolls back every Jellyfin credential update if one row fails", async () => {
-		const { repo, pair } = await setup();
-		const pairing = await pair();
-		const original = await repo.jellyfinProfile(pairing.jellyfinProfileId);
-		if (!original) throw new Error("Missing Jellyfin profile");
-		await expect(
-			repo.saveJellyfinProfiles([
-				{ ...original, url: "http://changed:8096" },
-				{ ...original, id: "duplicate-user-row" },
-			]),
-		).rejects.toThrow();
-		expect(await repo.jellyfinProfile(original.id)).toEqual(original);
+	it("repair command verifies server identity before replacing conflicting keys", async () => {
+		const { db, repo, secrets, databaseUrl } = await setup();
+		for (const [id, key] of [
+			["first", "key-one"],
+			["second", "key-two"],
+		])
+			await db.insert(schema.jellyfinProfiles).values({
+				id,
+				userId: id,
+				name: id,
+				serverId: "legacy-server",
+				url: "http://old-jellyfin",
+				token: secrets.encrypt(id, new Secret(key)),
+			});
+		const fixture = Bun.serve({
+			port: 0,
+			fetch(request) {
+				const path = new URL(request.url).pathname;
+				if (path === "/System/Info")
+					return Response.json({ Id: "legacy-server", ServerName: "Jellyfin" });
+				if (path === "/Users")
+					return Response.json([{ Id: "first", Name: "First" }]);
+				return Response.json({}, { status: 404 });
+			},
+		});
+		try {
+			const command = Bun.spawn(
+				[process.execPath, "scripts/repair-jellyfin-legacy.ts"],
+				{
+					cwd: process.cwd(),
+					stdout: "pipe",
+					stderr: "pipe",
+					env: {
+						...process.env,
+						DATABASE_URL: databaseUrl,
+						CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+						JELLYFIN_SERVER_ID: "legacy-server",
+						JELLYFIN_URL: fixture.url.toString(),
+						JELLYFIN_API_KEY: "repaired-key",
+					},
+				},
+			);
+			expect(await command.exited).toBe(0);
+			expect(
+				secrets
+					.decrypt("first", (await repo.jellyfinProfile("first"))?.token ?? "")
+					.reveal(),
+			).toBe("repaired-key");
+			expect(
+				secrets
+					.decrypt(
+						"second",
+						(await repo.jellyfinProfile("second"))?.token ?? "",
+					)
+					.reveal(),
+			).toBe("repaired-key");
+			await repo.backfillJellyfinServers(secrets);
+			expect((await repo.jellyfinServers())[0]?.externalId).toBe(
+				"legacy-server",
+			);
+		} finally {
+			fixture.stop(true);
+		}
 	});
 
 	it("uses the most recently signed-in Plex account after a restart", async () => {
@@ -440,7 +609,7 @@ describe("media account and sync service", () => {
 		await pair();
 		expect(state.homePin).toBe("1234");
 		expect((await repo.plexProfiles())[0]?.token.startsWith("v1:")).toBe(true);
-		expect((await repo.jellyfinProfiles())[0]?.token.startsWith("v1:")).toBe(
+		expect((await repo.jellyfinServers())[0]?.token.startsWith("v1:")).toBe(
 			true,
 		);
 		expect(JSON.stringify(await service.state())).not.toMatch(
@@ -664,26 +833,6 @@ it("locks a run before the first database lookup resolves", async () => {
 		release();
 	}
 	expect(await first).toMatchObject({ status: "completed", applied: 1 });
-});
-
-it("reuses the encrypted row identity during concurrent reconnects", async () => {
-	const { service, repo, secrets } = await setup();
-	const input = {
-		source: {
-			kind: "new" as const,
-			url: "http://jellyfin:8096",
-			apiKey: "j-token",
-		},
-		userId: "j-child",
-	};
-	const [first, second] = await Promise.all([
-		service.connectJellyfin(input),
-		service.connectJellyfin(input),
-	]);
-	expect(first.id).toBe(second.id);
-	const [stored] = await repo.jellyfinProfiles();
-	if (!stored) throw new Error("Missing Jellyfin profile");
-	expect(secrets.decrypt(stored.id, stored.token).reveal()).toBe("j-token");
 });
 
 it("runs one automatic tick when two ticks await the same pairing read", async () => {

@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
-import type { createSecretStorage } from "~/backend/secrets/storage";
+import { z } from "zod";
+import { type createSecretStorage, Secret } from "~/backend/secrets/storage";
+import {
+	DEFAULT_USER_POLL_MINUTES,
+	MAX_USER_POLL_MINUTES,
+	MILLISECONDS_PER_MINUTE,
+	MIN_USER_POLL_MINUTES,
+} from "./constants";
 import {
 	type JellyfinProvider,
-	type JellyfinSource,
 	type ManualMatch,
 	MediaError,
 	type PlexIdentity,
@@ -32,6 +38,11 @@ type Selection = {
 	servers: PlexServer[];
 	expiresAt: number;
 };
+const storedUserSummary = z.object({
+	Policy: z.object({ IsAdministrator: z.boolean().optional() }).nullish(),
+	LastActivityDate: z.string().nullish(),
+	LastLoginDate: z.string().nullish(),
+});
 export function createMediaService({
 	repo,
 	secrets,
@@ -47,6 +58,14 @@ export function createMediaService({
 }) {
 	const logins = new Map<string, PendingLogin>();
 	const selections = new Map<string, Selection>();
+	const refreshes = new Map<
+		string,
+		Promise<{
+			kind: "updated" | "superseded" | "failed";
+			importedCount?: number;
+			message?: string;
+		}>
+	>();
 	let running = false;
 	let ticking = false;
 	let connectionWrites: Promise<void> = Promise.resolve();
@@ -123,11 +142,17 @@ export function createMediaService({
 		]);
 		if (!p || !j)
 			throw new MediaError("Reconnect the profiles for this pairing.");
+		if (j.presence !== "present" || j.disabled || !j.connectionId)
+			throw new MediaError(
+				"This Jellyfin user is missing, disabled, or awaiting refresh.",
+			);
+		const server = await repo.jellyfinServer(j.connectionId);
+		if (!server) throw new MediaError("Reconnect the Jellyfin server.");
 		const plexAccess = { url: p.url, token: secrets.decrypt(p.id, p.token) };
 		const jellyfinAccess = {
-			url: j.url,
+			url: server.url,
 			userId: j.userId,
-			token: secrets.decrypt(j.id, j.token),
+			token: secrets.decrypt(server.id, server.token),
 		};
 		await plex.verifyServer(plexAccess, p.serverId);
 		const [plexItems, jellyfinItems] = await Promise.all([
@@ -147,6 +172,213 @@ export function createMediaService({
 		};
 	}
 	const service = {
+		async jellyfinDirectory() {
+			const [servers, users, pairings] = await Promise.all([
+				repo.jellyfinServers(),
+				repo.jellyfinProfiles(),
+				repo.pairings(),
+			]);
+			return {
+				servers: servers.map(
+					({
+						id,
+						externalId,
+						name,
+						url,
+						revision,
+						pollEnabled,
+						intervalMinutes,
+						nextAttemptAt,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}) => ({
+						id,
+						externalId,
+						name,
+						url,
+						revision,
+						pollEnabled,
+						intervalMinutes,
+						nextAttemptAt,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}),
+				),
+				users: users.map((user) => {
+					const summary = storedUserSummary.safeParse(user.userDetails);
+					return {
+						id: user.id,
+						userId: user.userId,
+						name: user.name,
+						serverId: user.connectionId,
+						presence: user.presence,
+						disabled: user.disabled,
+						userDetails: user.userDetails,
+						administrator: summary.success
+							? (summary.data.Policy?.IsAdministrator ?? false)
+							: false,
+						lastActivityDate: summary.success
+							? (summary.data.LastActivityDate ?? null)
+							: null,
+						lastLoginDate: summary.success
+							? (summary.data.LastLoginDate ?? null)
+							: null,
+						pairingId:
+							pairings.find((pair) => pair.jellyfinProfileId === user.id)?.id ??
+							null,
+					};
+				}),
+			};
+		},
+		async importJellyfin(
+			input:
+				| { kind: "new"; url: string; apiKey: string }
+				| {
+						kind: "replace";
+						id: string;
+						revision: number;
+						url: string;
+						apiKey: string;
+				  },
+		) {
+			const url = serverUrl(input.url);
+			const directory = await jellyfin.directory({
+				url,
+				token: new Secret(input.apiKey),
+			});
+			return withConnectionWrite(async () => {
+				ensureIdle();
+				if (input.kind === "new") {
+					if (
+						(await repo.jellyfinServers()).some(
+							(server) => server.externalId === directory.server.id,
+						)
+					)
+						throw new MediaError(
+							"This Jellyfin server is already connected. Replace its key instead.",
+							409,
+						);
+					const id = randomUUID();
+					await repo.addJellyfinServer(
+						{
+							id,
+							externalId: directory.server.id,
+							name: directory.server.name,
+							url,
+							token: secrets.encrypt(id, new Secret(input.apiKey)),
+							intervalMinutes: DEFAULT_USER_POLL_MINUTES,
+							nextAttemptAt:
+								now() + DEFAULT_USER_POLL_MINUTES * MILLISECONDS_PER_MINUTE,
+						},
+						directory.users,
+						now(),
+					);
+					return { id };
+				}
+				const existing = await repo.jellyfinServer(input.id);
+				if (!existing) throw new MediaError("Jellyfin server not found.", 404);
+				if (directory.server.id !== existing.externalId)
+					throw new MediaError(
+						"The Jellyfin URL points to a different server.",
+						409,
+					);
+				const changed = await repo.replaceJellyfinServer(
+					input.id,
+					input.revision,
+					{
+						url,
+						name: directory.server.name,
+						token: secrets.encrypt(input.id, new Secret(input.apiKey)),
+					},
+					directory.users,
+					now(),
+				);
+				if (!changed)
+					throw new MediaError(
+						"The Jellyfin connection changed. Reload and try again.",
+						409,
+					);
+				return { id: input.id };
+			});
+		},
+		async refreshJellyfinUsers(id: string) {
+			const active = refreshes.get(id);
+			if (active) return active;
+			const work = (async () => {
+				const claim = await repo.claimJellyfinRefresh(id, now());
+				if (!claim) throw new MediaError("Jellyfin server not found.", 404);
+				try {
+					const directory = await jellyfin.directory({
+						url: claim.url,
+						token: secrets.decrypt(claim.id, claim.token),
+					});
+					if (directory.server.id !== claim.externalId)
+						throw new MediaError(
+							"The saved Jellyfin URL points to a different server.",
+							409,
+						);
+					const updated = await repo.finishJellyfinRefresh(
+						id,
+						claim.revision,
+						directory.users,
+						now(),
+						directory.server.name,
+					);
+					return updated
+						? {
+								kind: "updated" as const,
+								importedCount: directory.users.length,
+							}
+						: { kind: "superseded" as const };
+				} catch (error) {
+					const message =
+						error instanceof MediaError
+							? error.message
+							: "Could not refresh Jellyfin users. Check the server and API key.";
+					const saved = await repo.failJellyfinRefresh(
+						id,
+						claim.revision,
+						message,
+					);
+					return saved
+						? { kind: "failed" as const, message }
+						: { kind: "superseded" as const };
+				}
+			})();
+			refreshes.set(id, work);
+			try {
+				return await work;
+			} finally {
+				refreshes.delete(id);
+			}
+		},
+		async configureJellyfinPolling(
+			id: string,
+			enabled: boolean,
+			intervalMinutes: number,
+		) {
+			if (
+				!Number.isInteger(intervalMinutes) ||
+				intervalMinutes < MIN_USER_POLL_MINUTES ||
+				intervalMinutes > MAX_USER_POLL_MINUTES
+			)
+				throw new MediaError(
+					"Choose a polling interval from 1 to 1440 minutes.",
+				);
+			const server = await repo.configureJellyfinPolling(
+				id,
+				enabled,
+				intervalMinutes,
+				now(),
+			);
+			if (!server) throw new MediaError("Jellyfin server not found.", 404);
+			return {
+				enabled: server.pollEnabled,
+				intervalMinutes: server.intervalMinutes,
+			};
+		},
 		async library(id: string) {
 			const { plex, jellyfin } = await snapshot(id);
 			return { plex, jellyfin, matches: await repo.manualMatches(id) };
@@ -197,6 +429,7 @@ export function createMediaService({
 				activePlexAccountId,
 				plexProfiles,
 				jellyfinProfiles,
+				jellyfinServers,
 				pairings,
 				runs,
 			] = await Promise.all([
@@ -204,6 +437,7 @@ export function createMediaService({
 				repo.activePlexAccountId(),
 				repo.plexProfiles(),
 				repo.jellyfinProfiles(),
+				repo.jellyfinServers(),
 				repo.pairings(),
 				repo.runs(),
 			]);
@@ -228,12 +462,26 @@ export function createMediaService({
 					}),
 				),
 				jellyfinProfiles: jellyfinProfiles.map(
-					({ id, userId, name, serverId, url }) => ({
+					({
 						id,
 						userId,
 						name,
 						serverId,
 						url,
+						connectionId,
+						presence,
+						disabled,
+					}) => ({
+						id,
+						userId,
+						name,
+						serverId,
+						url:
+							jellyfinServers.find((server) => server.id === connectionId)
+								?.url ?? url,
+						connectionId,
+						presence,
+						disabled,
 					}),
 				),
 				pairings,
@@ -410,117 +658,6 @@ export function createMediaService({
 			selections.delete(input.selectionId);
 			return { id };
 		},
-		async jellyfinUsers(input: { source: JellyfinSource }) {
-			if (input.source.kind === "new")
-				return jellyfin.users({
-					url: serverUrl(input.source.url),
-					apiKey: input.source.apiKey,
-				});
-			const stored = await repo.jellyfinProfile(input.source.profileId);
-			if (!stored) throw new MediaError("Jellyfin profile not found.", 404);
-			const apiKey = secrets.decrypt(stored.id, stored.token).reveal();
-			const server = await jellyfin.server({
-				url: stored.url,
-				apiKey,
-			});
-			if (server.id !== stored.serverId)
-				throw new MediaError(
-					"The saved Jellyfin URL points to a different server.",
-					409,
-				);
-			return jellyfin.users({ url: stored.url, apiKey });
-		},
-		async connectJellyfin(input: { source: JellyfinSource; userId: string }) {
-			ensureIdle();
-			let source:
-				| { kind: "new"; url: string; apiKey: string }
-				| {
-						kind: "saved";
-						profileId: string;
-						url: string;
-						apiKey: string;
-						serverId: string;
-				  };
-			if (input.source.kind === "new") {
-				source = {
-					kind: "new",
-					url: serverUrl(input.source.url),
-					apiKey: input.source.apiKey,
-				};
-			} else {
-				const stored = await repo.jellyfinProfile(input.source.profileId);
-				if (!stored) throw new MediaError("Jellyfin profile not found.", 404);
-				source = {
-					kind: "saved",
-					profileId: input.source.profileId,
-					url: stored.url,
-					apiKey: secrets.decrypt(stored.id, stored.token).reveal(),
-					serverId: stored.serverId,
-				};
-			}
-			const identity = await jellyfin.connect({
-				url: source.url,
-				apiKey: source.apiKey,
-				userId: input.userId,
-			});
-			if (source.kind === "saved" && identity.serverId !== source.serverId)
-				throw new MediaError(
-					"The saved Jellyfin URL points to a different server.",
-					409,
-				);
-			ensureIdle();
-			const id = await withConnectionWrite(async () => {
-				ensureIdle();
-				if (source.kind === "saved") {
-					const stored = await repo.jellyfinProfile(source.profileId);
-					if (
-						!stored ||
-						stored.url !== source.url ||
-						stored.serverId !== source.serverId ||
-						secrets.decrypt(stored.id, stored.token).reveal() !== source.apiKey
-					)
-						throw new MediaError(
-							"The saved Jellyfin connection changed. Select it again and retry.",
-							409,
-						);
-				}
-				const existingProfiles = await repo.jellyfinProfiles();
-				const existing = existingProfiles.find(
-					(item) =>
-						item.userId === identity.userId &&
-						item.serverId === identity.serverId,
-				);
-				const profileId = existing?.id ?? randomUUID();
-				const selected = {
-					id: profileId,
-					userId: identity.userId,
-					name: identity.name,
-					serverId: identity.serverId,
-					url: identity.url,
-					token: secrets.encrypt(profileId, identity.token),
-				};
-				const rows =
-					input.source.kind === "new"
-						? [
-								...existingProfiles
-									.filter(
-										(item) =>
-											item.serverId === identity.serverId &&
-											item.id !== profileId,
-									)
-									.map((item) => ({
-										...item,
-										url: identity.url,
-										token: secrets.encrypt(item.id, identity.token),
-									})),
-								selected,
-							]
-						: [selected];
-				await repo.saveJellyfinProfiles(rows);
-				return profileId;
-			});
-			return { id };
-		},
 		async addPairing(input: {
 			plexProfileId: string;
 			jellyfinProfileId: string;
@@ -532,14 +669,24 @@ export function createMediaService({
 			]);
 			if (!plexProfile || !jellyfinProfile)
 				throw new MediaError("Select a saved Plex and Jellyfin profile.");
+			if (jellyfinProfile.presence !== "present" || jellyfinProfile.disabled)
+				throw new MediaError(
+					"Refresh this Jellyfin user before pairing. Missing or disabled users cannot be paired.",
+					409,
+				);
 			ensureIdle();
 			const result = await repo.addPairing({ id: randomUUID(), ...input });
-			if (!result)
+			if (result.kind === "unavailable")
+				throw new MediaError(
+					"Refresh this Jellyfin user before pairing. Missing or disabled users cannot be paired.",
+					409,
+				);
+			if (result.kind === "conflict")
 				throw new MediaError(
 					"Each profile can belong to only one pairing. This prevents merging different users' histories.",
 					409,
 				);
-			return result;
+			return result.row;
 		},
 		async automatic(id: string, enabled: boolean) {
 			await pairing(id);
@@ -562,12 +709,18 @@ export function createMediaService({
 			}
 		},
 		async tick() {
-			if (running || ticking) return;
+			if (ticking) return;
 			ticking = true;
 			try {
+				for (const server of await repo.dueJellyfinServers(now()))
+					await service.refreshJellyfinUsers(server.id);
+				if (running) return;
 				for (const pair of await repo.pairings()) {
+					const profile = await repo.jellyfinProfile(pair.jellyfinProfileId);
 					if (
 						pair.automatic &&
+						profile?.presence === "present" &&
+						!profile.disabled &&
 						now() - pair.lastAttemptAt >= SYNC_INTERVAL_MS
 					) {
 						if (running) return;

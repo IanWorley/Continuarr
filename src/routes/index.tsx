@@ -2,12 +2,10 @@ import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import type { MediaService } from "~/backend/media/service";
-import { JellyfinConnect } from "~/components/media/JellyfinConnect";
 import { PlexConnect } from "~/components/media/PlexConnect";
 import {
 	buttonClass,
 	ErrorMessage,
-	fieldClass,
 	type MediaState,
 	responseData,
 	secondaryClass,
@@ -77,11 +75,11 @@ function Home() {
 					<section aria-labelledby="connections-heading">
 						<div className="mb-5">
 							<h2 id="connections-heading" className="text-xl font-semibold">
-								1. Connect your profiles
+								Connect Plex
 							</h2>
 							<p className="mt-1 text-sm text-slate-400">
-								Choose the person on each server whose watched history you want
-								to sync.
+								Choose a Plex profile here. Add Jellyfin servers and pair people
+								on the Users page.
 							</p>
 						</div>
 						<div className="grid gap-5 lg:grid-cols-2">
@@ -91,10 +89,6 @@ function Home() {
 									(account) => account.id === state.data.activePlexAccountId,
 								)}
 								profiles={state.data.plexProfiles}
-								refresh={refresh}
-							/>
-							<JellyfinConnect
-								profiles={state.data.jellyfinProfiles}
 								refresh={refresh}
 							/>
 						</div>
@@ -113,115 +107,16 @@ function Pairings({
 	state: MediaState;
 	refresh: () => Promise<void>;
 }) {
-	const action = useAction();
-	const [plexProfileId, setPlexProfileId] = useState("");
-	const [jellyfinProfileId, setJellyfinProfileId] = useState("");
-	const plexOptions = state.plexProfiles.filter(
-		(profile) =>
-			!state.pairings.some((pair) => pair.plexProfileId === profile.id),
-	);
-	const jellyfinOptions = state.jellyfinProfiles.filter(
-		(profile) =>
-			!state.pairings.some((pair) => pair.jellyfinProfileId === profile.id),
-	);
 	return (
 		<section aria-labelledby="pairings-heading">
 			<h2 id="pairings-heading" className="text-xl font-semibold">
-				2. Pair people and sync
+				Pairings and sync
 			</h2>
 			<p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
 				Pair the same person across both servers. If a movie or episode is
 				watched on either server, sync marks it watched on the other. Nothing is
 				marked unwatched.
 			</p>
-			<div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
-				{plexOptions.length > 0 && jellyfinOptions.length > 0 ? (
-					<form
-						className="space-y-4"
-						onSubmit={(event) => {
-							event.preventDefault();
-							void action.perform(async () => {
-								responseData(
-									await getApi().v1.media.pairings.post({
-										plexProfileId,
-										jellyfinProfileId,
-									}),
-								);
-								setPlexProfileId("");
-								setJellyfinProfileId("");
-								await refresh();
-							});
-						}}
-					>
-						<div className="grid items-end gap-4 sm:grid-cols-[1fr_1fr_auto]">
-							<label
-								className="block text-sm text-slate-300"
-								htmlFor="pair-plex"
-							>
-								Plex profile
-								<select
-									id="pair-plex"
-									className={fieldClass}
-									required
-									value={plexProfileId}
-									disabled={action.busy || state.running}
-									onChange={(event) => setPlexProfileId(event.target.value)}
-								>
-									<option value="">Choose a person</option>
-									{plexOptions.map((profile) => (
-										<option key={profile.id} value={profile.id}>
-											{profile.name} · {profile.serverName}
-										</option>
-									))}
-								</select>
-							</label>
-							<label
-								className="block text-sm text-slate-300"
-								htmlFor="pair-jellyfin"
-							>
-								Jellyfin profile
-								<select
-									id="pair-jellyfin"
-									className={fieldClass}
-									required
-									value={jellyfinProfileId}
-									disabled={action.busy || state.running}
-									onChange={(event) => setJellyfinProfileId(event.target.value)}
-								>
-									<option value="">Choose the same person</option>
-									{jellyfinOptions.map((profile) => (
-										<option key={profile.id} value={profile.id}>
-											{profile.name} · {profile.url}
-										</option>
-									))}
-								</select>
-							</label>
-							<button
-								type="submit"
-								className={buttonClass}
-								disabled={
-									action.busy ||
-									state.running ||
-									!plexProfileId ||
-									!jellyfinProfileId
-								}
-							>
-								{action.busy ? "Saving…" : "Create pairing"}
-							</button>
-						</div>
-						<p className="text-xs text-slate-500">
-							Each saved profile can belong to one pairing.
-						</p>
-					</form>
-				) : (
-					<p className="text-sm text-slate-400">
-						{state.pairings.length
-							? "Connect another profile on each server to add another person."
-							: "Connect a Plex profile and a Jellyfin profile above to create your first pairing."}
-					</p>
-				)}
-				<ErrorMessage message={action.error} />
-			</div>
 			{state.running && (
 				<p role="status" className="mt-4 text-sm text-cyan-200">
 					A sync is running. Results will update automatically.

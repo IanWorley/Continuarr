@@ -423,7 +423,17 @@ describe("Jellyfin provider", () => {
 			)
 				return json({}, 401);
 			if (url.pathname === "/jf/Users")
-				return json([{ Id: "user-1", Name: "Ian" }]);
+				return json([
+					{
+						Id: "user-1",
+						Name: "Ian",
+						ServerId: null,
+						Policy: null,
+						Configuration: { SubtitleMode: "Default" },
+						ProviderIds: { custom: "remote-1" },
+						LastActivityDate: "2026-09-26T12:00:00Z",
+					},
+				]);
 			if (url.pathname === "/jf/Users/user-1")
 				return json({ Id: "user-1", Name: "Ian" });
 			if (url.pathname === "/jf/Users/user-1/Items") {
@@ -449,17 +459,27 @@ describe("Jellyfin provider", () => {
 		const provider = createJellyfinProvider({
 			clientIdentifier: JELLYFIN_IDENTIFIER,
 		});
+		const directory = await provider.directory({
+			url: `${baseUrl}/jf`,
+			token: new Secret("user-token"),
+		});
 		expect(
-			await provider.users({ url: `${baseUrl}/jf`, apiKey: "user-token" }),
+			directory.users.map((user) => ({ id: user.id, name: user.name })),
 		).toEqual([{ id: "user-1", name: "Ian" }]);
-		const access = await provider.connect({
+		expect(directory.users[0]?.details).toEqual({
+			Id: "user-1",
+			Name: "Ian",
+			ServerId: null,
+			Policy: null,
+			Configuration: { SubtitleMode: "Default" },
+			ProviderIds: { custom: "remote-1" },
+			LastActivityDate: "2026-09-26T12:00:00Z",
+		});
+		const access = {
 			url: `${baseUrl}/jf`,
 			userId: "user-1",
-			apiKey: "user-token",
-		});
-		expect(access.serverId).toBe("server-1");
-		expect(access.userId).toBe("user-1");
-		expect(access.name).toBe("Ian");
+			token: new Secret("user-token"),
+		};
 		const items = await provider.items(access);
 		expect(items).toHaveLength(PAGE_SIZE + 1);
 		expect(items[0]).toEqual({
@@ -481,22 +501,39 @@ describe("Jellyfin provider", () => {
 			clientIdentifier: JELLYFIN_IDENTIFIER,
 		});
 		await expect(
-			provider.users({ url, apiKey: "invalid-key" }),
+			provider.directory({ url, token: new Secret("invalid-key") }),
 		).rejects.toThrow("rejected these credentials");
 	});
 
-	it("rejects a different user returned for the selected identity", async () => {
+	it("rejects duplicate users", async () => {
 		const url = serve((request) =>
 			new URL(request.url).pathname === "/System/Info"
 				? json({ Id: "server", ServerName: "Jellyfin" })
-				: json({ Id: "other-user", Name: "Other" }),
+				: json([
+						{ Id: "same", Name: "One" },
+						{ Id: "same", Name: "Two" },
+					]),
 		);
 		const provider = createJellyfinProvider({
 			clientIdentifier: JELLYFIN_IDENTIFIER,
 		});
 		await expect(
-			provider.connect({ url, apiKey: "api-key", userId: "selected-user" }),
-		).rejects.toThrow("different user identity");
+			provider.directory({ url, token: new Secret("api-key") }),
+		).rejects.toThrow("duplicate user");
+	});
+
+	it("rejects a user tagged with another server identity", async () => {
+		const url = serve((request) =>
+			new URL(request.url).pathname === "/System/Info"
+				? json({ Id: "server", ServerName: "Jellyfin" })
+				: json([{ Id: "user", Name: "Ian", ServerId: "other-server" }]),
+		);
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		await expect(
+			provider.directory({ url, token: new Secret("api-key") }),
+		).rejects.toThrow("different server");
 	});
 
 	it("rejects a response without played state", async () => {

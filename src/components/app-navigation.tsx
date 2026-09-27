@@ -9,6 +9,7 @@ type NavigationDestination = {
 };
 const destinations = [
 	{ to: "/", label: "Connections & sync" },
+	{ to: "/users", label: "Users" },
 	{ to: "/matches", label: "Manual matching" },
 ] satisfies NavigationDestination[];
 const linkClass =

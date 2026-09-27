@@ -88,7 +88,13 @@ describe("PostgreSQL schema migrations", () => {
 		expect(await db.select().from(schema.plexAccounts)).toEqual([account]);
 		expect(await db.select().from(schema.plexProfiles)).toEqual([plexProfile]);
 		expect(await db.select().from(schema.jellyfinProfiles)).toEqual([
-			jellyfinProfile,
+			{
+				...jellyfinProfile,
+				connectionId: null,
+				userDetails: null,
+				presence: "unverified",
+				disabled: false,
+			},
 		]);
 		expect(await db.select().from(schema.syncPairings)).toEqual([
 			{

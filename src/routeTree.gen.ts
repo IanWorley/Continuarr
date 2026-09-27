@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as UsersRouteImport } from './routes/users'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
 import { Route as PlexIndexRouteImport } from './routes/plex/index'
 
@@ -30,6 +31,11 @@ const SignInRoute = SignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UsersRoute = UsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
@@ -45,6 +51,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/matches': typeof MatchesRoute
   '/sign-in': typeof SignInRoute
+  '/users': typeof UsersRoute
   '/api/$': typeof ApiSplatRoute
   '/plex/': typeof PlexIndexRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/matches': typeof MatchesRoute
   '/sign-in': typeof SignInRoute
+  '/users': typeof UsersRoute
   '/api/$': typeof ApiSplatRoute
   '/plex': typeof PlexIndexRoute
 }
@@ -60,21 +68,24 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/matches': typeof MatchesRoute
   '/sign-in': typeof SignInRoute
+  '/users': typeof UsersRoute
   '/api/$': typeof ApiSplatRoute
   '/plex/': typeof PlexIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/matches' | '/sign-in' | '/api/$' | '/plex/'
+  fullPaths: '/' | '/matches' | '/sign-in' | '/users' | '/api/$' | '/plex/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/matches' | '/sign-in' | '/api/$' | '/plex'
-  id: '__root__' | '/' | '/matches' | '/sign-in' | '/api/$' | '/plex/'
+  to: '/' | '/matches' | '/sign-in' | '/users' | '/api/$' | '/plex'
+  id:
+    '__root__' | '/' | '/matches' | '/sign-in' | '/users' | '/api/$' | '/plex/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   MatchesRoute: typeof MatchesRoute
   SignInRoute: typeof SignInRoute
+  UsersRoute: typeof UsersRoute
   ApiSplatRoute: typeof ApiSplatRoute
   PlexIndexRoute: typeof PlexIndexRoute
 }
@@ -102,6 +113,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/users': {
+      id: '/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof UsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/$': {
       id: '/api/$'
       path: '/api/$'
@@ -123,6 +141,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   MatchesRoute: MatchesRoute,
   SignInRoute: SignInRoute,
+  UsersRoute: UsersRoute,
   ApiSplatRoute: ApiSplatRoute,
   PlexIndexRoute: PlexIndexRoute,
 }
