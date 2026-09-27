@@ -46,7 +46,9 @@ export interface PlexProvider {
 	startLogin(): Promise<PlexPin>;
 	pollLogin(pin: Pick<PlexPin, "id" | "code">): Promise<PlexIdentity | null>;
 	homeUsers(token: Secret): Promise<PlexHomeUser[]>;
-	sharedUsers(token: Secret): Promise<PlexSharedUser[]>;
+	sharedUsers(
+		token: Secret,
+	): Promise<{ users: PlexSharedUser[]; issues: string[] }>;
 	switchUser(input: {
 		token: Secret;
 		userId: string;

@@ -46,7 +46,7 @@ async function setup() {
 		}),
 		pollLogin: async () => state.plexLogin,
 		homeUsers: async () => [{ id: "child", name: "Child", protected: true }],
-		sharedUsers: async () => [],
+		sharedUsers: async () => ({ users: [], issues: [] }),
 		switchUser: async ({ userId, pin }) => {
 			state.homePin = pin ?? "";
 			return { userId, name: "Child", token: new Secret("child-token") };
@@ -122,21 +122,24 @@ async function setup() {
 describe("media account and sync service", () => {
 	it("shows owner, Home, and shared users and saves only the friend's server token", async () => {
 		const { service, repo, secrets, plex } = await setup();
-		plex.sharedUsers = async () => [
-			{ id: "child", name: "Duplicate", servers: [] },
-			{
-				id: "friend",
-				name: "Friend",
-				servers: [
-					{
-						id: "machine",
-						name: "Plex",
-						token: new Secret("friend-server-token"),
-						connections: ["http://plex:32400"],
-					},
-				],
-			},
-		];
+		plex.sharedUsers = async () => ({
+			issues: ["Could not load shared Plex users from Offline. Try again."],
+			users: [
+				{ id: "child", name: "Duplicate", servers: [] },
+				{
+					id: "friend",
+					name: "Friend",
+					servers: [
+						{
+							id: "machine",
+							name: "Plex",
+							token: new Secret("friend-server-token"),
+							connections: ["http://plex:32400"],
+						},
+					],
+				},
+			],
+		});
 		plex.switchUser = async () => {
 			throw new Error("Shared users must not use Home switching");
 		};
@@ -149,7 +152,7 @@ describe("media account and sync service", () => {
 				{ kind: "home", id: "child", name: "Child", protected: true },
 				{ kind: "shared", id: "friend", name: "Friend" },
 			],
-			issues: [],
+			issues: ["Could not load shared Plex users from Offline. Try again."],
 		});
 		const selection = await service.selectProfile({
 			accountId: login.accountId,
@@ -190,20 +193,23 @@ describe("media account and sync service", () => {
 
 	it("does not treat a protected Home user as shared when Home discovery fails", async () => {
 		const { service, plex, state } = await setup();
-		plex.sharedUsers = async () => [
-			{
-				id: "child",
-				name: "Child",
-				servers: [
-					{
-						id: "machine",
-						name: "Plex",
-						token: new Secret("shared-token"),
-						connections: ["http://plex:32400"],
-					},
-				],
-			},
-		];
+		plex.sharedUsers = async () => ({
+			issues: [],
+			users: [
+				{
+					id: "child",
+					name: "Child",
+					servers: [
+						{
+							id: "machine",
+							name: "Plex",
+							token: new Secret("shared-token"),
+							connections: ["http://plex:32400"],
+						},
+					],
+				},
+			],
+		});
 		const attempt = await service.startLogin();
 		const login = await service.pollLogin(attempt.id);
 		if (login.status !== "linked") throw new Error("Expected Plex login");

@@ -564,28 +564,36 @@ function JellyfinConnect({
 		Awaited<ReturnType<MediaService["jellyfinUsers"]>>
 	>([]);
 	const [savedProfileId, setSavedProfileId] = useState(profiles[0]?.id ?? "");
+	const activeSavedProfileId = profiles.some(
+		(profile) => profile.id === savedProfileId,
+	)
+		? savedProfileId
+		: "";
 	const savedServerMap = new Map<
 		string,
 		MediaState["jellyfinProfiles"][number]
 	>();
 	for (const profile of profiles) {
-		if (!savedServerMap.has(profile.serverId) || profile.id === savedProfileId)
+		if (
+			!savedServerMap.has(profile.serverId) ||
+			profile.id === activeSavedProfileId
+		)
 			savedServerMap.set(profile.serverId, profile);
 	}
 	const savedServers = [...savedServerMap.values()];
 	const savedUsers = useQuery({
-		queryKey: ["jellyfin-users", savedProfileId],
-		enabled: !!savedProfileId,
+		queryKey: ["jellyfin-users", activeSavedProfileId],
+		enabled: !!activeSavedProfileId,
 		queryFn: async () =>
 			responseData(
 				await getApi().v1.media.jellyfin.users.post({
-					source: { kind: "saved", profileId: savedProfileId },
+					source: { kind: "saved", profileId: activeSavedProfileId },
 				}),
 			),
 	});
-	const users = savedProfileId ? (savedUsers.data ?? []) : newUsers;
-	const source: JellyfinSource = savedProfileId
-		? { kind: "saved", profileId: savedProfileId }
+	const users = activeSavedProfileId ? (savedUsers.data ?? []) : newUsers;
+	const source: JellyfinSource = activeSavedProfileId
+		? { kind: "saved", profileId: activeSavedProfileId }
 		: { kind: "new", url, apiKey };
 	const [message, setMessage] = useState("");
 	return (
@@ -600,7 +608,7 @@ function JellyfinConnect({
 				</h3>
 			</div>
 			<p className="mb-4 text-sm leading-6 text-slate-400">
-				{savedProfileId
+				{activeSavedProfileId
 					? "Choose a person from this server. Continuarr reuses its saved API key."
 					: "Create an API key in Jellyfin’s Dashboard → API Keys, then choose the person to sync. The key grants server-wide access and is stored encrypted."}
 			</p>
@@ -626,7 +634,7 @@ function JellyfinConnect({
 						);
 						setMessage("Jellyfin profile connected. Create a pairing below.");
 						await refresh();
-						if (!savedProfileId) setSavedProfileId(connected.id);
+						if (!activeSavedProfileId) setSavedProfileId(connected.id);
 						setApiKey("");
 						setUsers([]);
 						setUserId("");
@@ -642,7 +650,7 @@ function JellyfinConnect({
 						<select
 							id="jellyfin-source"
 							className={fieldClass}
-							value={savedProfileId}
+							value={activeSavedProfileId}
 							disabled={action.busy}
 							onChange={(event) => {
 								setSavedProfileId(event.target.value);
@@ -660,7 +668,7 @@ function JellyfinConnect({
 						</select>
 					</label>
 				)}
-				{!savedProfileId && (
+				{!activeSavedProfileId && (
 					<>
 						<label
 							className="block text-sm text-slate-300"
@@ -705,7 +713,7 @@ function JellyfinConnect({
 						</label>
 					</>
 				)}
-				{savedProfileId && (
+				{activeSavedProfileId && (
 					<>
 						{savedUsers.isPending && (
 							<p role="status" className="text-sm text-slate-400">
@@ -758,7 +766,7 @@ function JellyfinConnect({
 					className={buttonClass}
 					disabled={
 						action.busy ||
-						(!!savedProfileId &&
+						(!!activeSavedProfileId &&
 							(!userId || savedUsers.isPending || !!savedUsers.error))
 					}
 				>

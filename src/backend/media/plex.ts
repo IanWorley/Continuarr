@@ -283,66 +283,60 @@ export function createPlexProvider(options: {
 				names.clear();
 			}
 			const users = new Map<string, PlexSharedUser>();
+			const issues: string[] = [];
 			for (const resource of owned) {
-				const xml = await requestText({
-					fetch: fetcher,
-					url: endpoint(
-						homeUrl,
-						`servers/${encodeURIComponent(resource.clientIdentifier)}/shared_servers`,
-					),
-					headers: plexHeaders(options.clientIdentifier, token.reveal()),
-				});
-				let parsed: unknown;
 				try {
-					parsed = xmlParser.parse(xml, true);
-				} catch {
-					throw new MediaError(
-						"Plex returned invalid shared server data.",
-						502,
-					);
-				}
-				const result = sharedServersSchema.safeParse(parsed);
-				if (!result.success)
-					throw new MediaError(
-						"Plex returned invalid shared server data.",
-						502,
-					);
-				const grants = result.data.MediaContainer.SharedServer;
-				for (const grant of grants === undefined
-					? []
-					: Array.isArray(grants)
-						? grants
-						: [grants]) {
-					const acceptedAt = Number(grant.acceptedAt);
-					if (
-						!Number.isFinite(acceptedAt) ||
-						acceptedAt <= 0 ||
-						!grant.accessToken
-					)
-						continue;
-					const id = String(grant.userID);
-					const user: PlexSharedUser = users.get(id) ?? {
-						id,
-						name: names.get(id) ?? `Plex user ${id}`,
-						servers: [],
-					};
-					if (
-						!user.servers.some(
-							(server) => server.id === resource.clientIdentifier,
+					const xml = await requestText({
+						fetch: fetcher,
+						url: endpoint(
+							homeUrl,
+							`servers/${encodeURIComponent(resource.clientIdentifier)}/shared_servers`,
+						),
+						headers: plexHeaders(options.clientIdentifier, token.reveal()),
+					});
+					const grants = sharedServersSchema.parse(xmlParser.parse(xml, true))
+						.MediaContainer.SharedServer;
+					for (const grant of grants === undefined
+						? []
+						: Array.isArray(grants)
+							? grants
+							: [grants]) {
+						const acceptedAt = Number(grant.acceptedAt);
+						if (
+							!Number.isFinite(acceptedAt) ||
+							acceptedAt <= 0 ||
+							!grant.accessToken
 						)
-					) {
-						user.servers.push({
-							id: resource.clientIdentifier,
-							name: resource.name,
-							token: new Secret(grant.accessToken),
-							connections:
-								resource.connections?.map((connection) => connection.uri) ?? [],
-						});
+							continue;
+						const id = String(grant.userID);
+						const user: PlexSharedUser = users.get(id) ?? {
+							id,
+							name: names.get(id) ?? `Plex user ${id}`,
+							servers: [],
+						};
+						if (
+							!user.servers.some(
+								(server) => server.id === resource.clientIdentifier,
+							)
+						) {
+							user.servers.push({
+								id: resource.clientIdentifier,
+								name: resource.name,
+								token: new Secret(grant.accessToken),
+								connections:
+									resource.connections?.map((connection) => connection.uri) ??
+									[],
+							});
+						}
+						users.set(id, user);
 					}
-					users.set(id, user);
+				} catch {
+					issues.push(
+						`Could not load shared Plex users from ${resource.name}. Try again.`,
+					);
 				}
 			}
-			return [...users.values()];
+			return { users: [...users.values()], issues };
 		},
 
 		async switchUser({ token, userId, pin }) {

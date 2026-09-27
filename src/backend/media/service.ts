@@ -79,6 +79,7 @@ export function createMediaService({
 			issues.push("Could not load Plex Home users. Try again.");
 		if (sharedResult.status === "rejected")
 			issues.push("Could not load shared Plex users. Try again.");
+		else issues.push(...sharedResult.value.issues);
 		const users: PlexUserOption[] = [
 			{ kind: "owner", id: stored.userId, name: stored.name },
 		];
@@ -92,7 +93,7 @@ export function createMediaService({
 		}
 		const shared =
 			homeResult.status === "fulfilled" && sharedResult.status === "fulfilled"
-				? sharedResult.value
+				? sharedResult.value.users
 				: [];
 		for (const user of shared) {
 			if (seen.has(user.id)) continue;

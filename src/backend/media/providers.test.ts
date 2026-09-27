@@ -61,7 +61,10 @@ describe("Plex provider", () => {
 			clientIdentifier: PLEX_IDENTIFIER,
 			plexUrl: baseUrl,
 		});
-		const users = await provider.sharedUsers(new Secret("owner-account-token"));
+		const { users, issues } = await provider.sharedUsers(
+			new Secret("owner-account-token"),
+		);
+		expect(issues).toEqual([]);
 		expect(
 			users.map(({ id, name, servers }) => ({
 				id,
@@ -80,6 +83,56 @@ describe("Plex provider", () => {
 			},
 		]);
 	});
+
+	it.each([
+		{ label: "HTTP failure", body: "unavailable", status: 503 },
+		{ label: "malformed XML", body: "<MediaContainer><", status: 200 },
+		{ label: "invalid response shape", body: "<Unexpected/>", status: 200 },
+	])(
+		"keeps healthy shared users after $label on another server",
+		async ({ body, status }) => {
+			const baseUrl = serve((request) => {
+				const path = new URL(request.url).pathname;
+				if (path === "/api/v2/resources")
+					return json(
+						["first", "broken", "last"].map((id) => ({
+							clientIdentifier: id,
+							name: id,
+							provides: "server",
+							owned: true,
+							connections: [{ uri: `https://${id}.example` }],
+						})),
+					);
+				if (path === "/api/users") return new Response("<MediaContainer/>");
+				if (path === "/api/servers/broken/shared_servers")
+					return new Response(body, { status });
+				const id = path.includes("/first/") ? "10" : "20";
+				return new Response(
+					`<MediaContainer><SharedServer userID="${id}" acceptedAt="1" accessToken="friend-${id}"/></MediaContainer>`,
+				);
+			});
+			const provider = createPlexProvider({
+				clientIdentifier: PLEX_IDENTIFIER,
+				plexUrl: baseUrl,
+			});
+			const result = await provider.sharedUsers(new Secret("owner-token"));
+			expect(
+				result.users.map((user) => ({
+					id: user.id,
+					servers: user.servers.map((server) => ({
+						id: server.id,
+						token: server.token.reveal(),
+					})),
+				})),
+			).toEqual([
+				{ id: "10", servers: [{ id: "first", token: "friend-10" }] },
+				{ id: "20", servers: [{ id: "last", token: "friend-20" }] },
+			]);
+			expect(result.issues).toEqual([
+				"Could not load shared Plex users from broken. Try again.",
+			]);
+		},
+	);
 
 	it("skips inaccessible servers without hiding usable resources", async () => {
 		const baseUrl = serve(() =>
