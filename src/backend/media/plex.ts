@@ -95,6 +95,17 @@ const sectionsSchema = z.object({
 });
 const metadataSchema = z.object({
 	ratingKey: z.string().min(1),
+	grandparentRatingKey: z.string().optional(),
+	grandparentTitle: z.string().optional(),
+	parentIndex: z.number().int().nonnegative().optional(),
+	index: z.number().int().nonnegative().optional(),
+	Media: z
+		.array(
+			z.object({
+				Part: z.array(z.object({ file: z.string().optional() })).optional(),
+			}),
+		)
+		.optional(),
 	title: z.string().default(""),
 	viewCount: z.number().optional(),
 	Guid: z.array(z.object({ id: z.string() })).optional(),
@@ -147,11 +158,28 @@ function toMediaItem(
 	metadata: z.infer<typeof metadataSchema>,
 	kind: MediaItem["kind"],
 ): MediaItem {
+	const details: NonNullable<MediaItem["details"]> = {
+		paths: metadata.Media?.flatMap(
+			(media) =>
+				media.Part?.flatMap((part) => (part.file ? [part.file] : [])) ?? [],
+		),
+		...(kind === "episode"
+			? {
+					showId: metadata.grandparentRatingKey,
+					showTitle: metadata.grandparentTitle,
+					season: metadata.parentIndex,
+					episode: metadata.index,
+				}
+			: {}),
+	};
 	return {
 		id: metadata.ratingKey,
 		kind,
 		title: metadata.title,
 		ids: externalIds(metadata),
+		...(Object.values(details).some((value) => value !== undefined)
+			? { details }
+			: {}),
 		watched: (metadata.viewCount ?? 0) > 0,
 	};
 }

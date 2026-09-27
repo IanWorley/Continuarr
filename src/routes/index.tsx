@@ -8,7 +8,6 @@ import {
 	buttonClass,
 	ErrorMessage,
 	fieldClass,
-	HTTP_UNAUTHORIZED,
 	type MediaState,
 	responseData,
 	secondaryClass,
@@ -33,42 +32,29 @@ export const Route = createFileRoute("/")({ component: Home });
 function Home() {
 	const state = useQuery(stateQuery);
 	const queryClient = useQueryClient();
-	const signOut = useAction();
 	const refresh = useCallback(async () => {
 		await queryClient.invalidateQueries({ queryKey: STATE_QUERY_KEY });
 	}, [queryClient]);
 	return (
-		<main className="mx-auto min-h-screen w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
+		<main
+			id="main-content"
+			tabIndex={-1}
+			className="mx-auto min-h-screen w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12"
+		>
 			<header className="mb-10 flex items-start justify-between gap-6 border-b border-slate-800 pb-7">
 				<div>
 					<p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
 						Your libraries, together
 					</p>
 					<h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-						Continuarr
+						Connections &amp; sync
 					</h1>
 					<p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
 						Keep watched movies and episodes in sync between Plex and Jellyfin,
 						for each person.
 					</p>
 				</div>
-				<button
-					type="button"
-					className={secondaryClass}
-					disabled={signOut.busy}
-					onClick={() =>
-						void signOut.perform(async () => {
-							const result = await getApi().v1.admin["sign-out"].post();
-							if (result.error && result.status !== HTTP_UNAUTHORIZED)
-								throw new Error("Unable to sign out. Please try again.");
-							window.location.assign("/sign-in");
-						})
-					}
-				>
-					Sign out
-				</button>
 			</header>
-			<ErrorMessage message={signOut.error} />
 			{state.isPending && (
 				<p role="status" className="py-12 text-slate-400">
 					Loading your connections…
@@ -325,8 +311,9 @@ function PairingCard({
 			)}
 			<p className="mt-5 text-sm leading-6 text-slate-400">
 				Preview compares both libraries without making changes. Sync checks them
-				again before updating watched status. Items without a unique matching
-				movie or episode ID are skipped.
+				again before updating watched status. Saved manual matches take
+				priority. Other items need a unique matching movie or episode ID or they
+				are skipped.
 			</p>
 			<div className="mt-4 flex flex-wrap gap-3">
 				<button
@@ -392,6 +379,13 @@ function PairingCard({
 						<p className="mt-1 text-xs leading-5 text-slate-400">
 							{preview.matched} matched pairs · {preview.unmatched} unmatched
 							items · {preview.ambiguous} ambiguous items skipped
+							{Boolean(preview.staleManualMatches) && (
+								<>
+									{" "}
+									· {preview.staleManualMatches} unavailable manual matches
+									skipped
+								</>
+							)}
 						</p>
 					</div>
 					{preview.writes.length === 0 ? (

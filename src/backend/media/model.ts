@@ -12,6 +12,15 @@ export const mediaItemSchema = z.object({
 		}),
 	),
 	watched: z.boolean(),
+	details: z
+		.object({
+			paths: z.array(z.string()).optional(),
+			showId: z.string().optional(),
+			showTitle: z.string().optional(),
+			season: z.number().int().nonnegative().optional(),
+			episode: z.number().int().nonnegative().optional(),
+		})
+		.optional(),
 });
 export type MediaItem = z.infer<typeof mediaItemSchema>;
 export type MediaAccess = { url: string; token: Secret };
@@ -104,3 +113,10 @@ export function serverUrl(value: string): string {
 	}
 	return url.toString().replace(/\/+$/, "");
 }
+
+export const manualMatchSchema = z.object({
+	pairingId: z.string().min(1),
+	plexItemId: z.string().min(1),
+	jellyfinItemId: z.string().min(1),
+});
+export type ManualMatch = z.infer<typeof manualMatchSchema>;

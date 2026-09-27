@@ -590,3 +590,92 @@ it("validates the identity in a Plex Home XML switch response", async () => {
 	expect(user.name).toBe("Child");
 	expect(user.token.reveal()).toBe("managed-token");
 });
+
+describe("library display details", () => {
+	it("reads Plex episode hierarchy and every media part path", async () => {
+		const url = serve((request) =>
+			new URL(request.url).pathname === "/library/sections"
+				? json({ MediaContainer: { Directory: [{ key: "2", type: "show" }] } })
+				: json({
+						MediaContainer: {
+							totalSize: 1,
+							Metadata: [
+								{
+									ratingKey: "12",
+									title: "Pilot",
+									grandparentRatingKey: "show-7",
+									grandparentTitle: "Example",
+									parentIndex: 0,
+									index: 1,
+									Media: [
+										{
+											Part: [
+												{ file: "/tv/pilot-a.mkv" },
+												{ file: "/tv/pilot-b.mkv" },
+											],
+										},
+									],
+								},
+							],
+						},
+					}),
+		);
+		const items = await createPlexProvider({
+			clientIdentifier: PLEX_IDENTIFIER,
+		}).items({ url, token: new Secret("token") });
+		expect(items[0].details).toEqual({
+			paths: ["/tv/pilot-a.mkv", "/tv/pilot-b.mkv"],
+			showId: "show-7",
+			showTitle: "Example",
+			season: 0,
+			episode: 1,
+		});
+	});
+	it("requests Jellyfin paths and reads episode hierarchy without inventing missing metadata", async () => {
+		const url = serve((request) => {
+			expect(new URL(request.url).searchParams.get("Fields")).toBe(
+				"ProviderIds,Path",
+			);
+			return json({
+				TotalRecordCount: 2,
+				Items: [
+					{
+						Id: "j1",
+						Name: "Pilot",
+						Type: "Episode",
+						Path: "/shows/pilot.mkv",
+						SeriesId: "series-7",
+						SeriesName: "Example",
+						ParentIndexNumber: 0,
+						IndexNumber: 1,
+						UserData: { Played: true },
+					},
+					{
+						Id: "j2",
+						Name: "Unknown",
+						Type: "Episode",
+						Path: null,
+						SeriesId: null,
+						SeriesName: null,
+						ParentIndexNumber: null,
+						IndexNumber: null,
+						UserData: { Played: false },
+					},
+				],
+			});
+		});
+		const items = await createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		}).items({ url, userId: "person", token: new Secret("token") });
+		expect(items[0].details).toEqual({
+			paths: ["/shows/pilot.mkv"],
+			showId: "series-7",
+			showTitle: "Example",
+			season: 0,
+			episode: 1,
+		});
+		expect(items[1].details?.paths).toBeUndefined();
+		expect(items[1].details?.season).toBeUndefined();
+		expect(items[1].ids).toEqual([]);
+	});
+});

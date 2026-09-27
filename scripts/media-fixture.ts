@@ -1,5 +1,6 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { GenericContainer, Wait } from "testcontainers";
+import { z } from "zod";
 import {
 	CREDENTIAL_KEY_BYTES,
 	createSecretStorage,
@@ -8,7 +9,13 @@ import {
 import { createDatabase } from "../src/db/database";
 import * as schema from "../src/db/schema";
 
-const FIXTURE_PORT = 43123;
+const DEFAULT_FIXTURE_PORT = 43123;
+const FIXTURE_PORT = z.coerce
+	.number()
+	.int()
+	.min(1)
+	.max(65535)
+	.parse(process.env.FIXTURE_PORT ?? DEFAULT_FIXTURE_PORT);
 const FIXTURE_KEY_BYTE = 7;
 const KEY = Buffer.alloc(CREDENTIAL_KEY_BYTES, FIXTURE_KEY_BYTE).toString(
 	"base64",
@@ -55,17 +62,43 @@ await db.insert(schema.plexProfiles).values({
 	token: secrets.encrypt("fixture-plex", new Secret("fixture-plex-token")),
 });
 await client.end();
-const plexWatched = new Set(["1"]);
+const plexWatched = new Set(["1", "3"]);
 const jellyfinWatched = new Set(["j2"]);
-const titles = ["Arrival", "The Martian"];
+const titles = [
+	"Arrival",
+	"The Martian",
+	"First contact",
+	"Return",
+	"New horizons",
+];
 const ids = ["329865", "286217"];
+const MOVIE_COUNT = 2;
+const EPISODE_SEASONS = [1, 1, 2];
+const EPISODE_NUMBERS = [1, 2, 1];
 function plexItem(index: number) {
 	const id = String(index + 1);
 	return {
 		ratingKey: id,
-		type: "movie",
+		type: index < MOVIE_COUNT ? "movie" : "episode",
+		Media: [
+			{
+				Part: [
+					{
+						file: `/media/${index < MOVIE_COUNT ? "movies" : "tv/Expedition"}/${titles[index]}.mkv`,
+					},
+				],
+			},
+		],
+		...(index >= MOVIE_COUNT
+			? {
+					grandparentRatingKey: "show-1",
+					grandparentTitle: "Expedition",
+					parentIndex: EPISODE_SEASONS[index - MOVIE_COUNT],
+					index: EPISODE_NUMBERS[index - MOVIE_COUNT],
+				}
+			: {}),
 		title: titles[index],
-		Guid: [{ id: `tmdb://${ids[index]}` }],
+		Guid: ids[index] ? [{ id: `tmdb://${ids[index]}` }] : [],
 		...(plexWatched.has(id) ? { viewCount: 1 } : {}),
 	};
 }
@@ -74,8 +107,17 @@ function jellyfinItem(index: number) {
 	return {
 		Id: id,
 		Name: titles[index],
-		Type: "Movie",
-		ProviderIds: { Tmdb: ids[index] },
+		Type: index < MOVIE_COUNT ? "Movie" : "Episode",
+		Path: `/data/${index < MOVIE_COUNT ? "movies" : "shows/Expedition"}/${titles[index]}.mkv`,
+		...(index >= MOVIE_COUNT
+			? {
+					SeriesId: "series-1",
+					SeriesName: "Expedition",
+					ParentIndexNumber: EPISODE_SEASONS[index - MOVIE_COUNT],
+					IndexNumber: EPISODE_NUMBERS[index - MOVIE_COUNT],
+				}
+			: {}),
+		ProviderIds: ids[index] ? { Tmdb: ids[index] } : {},
 		UserData: { Played: jellyfinWatched.has(id) },
 	};
 }
@@ -101,7 +143,12 @@ const server = Bun.serve({
 			});
 		if (path === "/plex/library/sections")
 			return Response.json({
-				MediaContainer: { Directory: [{ key: "1", type: "movie" }] },
+				MediaContainer: {
+					Directory: [
+						{ key: "1", type: "movie" },
+						{ key: "2", type: "show" },
+					],
+				},
 			});
 		if (path === "/plex/library/sections/1/all")
 			return Response.json({
@@ -109,6 +156,14 @@ const server = Bun.serve({
 					totalSize: 2,
 					offset: 0,
 					Metadata: [plexItem(0), plexItem(1)],
+				},
+			});
+		if (path === "/plex/library/sections/2/all")
+			return Response.json({
+				MediaContainer: {
+					totalSize: 3,
+					offset: 0,
+					Metadata: [plexItem(2), plexItem(3), plexItem(4)],
 				},
 			});
 		if (path.startsWith("/plex/library/metadata/"))
@@ -146,8 +201,8 @@ const server = Bun.serve({
 			return Response.json({ Id: "alex-id", Name: "Alex" });
 		if (path === "/jellyfin/Users/alex-id/Items")
 			return Response.json({
-				Items: [jellyfinItem(0), jellyfinItem(1)],
-				TotalRecordCount: 2,
+				Items: titles.map((_, index) => jellyfinItem(index)),
+				TotalRecordCount: titles.length,
 			});
 		if (path.startsWith("/jellyfin/Users/alex-id/Items/"))
 			return Response.json(

@@ -40,7 +40,15 @@ To replace expired credentials, repeat the relevant login and profile connection
 
 ### What sync transfers
 
-Movies and individual episodes match by an exact shared IMDb, TMDb, or TVDb identifier of the same media type. Continuarr skips missing identifiers, duplicate matches, and conflicting identifiers. It does not guess from a title, filename, or episode number. Libraries without shared episode identifiers may have unmatched episodes; inspect the preview counts before enabling automatic sync.
+Saved manual matches take priority. Other movies and individual episodes match by an exact shared IMDb, TMDb, or TVDb identifier of the same media type. Continuarr skips missing identifiers, duplicate matches, and conflicting identifiers. It does not guess from a title, filename, or episode number.
+
+### Match content manually
+
+Choose **Manual matching** in the navigation bar, then choose a person pairing. On smaller screens, open the navigation menu first. Browse each library by show and season, or switch to movies. Select one item on each side and choose **Save manual match**. File paths, metadata IDs, and watched states help you compare the items. Missing file paths appear as unavailable.
+
+Each item can have one manual counterpart within that person pairing. Matches persist across restarts. To correct a choice, choose **Remove match**, confirm removal, and select another counterpart. Saving or removing a match does not change watched status. Return to the dashboard to preview and run sync, or let an enabled scheduled sync use the saved matches. Unavailable manual matches are skipped, and their remaining items are excluded from metadata matching until you remove the saved match.
+
+### Watched-state behavior
 
 For a matched item, watched on either service means watched on both. Continuarr does not copy historical watch timestamps, play counts, ratings, or playback positions. The providers' mark-watched APIs may record the sync as a new play. Marking an item unwatched on one service does not clear the other service and the next sync can mark it watched again.
 

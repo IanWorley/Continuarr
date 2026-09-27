@@ -1,4 +1,4 @@
-import type { MediaItem } from "~/backend/media/model";
+import type { ManualMatch, MediaItem } from "~/backend/media/model";
 
 type Target = "plex" | "jellyfin";
 type Write = { target: Target; itemId: string; title: string };
@@ -72,7 +72,7 @@ function haveConflictingIds(left: MediaItem, right: MediaItem): boolean {
  * ID but cannot form a unique, conflict-free pair, or has conflicting IDs of
  * its own. Items with no shared external ID are unmatched.
  */
-export function planWatchedUnion(input: {
+function planAutomaticUnion(input: {
 	plex: MediaItem[];
 	jellyfin: MediaItem[];
 }): { writes: Write[]; matched: number; unmatched: number; ambiguous: number } {
@@ -134,4 +134,47 @@ export function planWatchedUnion(input: {
 		else ambiguous += 1;
 	}
 	return { writes, matched: matchedPlex.size, unmatched, ambiguous };
+}
+
+export function planWatchedUnion(input: {
+	plex: MediaItem[];
+	jellyfin: MediaItem[];
+	manualMatches?: ManualMatch[];
+}): {
+	writes: Write[];
+	matched: number;
+	unmatched: number;
+	ambiguous: number;
+	staleManualMatches?: number;
+} {
+	const manual = input.manualMatches ?? [];
+	if (!manual.length) return planAutomaticUnion(input);
+	const reservedPlex = new Set(manual.map((match) => match.plexItemId));
+	const reservedJellyfin = new Set(manual.map((match) => match.jellyfinItemId));
+	const plan = planAutomaticUnion({
+		plex: input.plex.filter((item) => !reservedPlex.has(item.id)),
+		jellyfin: input.jellyfin.filter((item) => !reservedJellyfin.has(item.id)),
+	});
+	const plexById = new Map(input.plex.map((item) => [item.id, item]));
+	const jellyfinById = new Map(input.jellyfin.map((item) => [item.id, item]));
+	let staleManualMatches = 0;
+	for (const match of manual) {
+		const plex = plexById.get(match.plexItemId);
+		const jellyfin = jellyfinById.get(match.jellyfinItemId);
+		if (!plex || !jellyfin || plex.kind !== jellyfin.kind) {
+			staleManualMatches++;
+			plan.unmatched += Number(Boolean(plex)) + Number(Boolean(jellyfin));
+			continue;
+		}
+		plan.matched++;
+		if (plex.watched && !jellyfin.watched)
+			plan.writes.push({
+				target: "jellyfin",
+				itemId: jellyfin.id,
+				title: jellyfin.title,
+			});
+		else if (jellyfin.watched && !plex.watched)
+			plan.writes.push({ target: "plex", itemId: plex.id, title: plex.title });
+	}
+	return { ...plan, staleManualMatches };
 }
