@@ -331,61 +331,73 @@ describe("media account and sync service", () => {
 		).toHaveLength(2);
 	});
 
-	it("does not restore old Jellyfin credentials when a saved connect finishes after rotation", async () => {
-		const { service, repo, secrets, jellyfin } = await setup();
-		const child = await service.connectJellyfin({
-			source: { kind: "new", url: "http://jellyfin:8096", apiKey: "old-key" },
-			userId: "j-child",
-		});
-		let releaseSaved = () => {};
-		const savedBlocked = new Promise<void>((resolve) => {
-			releaseSaved = resolve;
-		});
-		let savedEntered = () => {};
-		const savedStarted = new Promise<void>((resolve) => {
-			savedEntered = resolve;
-		});
-		jellyfin.connect = async ({ url, apiKey, userId }) => {
-			if (userId === "mom") {
-				savedEntered();
-				await savedBlocked;
-			}
-			return {
-				url,
-				userId,
-				serverId: "j-server",
-				name: userId,
-				token: new Secret(apiKey),
+	const originalUrl = "http://jellyfin:8096";
+	const originalKey = "old-key";
+	for (const rotation of [
+		{ changed: "key", url: originalUrl, apiKey: "rotated-key" },
+		{ changed: "URL", url: "http://jellyfin-new:8096", apiKey: originalKey },
+	]) {
+		it(`does not restore old Jellyfin credentials when the ${rotation.changed} changes during a saved connect`, async () => {
+			const { service, repo, secrets, jellyfin } = await setup();
+			let releaseSaved = () => {};
+			const savedBlocked = new Promise<void>((resolve) => {
+				releaseSaved = resolve;
+			});
+			let savedEntered = () => {};
+			const savedStarted = new Promise<void>((resolve) => {
+				savedEntered = resolve;
+			});
+			jellyfin.connect = async ({ url, apiKey, userId }) => {
+				if (userId === "mom") {
+					savedEntered();
+					await savedBlocked;
+				}
+				return {
+					url,
+					userId,
+					serverId: "j-server",
+					name: userId,
+					token: new Secret(apiKey),
+				};
 			};
-		};
-		const savedConnect = service.connectJellyfin({
-			source: { kind: "saved", profileId: child.id },
-			userId: "mom",
-		});
-		await savedStarted;
-		const rotatedUrl = "http://jellyfin-new:8096";
-		try {
-			await service.connectJellyfin({
-				source: { kind: "new", url: rotatedUrl, apiKey: "rotated-key" },
+			const child = await service.connectJellyfin({
+				source: { kind: "new", url: originalUrl, apiKey: originalKey },
 				userId: "j-child",
 			});
-		} finally {
-			releaseSaved();
-		}
-		await expect(savedConnect).rejects.toMatchObject({
-			status: 409,
-			message: "The saved Jellyfin connection changed. Select it again and retry.",
+			const seeded = await repo.jellyfinProfile(child.id);
+			if (!seeded) throw new Error("Missing seeded Jellyfin profile");
+			expect(secrets.decrypt(seeded.id, seeded.token).reveal()).toBe(
+				originalKey,
+			);
+			const savedConnect = service.connectJellyfin({
+				source: { kind: "saved", profileId: child.id },
+				userId: "mom",
+			});
+			await savedStarted;
+			try {
+				await service.connectJellyfin({
+					source: { kind: "new", url: rotation.url, apiKey: rotation.apiKey },
+					userId: "j-child",
+				});
+			} finally {
+				releaseSaved();
+			}
+			await expect(savedConnect).rejects.toMatchObject({
+				status: 409,
+				message:
+					"The saved Jellyfin connection changed. Select it again and retry.",
+			});
+			const profiles = await repo.jellyfinProfiles();
+			expect(profiles).toHaveLength(1);
+			const [stored] = profiles;
+			if (!stored) throw new Error("Missing Jellyfin profile");
+			expect(stored.id).toBe(child.id);
+			expect(stored.url).toBe(rotation.url);
+			expect(secrets.decrypt(stored.id, stored.token).reveal()).toBe(
+				rotation.apiKey,
+			);
 		});
-		const profiles = await repo.jellyfinProfiles();
-		expect(profiles).toHaveLength(1);
-		const [stored] = profiles;
-		if (!stored) throw new Error("Missing Jellyfin profile");
-		expect(stored.id).toBe(child.id);
-		expect(stored.url).toBe(rotatedUrl);
-		expect(secrets.decrypt(stored.id, stored.token).reveal()).toBe(
-			"rotated-key",
-		);
-	});
+	}
 
 	it("rolls back every Jellyfin credential update if one row fails", async () => {
 		const { repo, pair } = await setup();

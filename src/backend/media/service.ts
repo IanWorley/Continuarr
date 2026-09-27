@@ -383,7 +383,13 @@ export function createMediaService({
 			ensureIdle();
 			let source:
 				| { kind: "new"; url: string; apiKey: string }
-				| { kind: "saved"; url: string; apiKey: string; serverId: string };
+				| {
+						kind: "saved";
+						profileId: string;
+						url: string;
+						apiKey: string;
+						serverId: string;
+				  };
 			if (input.source.kind === "new") {
 				source = {
 					kind: "new",
@@ -395,6 +401,7 @@ export function createMediaService({
 				if (!stored) throw new MediaError("Jellyfin profile not found.", 404);
 				source = {
 					kind: "saved",
+					profileId: input.source.profileId,
 					url: stored.url,
 					apiKey: secrets.decrypt(stored.id, stored.token).reveal(),
 					serverId: stored.serverId,
@@ -413,6 +420,19 @@ export function createMediaService({
 			ensureIdle();
 			const id = await withConnectionWrite(async () => {
 				ensureIdle();
+				if (source.kind === "saved") {
+					const stored = await repo.jellyfinProfile(source.profileId);
+					if (
+						!stored ||
+						stored.url !== source.url ||
+						stored.serverId !== source.serverId ||
+						secrets.decrypt(stored.id, stored.token).reveal() !== source.apiKey
+					)
+						throw new MediaError(
+							"The saved Jellyfin connection changed. Select it again and retry.",
+							409,
+						);
+				}
 				const existingProfiles = await repo.jellyfinProfiles();
 				const existing = existingProfiles.find(
 					(item) =>
