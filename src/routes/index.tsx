@@ -1,6 +1,10 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback } from "react";
+import {
+	JellyfinConnect,
+	JellyfinServerCard,
+} from "~/components/media/JellyfinConnect";
 import { PlexConnect } from "~/components/media/PlexConnect";
 import {
 	ErrorMessage,
@@ -10,6 +14,7 @@ import {
 import { getApi } from "~/routes/api.$";
 
 const STATE_REFRESH_MS = 10_000;
+const DIRECTORY_QUERY_KEY = ["jellyfin-directory"];
 const STATE_QUERY_KEY = ["media-state"];
 
 const stateQuery = queryOptions({
@@ -22,9 +27,18 @@ export const Route = createFileRoute("/")({ component: Home });
 
 function Home() {
 	const state = useQuery(stateQuery);
+	const directory = useQuery({
+		queryKey: DIRECTORY_QUERY_KEY,
+		queryFn: async () =>
+			responseData(await getApi().v1.media.jellyfin.directory.get()),
+		refetchInterval: STATE_REFRESH_MS,
+	});
 	const queryClient = useQueryClient();
 	const refresh = useCallback(async () => {
-		await queryClient.invalidateQueries({ queryKey: STATE_QUERY_KEY });
+		await Promise.all([
+			queryClient.invalidateQueries({ queryKey: STATE_QUERY_KEY }),
+			queryClient.invalidateQueries({ queryKey: DIRECTORY_QUERY_KEY }),
+		]);
 	}, [queryClient]);
 	return (
 		<main
@@ -71,8 +85,8 @@ function Home() {
 								Connect Plex
 							</h2>
 							<p className="mt-1 text-sm text-slate-400">
-								Choose a Plex profile here. Add Jellyfin servers and pair people
-								on the Users page.
+								Connect your servers here, then pair people and sync watched
+								status on the Users page.
 							</p>
 						</div>
 						<div className="grid gap-5 lg:grid-cols-2">
@@ -86,6 +100,20 @@ function Home() {
 							/>
 						</div>
 					</section>
+				</div>
+			)}
+			{directory.isPending && <p role="status">Loading Jellyfin servers…</p>}
+			<ErrorMessage message={directory.error?.message ?? ""} />
+			{directory.data && (
+				<div className="mt-10 space-y-8">
+					<JellyfinConnect servers={directory.data.servers} refresh={refresh} />
+					{directory.data.servers.map((server) => (
+						<JellyfinServerCard
+							key={`${server.id}:${server.intervalMinutes}:${server.pollEnabled}`}
+							server={server}
+							refresh={refresh}
+						/>
+					))}
 				</div>
 			)}
 		</main>

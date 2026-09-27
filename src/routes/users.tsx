@@ -1,10 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
-import {
-	JellyfinConnect,
-	JellyfinServerCard,
-} from "~/components/media/JellyfinConnect";
 import { Pairings } from "~/components/media/Pairings";
 import {
 	buttonClass,
@@ -64,8 +60,8 @@ function Users() {
 			<header className="mb-8 border-b border-slate-800 pb-6">
 				<h1 className="text-3xl font-semibold">Users</h1>
 				<p className="mt-2 text-sm text-slate-400">
-					Import everyone on your Jellyfin server, review their details, and
-					pair each person with a Plex profile.
+					Review imported Jellyfin users, pair each person with a Plex profile,
+					and sync their watched status.
 				</p>
 			</header>
 			{(directory.isPending || state.isPending) && (
@@ -76,14 +72,6 @@ function Users() {
 			/>
 			{directory.data && state.data && (
 				<div className="space-y-8">
-					<JellyfinConnect servers={directory.data.servers} refresh={refresh} />
-					{directory.data.servers.map((server) => (
-						<JellyfinServerCard
-							key={`${server.id}:${server.intervalMinutes}:${server.pollEnabled}`}
-							server={server}
-							refresh={refresh}
-						/>
-					))}
 					<section
 						className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6"
 						aria-labelledby="pair-heading"
@@ -92,7 +80,7 @@ function Users() {
 							Pair people
 						</h2>
 						<p className="mt-2 text-sm text-slate-400">
-							Connect a Plex profile on the{" "}
+							Connect Plex and Jellyfin on the{" "}
 							<Link to="/" className="text-cyan-300 underline">
 								connections page
 							</Link>

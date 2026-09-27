@@ -53,3 +53,7 @@ Existing paired-user cards and their preview, watched-sync, automatic-sync, and 
 Browser verification confirmed no pairing cards or preview/sync buttons on Connections & sync, and both existing cards plus the pairing form and imported users on Users. The fixture card preview on Users returned zero watched updates, two matched pairs, six unmatched items, and zero ambiguous items. Mobile layout had no horizontal overflow. No real Plex sync was run.
 
 Typecheck, Biome for changed TSX files, and production build passed after relocation.
+
+## Jellyfin connection relocation
+
+Jellyfin API-key setup, server cards, polling settings, and manual import refresh now live on Connections & sync. Users retains the imported directory, pairing form, paired-user cards, and watched-sync controls. Browser checks confirmed these locations at mobile width with no horizontal overflow. Refresh now on Connections & sync advanced the fixture server refresh timestamp; Users still displayed both imported users. Typecheck, Biome, production build, and diff check passed.
