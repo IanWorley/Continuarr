@@ -41,6 +41,8 @@ function Users() {
 	const availablePlex =
 		state.data?.plexProfiles.filter(
 			(profile) =>
+				profile.presence !== "missing" &&
+				profile.accessStatus === "available" &&
 				!state.data.pairings.some((pair) => pair.plexProfileId === profile.id),
 		) ?? [];
 	const availableJellyfin =
@@ -60,8 +62,8 @@ function Users() {
 			<header className="mb-8 border-b border-slate-800 pb-6">
 				<h1 className="text-3xl font-semibold">Users</h1>
 				<p className="mt-2 text-sm text-slate-400">
-					Review imported Jellyfin users, pair each person with a Plex profile,
-					and sync their watched status.
+					Review imported Plex and Jellyfin users, pair the same person, and
+					sync their watched status.
 				</p>
 			</header>
 			{(directory.isPending || state.isPending) && (
@@ -89,8 +91,8 @@ function Users() {
 						{availablePlex.length === 0 || availableJellyfin.length === 0 ? (
 							<p className="mt-4 text-sm text-slate-400">
 								{state.data.pairings.length
-									? "All available profiles are paired. Connect another Plex profile or import another Jellyfin user to add a pairing."
-									: "Connect a Plex profile and import a Jellyfin user to create a pairing."}
+									? "No unpaired users are available on both services. Connect or refresh your servers to import more users."
+									: "Connect Plex and Jellyfin servers to import users for pairing."}
 							</p>
 						) : (
 							<form
@@ -111,7 +113,7 @@ function Users() {
 								}}
 							>
 								<label className="text-sm text-slate-300">
-									Plex profile
+									Plex user
 									<select
 										className={fieldClass}
 										value={plexId}
@@ -156,6 +158,57 @@ function Users() {
 						<ErrorMessage message={action.error} />
 					</section>
 					<Pairings state={state.data} refresh={refresh} />
+					<section aria-labelledby="plex-users-heading">
+						<h2 id="plex-users-heading" className="mb-4 text-xl font-semibold">
+							Plex users ({state.data.plexProfiles.length})
+						</h2>
+						{state.data.plexProfiles.length === 0 && (
+							<p className="text-sm text-slate-400">
+								Connect a Plex server to import its users.
+							</p>
+						)}
+						<div className="grid gap-4 md:grid-cols-2">
+							{state.data.plexProfiles.map((user) => (
+								<article
+									key={user.id}
+									className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+								>
+									<h3 className="font-semibold">{user.name}</h3>
+									<p className="mt-1 text-xs text-slate-500">
+										{user.serverName}
+									</p>
+									<p className="mt-1 text-sm text-slate-400">
+										{user.presence === "missing"
+											? "Missing from latest import"
+											: user.accessStatus === "unavailable"
+												? "Watched status unavailable"
+												: "Available"}{" "}
+										·{" "}
+										{state.data.pairings.some(
+											(pair) => pair.plexProfileId === user.id,
+										)
+											? "Paired"
+											: "Unpaired"}
+									</p>
+									{user.accessStatus === "unavailable" && (
+										<p className="mt-2 text-sm text-slate-400">
+											Plex has not granted access to this user's watched status
+											on this server.
+										</p>
+									)}
+									{!user.connectionId && (
+										<p className="mt-2 text-sm text-slate-400">
+											Previously saved user. Save this server from its owner
+											account to enable automatic user imports.
+										</p>
+									)}
+									<p className="mt-2 text-xs text-slate-500">
+										User ID {user.userId}
+									</p>
+								</article>
+							))}
+						</div>
+					</section>
 					<section aria-labelledby="users-heading">
 						<h2 id="users-heading" className="mb-4 text-xl font-semibold">
 							Imported Jellyfin users ({directory.data.users.length})

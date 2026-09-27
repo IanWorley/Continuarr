@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, lte, sql } from "drizzle-orm";
-import type { JellyfinDirectory } from "~/backend/media/model";
+import { and, desc, eq, isNotNull, lte, sql } from "drizzle-orm";
+import type {
+	JellyfinDirectory,
+	PlexDirectoryUser,
+} from "~/backend/media/model";
 import { type createSecretStorage, Secret } from "~/backend/secrets/storage";
 import {
 	findApplicationSetting,
@@ -8,10 +11,14 @@ import {
 } from "~/backend/shared/repo";
 import { type AppDatabase, getDatabase } from "~/db/database";
 import * as schema from "~/db/schema";
-import { MILLISECONDS_PER_MINUTE } from "./constants";
+import {
+	DEFAULT_USER_POLL_MINUTES,
+	MILLISECONDS_PER_MINUTE,
+} from "./constants";
 
 const RECENT_RUN_LIMIT = 50;
 const ACTIVE_PLEX_ACCOUNT_KEY = "active_plex_account_id";
+const DIRECTORY_POLLING_ID = 1;
 
 export type MediaDatabase = AppDatabase;
 export class JellyfinMigrationError extends Error {}
@@ -24,6 +31,8 @@ export function createMediaRepository(
 	const {
 		plexAccounts,
 		plexProfiles,
+		plexServers,
+		directoryPolling,
 		jellyfinProfiles,
 		jellyfinServers,
 		syncPairings,
@@ -63,6 +72,65 @@ export function createMediaRepository(
 					},
 				});
 	}
+	async function reconcilePlexUsers(
+		transaction: MediaTransaction,
+		server: typeof plexServers.$inferSelect,
+		account: typeof plexAccounts.$inferSelect,
+		users: PlexDirectoryUser[],
+		secrets: ReturnType<typeof createSecretStorage>,
+	) {
+		await transaction
+			.update(plexProfiles)
+			.set({
+				connectionId: server.id,
+				presence: "missing",
+				accessStatus: "unavailable",
+			})
+			.where(eq(plexProfiles.serverId, server.externalId));
+		for (const user of users) {
+			const [existing] = await transaction
+				.select()
+				.from(plexProfiles)
+				.where(
+					and(
+						eq(plexProfiles.serverId, server.externalId),
+						eq(plexProfiles.userId, user.id),
+					),
+				)
+				.for("update")
+				.limit(1);
+			const id = existing?.id ?? randomUUID();
+			const credential =
+				user.access.kind === "owner"
+					? secrets.decrypt(account.id, account.token)
+					: user.access.kind === "shared_grant"
+						? user.access.token
+						: null;
+			const row = {
+				accountId: account.id,
+				userId: user.id,
+				name: user.name,
+				serverId: server.externalId,
+				serverName: server.name,
+				url: server.url,
+				connectionId: server.id,
+				presence: "present" as const,
+				accessStatus: credential
+					? ("available" as const)
+					: ("unavailable" as const),
+				token: credential
+					? secrets.encrypt(id, credential)
+					: (existing?.token ?? null),
+			};
+			if (existing)
+				await transaction
+					.update(plexProfiles)
+					.set(row)
+					.where(eq(plexProfiles.id, id));
+			else await transaction.insert(plexProfiles).values({ id, ...row });
+		}
+	}
+
 	return {
 		manualMatches: async (pairingId: string) =>
 			await database()
@@ -103,13 +171,262 @@ export function createMediaRepository(
 				.limit(1);
 			return row;
 		},
-		saveAccount: (row: typeof plexAccounts.$inferInsert) =>
-			database()
-				.insert(plexAccounts)
-				.values(row)
-				.onConflictDoUpdate({ target: plexAccounts.id, set: row })
-				.execute(),
+		saveAccount: (
+			row: typeof plexAccounts.$inferInsert,
+			secrets: ReturnType<typeof createSecretStorage>,
+		) =>
+			database().transaction(async (transaction) => {
+				const [current] = await transaction
+					.select()
+					.from(plexAccounts)
+					.where(eq(plexAccounts.id, row.id))
+					.for("update");
+				await transaction
+					.insert(plexAccounts)
+					.values(row)
+					.onConflictDoUpdate({ target: plexAccounts.id, set: row });
+				if (current && current.token !== row.token) {
+					await transaction
+						.update(plexServers)
+						.set({ revision: sql`${plexServers.revision} + 1` })
+						.where(eq(plexServers.accountId, row.id));
+					const owners = await transaction
+						.select()
+						.from(plexProfiles)
+						.where(
+							and(
+								eq(plexProfiles.accountId, row.id),
+								eq(plexProfiles.userId, row.userId),
+								isNotNull(plexProfiles.connectionId),
+							),
+						);
+					const token = secrets.decrypt(row.id, row.token);
+					for (const owner of owners)
+						await transaction
+							.update(plexProfiles)
+							.set({ token: secrets.encrypt(owner.id, token) })
+							.where(eq(plexProfiles.id, owner.id));
+				}
+			}),
 		plexProfiles: async () => await database().select().from(plexProfiles),
+		plexServers: async () => await database().select().from(plexServers),
+		plexServer: async (id: string) =>
+			(
+				await database()
+					.select()
+					.from(plexServers)
+					.where(eq(plexServers.id, id))
+					.limit(1)
+			)[0],
+		plexServerByExternalId: async (externalId: string) =>
+			(
+				await database()
+					.select()
+					.from(plexServers)
+					.where(eq(plexServers.externalId, externalId))
+					.limit(1)
+			)[0],
+		backfillPlexServers: async () =>
+			database().transaction(async (transaction) => {
+				const profiles = await transaction.select().from(plexProfiles);
+				const accounts = await transaction.select().from(plexAccounts);
+				for (const profile of profiles) {
+					if (
+						profile.connectionId ||
+						accounts.find((account) => account.id === profile.accountId)
+							?.userId !== profile.userId
+					)
+						continue;
+					await transaction
+						.insert(plexServers)
+						.values({
+							id: randomUUID(),
+							accountId: profile.accountId,
+							externalId: profile.serverId,
+							name: profile.serverName,
+							url: profile.url,
+						})
+						.onConflictDoNothing();
+				}
+			}),
+		connectPlexServer: async (input: {
+			accountId: string;
+			expectedToken: string;
+			expectedRevision: number | null;
+			serverId: string;
+			name: string;
+			url: string;
+			users: PlexDirectoryUser[];
+			secrets: ReturnType<typeof createSecretStorage>;
+			now: number;
+		}) =>
+			database().transaction(async (transaction) => {
+				const [account] = await transaction
+					.select()
+					.from(plexAccounts)
+					.where(eq(plexAccounts.id, input.accountId))
+					.for("update");
+				if (!account || account.token !== input.expectedToken) return undefined;
+				const [existing] = await transaction
+					.select()
+					.from(plexServers)
+					.where(eq(plexServers.externalId, input.serverId))
+					.for("update");
+				if ((existing?.revision ?? null) !== input.expectedRevision)
+					return undefined;
+				if (existing?.verified && existing.accountId !== input.accountId)
+					return undefined;
+				const id = existing?.id ?? randomUUID();
+				const [server] = existing
+					? await transaction
+							.update(plexServers)
+							.set({
+								accountId: input.accountId,
+								name: input.name,
+								url: input.url,
+								verified: true,
+								revision: existing.revision + 1,
+								lastAttemptAt: input.now,
+								lastSuccessAt: input.now,
+								lastError: null,
+							})
+							.where(eq(plexServers.id, id))
+							.returning()
+					: await transaction
+							.insert(plexServers)
+							.values({
+								id,
+								accountId: input.accountId,
+								externalId: input.serverId,
+								name: input.name,
+								url: input.url,
+								verified: true,
+								lastAttemptAt: input.now,
+								lastSuccessAt: input.now,
+							})
+							.returning();
+				await reconcilePlexUsers(
+					transaction,
+					server,
+					account,
+					input.users,
+					input.secrets,
+				);
+				return id;
+			}),
+		claimPlexRefresh: async (id: string, now: number) =>
+			database().transaction(async (transaction) => {
+				const [current] = await transaction
+					.select()
+					.from(plexServers)
+					.where(eq(plexServers.id, id))
+					.for("update");
+				if (!current) return undefined;
+				const [server] = await transaction
+					.update(plexServers)
+					.set({ revision: current.revision + 1, lastAttemptAt: now })
+					.where(eq(plexServers.id, id))
+					.returning();
+				const [account] = await transaction
+					.select()
+					.from(plexAccounts)
+					.where(eq(plexAccounts.id, server.accountId));
+				return account ? { server, account } : undefined;
+			}),
+		finishPlexRefresh: async (
+			id: string,
+			revision: number,
+			users: PlexDirectoryUser[],
+			secrets: ReturnType<typeof createSecretStorage>,
+			now: number,
+		) =>
+			database().transaction(async (transaction) => {
+				const [server] = await transaction
+					.update(plexServers)
+					.set({ verified: true, lastSuccessAt: now, lastError: null })
+					.where(
+						and(eq(plexServers.id, id), eq(plexServers.revision, revision)),
+					)
+					.returning();
+				if (!server) return false;
+				const [account] = await transaction
+					.select()
+					.from(plexAccounts)
+					.where(eq(plexAccounts.id, server.accountId));
+				if (!account) return false;
+				await reconcilePlexUsers(transaction, server, account, users, secrets);
+				return true;
+			}),
+		failPlexRefresh: async (id: string, revision: number, message: string) =>
+			!!(
+				await database()
+					.update(plexServers)
+					.set({ lastError: message })
+					.where(
+						and(eq(plexServers.id, id), eq(plexServers.revision, revision)),
+					)
+					.returning()
+			)[0],
+		directoryPolling: async () => {
+			await database()
+				.insert(directoryPolling)
+				.values({
+					id: DIRECTORY_POLLING_ID,
+					intervalMinutes: DEFAULT_USER_POLL_MINUTES,
+				})
+				.onConflictDoNothing();
+			return (
+				await database()
+					.select()
+					.from(directoryPolling)
+					.where(eq(directoryPolling.id, DIRECTORY_POLLING_ID))
+			)[0];
+		},
+		configureDirectoryPolling: async (
+			enabled: boolean,
+			intervalMinutes: number,
+			now: number,
+		) => {
+			await database()
+				.insert(directoryPolling)
+				.values({ id: DIRECTORY_POLLING_ID })
+				.onConflictDoNothing();
+			return (
+				await database()
+					.update(directoryPolling)
+					.set({
+						enabled,
+						intervalMinutes,
+						nextAttemptAt: now + intervalMinutes * MILLISECONDS_PER_MINUTE,
+						revision: sql`${directoryPolling.revision} + 1`,
+					})
+					.where(eq(directoryPolling.id, DIRECTORY_POLLING_ID))
+					.returning()
+			)[0];
+		},
+		claimDirectoryPoll: async (now: number) => {
+			await database()
+				.insert(directoryPolling)
+				.values({ id: DIRECTORY_POLLING_ID })
+				.onConflictDoNothing();
+			return (
+				await database()
+					.update(directoryPolling)
+					.set({
+						lastAttemptAt: now,
+						nextAttemptAt: sql`cast(${now} as bigint) + ${directoryPolling.intervalMinutes} * ${MILLISECONDS_PER_MINUTE}`,
+						revision: sql`${directoryPolling.revision} + 1`,
+					})
+					.where(
+						and(
+							eq(directoryPolling.id, DIRECTORY_POLLING_ID),
+							eq(directoryPolling.enabled, true),
+							lte(directoryPolling.nextAttemptAt, now),
+						),
+					)
+					.returning()
+			)[0];
+		},
 		plexProfile: async (id: string) => {
 			const [row] = await database()
 				.select()
@@ -201,16 +518,6 @@ export function createMediaRepository(
 				.limit(1);
 			return row;
 		},
-		dueJellyfinServers: async (now: number) =>
-			await database()
-				.select({ id: jellyfinServers.id })
-				.from(jellyfinServers)
-				.where(
-					and(
-						eq(jellyfinServers.pollEnabled, true),
-						lte(jellyfinServers.nextAttemptAt, now),
-					),
-				),
 		addJellyfinServer: async (
 			row: typeof jellyfinServers.$inferInsert,
 			users: JellyfinDirectory["users"],
@@ -241,7 +548,6 @@ export function createMediaRepository(
 						...row,
 						revision: expectedRevision + 1,
 						lastAttemptAt: now,
-						nextAttemptAt: sql`cast(${now} as bigint) + ${jellyfinServers.intervalMinutes} * ${MILLISECONDS_PER_MINUTE}`,
 						lastSuccessAt: now,
 						lastError: null,
 					})
@@ -269,8 +575,6 @@ export function createMediaRepository(
 					.set({
 						revision: current.revision + 1,
 						lastAttemptAt: now,
-						nextAttemptAt:
-							now + current.intervalMinutes * MILLISECONDS_PER_MINUTE,
 					})
 					.where(eq(jellyfinServers.id, id))
 					.returning();
@@ -315,23 +619,6 @@ export function createMediaRepository(
 				.returning();
 			return !!updated;
 		},
-		configureJellyfinPolling: async (
-			id: string,
-			enabled: boolean,
-			intervalMinutes: number,
-			now: number,
-		) => {
-			const [updated] = await database()
-				.update(jellyfinServers)
-				.set({
-					pollEnabled: enabled,
-					intervalMinutes,
-					nextAttemptAt: now + intervalMinutes * MILLISECONDS_PER_MINUTE,
-				})
-				.where(eq(jellyfinServers.id, id))
-				.returning();
-			return updated;
-		},
 		jellyfinProfile: async (id: string) => {
 			const [row] = await database()
 				.select()
@@ -359,6 +646,18 @@ export function createMediaRepository(
 		},
 		addPairing: async (row: typeof syncPairings.$inferInsert) =>
 			database().transaction(async (transaction) => {
+				const [plexUser] = await transaction
+					.select()
+					.from(plexProfiles)
+					.where(eq(plexProfiles.id, row.plexProfileId))
+					.for("update");
+				if (
+					!plexUser ||
+					(plexUser.connectionId &&
+						(plexUser.presence !== "present" ||
+							plexUser.accessStatus !== "available"))
+				)
+					return { kind: "unavailable" as const };
 				const [user] = await transaction
 					.select()
 					.from(jellyfinProfiles)

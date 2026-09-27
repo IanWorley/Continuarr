@@ -68,6 +68,13 @@ function PairingCard({
 	const jellyfin = state.jellyfinProfiles.find(
 		(profile) => profile.id === pair.jellyfinProfileId,
 	);
+	const unavailable =
+		!plex ||
+		plex.presence === "missing" ||
+		plex.accessStatus === "unavailable" ||
+		!jellyfin ||
+		jellyfin.presence !== "present" ||
+		jellyfin.disabled;
 	const recentRuns = state.runs
 		.filter((run) => run.pairingId === pair.id)
 		.slice(0, RECENT_RUN_LIMIT);
@@ -112,6 +119,12 @@ function PairingCard({
 					Sync automatically every hour
 				</label>
 			</div>
+			{unavailable && (
+				<p className="mt-3 text-sm text-amber-200">
+					Sync is unavailable because one of these users is missing or no longer
+					grants access. Refresh the server connections to check again.
+				</p>
+			)}
 			{pair.automatic && (
 				<p className="mt-3 text-xs text-cyan-200">
 					Automatic sync is on while Continuarr is running. The first sync may
@@ -128,7 +141,7 @@ function PairingCard({
 				<button
 					type="button"
 					className={secondaryClass}
-					disabled={action.busy || state.running}
+					disabled={action.busy || state.running || unavailable}
 					onClick={() =>
 						void action.perform(async () => {
 							setResult("");
@@ -147,7 +160,7 @@ function PairingCard({
 				<button
 					type="button"
 					className={buttonClass}
-					disabled={action.busy || state.running}
+					disabled={action.busy || state.running || unavailable}
 					onClick={() =>
 						void action.perform(async () => {
 							setResult("");

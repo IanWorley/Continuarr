@@ -86,7 +86,14 @@ describe("PostgreSQL schema migrations", () => {
 		});
 		await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 		expect(await db.select().from(schema.plexAccounts)).toEqual([account]);
-		expect(await db.select().from(schema.plexProfiles)).toEqual([plexProfile]);
+		expect(await db.select().from(schema.plexProfiles)).toEqual([
+			{
+				...plexProfile,
+				connectionId: null,
+				presence: "unverified",
+				accessStatus: "available",
+			},
+		]);
 		expect(await db.select().from(schema.jellyfinProfiles)).toEqual([
 			{
 				...jellyfinProfile,

@@ -70,6 +70,12 @@ For media pairing or sync checks, use the existing local fixtures:
 
 When the ask involves pairing or sync, import the fixture Jellyfin server on **Connections & sync**, then open **Users** and pair Alex with the seeded Plex profile. On a fresh fixture, preview should show two updates. Run sync, then repeat it and expect zero updates. Inspect `http://127.0.0.1:43123/fixture-state` to confirm that Plex contains watched IDs `1` and `2`, and Jellyfin contains `j1` and `j2`. These fixtures do not exercise real Plex sign-in.
 
+## Verify server-owner directory imports
+
+For the server-owner flow, sign in through Plex OAuth as the owner and choose **Find Plex servers**. Save an owned server and reachable address with **Save server and import users**. Verify that the connection card shows the saved server and that **Users** shows the owner plus returned Home/shared users without a Home PIN field. A Home user with a selected-server grant must remain available; a user without watched access must show unavailable. Do not run watched sync against real user accounts as a verification shortcut.
+
+On **Connections & sync**, save one **Automatic user imports** interval and enabled state. Reload and verify persistence. **Refresh all users now** should update both providers' server timestamps; individual server failures must remain visible without blocking the other imports. Confirm existing pairing IDs survive refresh. Use the local fixture pairing to verify watched sync, and use service/provider tests for a protected Home user with a grant, missing users, stale credentials, and scheduler restart.
+
 ## Report the result
 
 Lead with whether the requested behavior passed, failed, or remains blocked. List each acceptance check with its expected result, observed result, and evidence. State any unverified behavior explicitly.

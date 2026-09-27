@@ -1,8 +1,4 @@
 import { useState } from "react";
-import {
-	MAX_USER_POLL_MINUTES,
-	MIN_USER_POLL_MINUTES,
-} from "~/backend/media/constants";
 import type { MediaService } from "~/backend/media/service";
 import {
 	buttonClass,
@@ -134,7 +130,7 @@ export function JellyfinConnect({
 					<div className="space-y-4">
 						{servers.map((server) => (
 							<JellyfinServerCard
-								key={`${server.id}:${server.intervalMinutes}:${server.pollEnabled}`}
+								key={server.id}
 								server={server}
 								refresh={refresh}
 							/>
@@ -154,7 +150,6 @@ function JellyfinServerCard({
 	refresh: () => Promise<void>;
 }) {
 	const action = useAction();
-	const [minutes, setMinutes] = useState(server.intervalMinutes);
 	return (
 		<article className="border-b border-slate-800 pb-4 last:border-0 last:pb-0">
 			<h5 className="text-sm font-medium text-slate-200">{server.name}</h5>
@@ -172,56 +167,6 @@ function JellyfinServerCard({
 					: "No attempt yet"}
 			</p>
 			<div className="mt-4 flex flex-wrap items-end gap-3">
-				<label className="text-sm text-slate-300">
-					Import interval in minutes
-					<input
-						className={`${fieldClass} w-36`}
-						type="number"
-						min={MIN_USER_POLL_MINUTES}
-						max={MAX_USER_POLL_MINUTES}
-						value={minutes}
-						onChange={(event) => setMinutes(Number(event.target.value))}
-					/>
-				</label>
-				<button
-					type="button"
-					className={secondaryClass}
-					disabled={action.busy}
-					onClick={() =>
-						void action.perform(async () => {
-							responseData(
-								await getApi()
-									.v1.media.jellyfin({ id: server.id })
-									.polling.post({
-										enabled: server.pollEnabled,
-										intervalMinutes: minutes,
-									}),
-							);
-							await refresh();
-						})
-					}
-				>
-					Save interval
-				</button>
-				<label className="flex items-center gap-2 text-sm text-slate-300">
-					<input
-						type="checkbox"
-						checked={server.pollEnabled}
-						disabled={action.busy}
-						onChange={(event) => {
-							const enabled = event.target.checked;
-							void action.perform(async () => {
-								responseData(
-									await getApi()
-										.v1.media.jellyfin({ id: server.id })
-										.polling.post({ enabled, intervalMinutes: minutes }),
-								);
-								await refresh();
-							});
-						}}
-					/>{" "}
-					Import automatically
-				</label>
 				<button
 					type="button"
 					className={secondaryClass}

@@ -28,20 +28,19 @@ export type JellyfinAccess = MediaAccess & { userId: string };
 export const jsonObjectSchema = z.record(z.string(), z.json());
 export type JsonObject = z.infer<typeof jsonObjectSchema>;
 export type PlexHomeUser = { id: string; name: string; protected: boolean };
-export type PlexUserOption =
-	| { kind: "owner"; id: string; name: string }
-	| ({ kind: "home" } & PlexHomeUser)
-	| { kind: "shared"; id: string; name: string };
+export type PlexDirectoryUser = {
+	id: string;
+	name: string;
+	access:
+		| { kind: "owner" }
+		| { kind: "shared_grant"; token: Secret }
+		| { kind: "unavailable" };
+};
 export type PlexServer = {
 	id: string;
 	name: string;
 	token: Secret;
 	connections: string[];
-};
-export type PlexSharedUser = {
-	id: string;
-	name: string;
-	servers: PlexServer[];
 };
 export type JellyfinUser = {
 	id: string;
@@ -67,14 +66,11 @@ export interface PlexProvider {
 	startLogin(): Promise<PlexPin>;
 	pollLogin(pin: Pick<PlexPin, "id" | "code">): Promise<PlexIdentity | null>;
 	homeUsers(token: Secret): Promise<PlexHomeUser[]>;
-	sharedUsers(
-		token: Secret,
-	): Promise<{ users: PlexSharedUser[]; issues: string[] }>;
-	switchUser(input: {
+	directory(input: {
 		token: Secret;
-		userId: string;
-		pin?: string;
-	}): Promise<PlexIdentity>;
+		owner: Pick<PlexIdentity, "userId" | "name">;
+		serverId: string;
+	}): Promise<PlexDirectoryUser[]>;
 	servers(token: Secret): Promise<PlexServer[]>;
 	verifyServer(access: MediaAccess, serverId: string): Promise<void>;
 	items(access: MediaAccess): Promise<MediaItem[]>;

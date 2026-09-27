@@ -25,10 +25,10 @@ afterEach(() => {
 });
 
 describe("Plex provider", () => {
-	it("binds accepted shared grants to their owner server without filtering unknown users", async () => {
+	it("offers only owned servers and prefers a grant for a protected Home member", async () => {
 		const baseUrl = serve((request) => {
-			const url = new URL(request.url);
-			if (url.pathname === "/api/v2/resources")
+			const path = new URL(request.url).pathname;
+			if (path === "/api/v2/resources")
 				return json([
 					{
 						clientIdentifier: "owned",
@@ -47,13 +47,20 @@ describe("Plex provider", () => {
 						connections: [{ uri: "https://other.example" }],
 					},
 				]);
-			if (url.pathname === "/api/users")
+			if (path === "/api/v2/home/users")
+				return json({
+					users: [
+						{ id: 10, title: "Dad", protected: true },
+						{ id: 12, title: "Mom", protected: true },
+					],
+				});
+			if (path === "/api/users")
 				return new Response(
-					'<MediaContainer><User id="10" username="Dad"/></MediaContainer>',
+					'<MediaContainer><User id="11" username="Friend"/></MediaContainer>',
 				);
-			if (url.pathname === "/api/servers/owned/shared_servers")
+			if (path === "/api/servers/owned/shared_servers")
 				return new Response(
-					'<MediaContainer><SharedServer userID="10" name="Nas" username="" acceptedAt="1" accessToken="dad-token"/><SharedServer userID="11" name="Nas" username="" acceptedAt="2" accessToken="unknown-token"/><SharedServer userID="12" acceptedAt="0" accessToken="pending-token"/><SharedServer userID="13" acceptedAt="3"/></MediaContainer>',
+					'<MediaContainer><SharedServer userID="10" acceptedAt="1" accessToken="dad-token"/><SharedServer userID="11" acceptedAt="2" accessToken="friend-token"/></MediaContainer>',
 				);
 			return json({}, 404);
 		});
@@ -61,215 +68,85 @@ describe("Plex provider", () => {
 			clientIdentifier: PLEX_IDENTIFIER,
 			plexUrl: baseUrl,
 		});
-		const { users, issues } = await provider.sharedUsers(
-			new Secret("owner-account-token"),
-		);
-		expect(issues).toEqual([]);
 		expect(
-			users.map(({ id, name, servers }) => ({
-				id,
-				name,
-				servers: servers.map(({ id, token }) => ({
-					id,
-					token: token.reveal(),
-				})),
-			})),
-		).toEqual([
-			{ id: "10", name: "Dad", servers: [{ id: "owned", token: "dad-token" }] },
-			{
-				id: "11",
-				name: "Plex user 11",
-				servers: [{ id: "owned", token: "unknown-token" }],
-			},
-		]);
-	});
-
-	it.each([
-		{ label: "HTTP failure", body: "unavailable", status: 503 },
-		{ label: "malformed XML", body: "<MediaContainer><", status: 200 },
-		{ label: "invalid response shape", body: "<Unexpected/>", status: 200 },
-	])(
-		"keeps healthy shared users after $label on another server",
-		async ({ body, status }) => {
-			const baseUrl = serve((request) => {
-				const path = new URL(request.url).pathname;
-				if (path === "/api/v2/resources")
-					return json(
-						["first", "broken", "last"].map((id) => ({
-							clientIdentifier: id,
-							name: id,
-							provides: "server",
-							owned: true,
-							connections: [{ uri: `https://${id}.example` }],
-						})),
-					);
-				if (path === "/api/users") return new Response("<MediaContainer/>");
-				if (path === "/api/servers/broken/shared_servers")
-					return new Response(body, { status });
-				const id = path.includes("/first/") ? "10" : "20";
-				return new Response(
-					`<MediaContainer><SharedServer userID="${id}" acceptedAt="1" accessToken="friend-${id}"/></MediaContainer>`,
-				);
-			});
-			const provider = createPlexProvider({
-				clientIdentifier: PLEX_IDENTIFIER,
-				plexUrl: baseUrl,
-			});
-			const result = await provider.sharedUsers(new Secret("owner-token"));
-			expect(
-				result.users.map((user) => ({
-					id: user.id,
-					servers: user.servers.map((server) => ({
-						id: server.id,
-						token: server.token.reveal(),
-					})),
-				})),
-			).toEqual([
-				{ id: "10", servers: [{ id: "first", token: "friend-10" }] },
-				{ id: "20", servers: [{ id: "last", token: "friend-20" }] },
-			]);
-			expect(result.issues).toEqual([
-				"Could not load shared Plex users from broken. Try again.",
-			]);
-		},
-	);
-
-	it("skips inaccessible servers without hiding usable resources", async () => {
-		const baseUrl = serve(() =>
-			json([
-				{
-					clientIdentifier: "missing-token",
-					name: "No access",
-					provides: "server",
-					connections: [{ uri: "https://example.com" }],
-				},
-				{
-					clientIdentifier: "missing-connections",
-					name: "Offline",
-					provides: "server",
-					accessToken: "unused",
-				},
-				{
-					clientIdentifier: "empty-connections",
-					name: "Offline",
-					provides: "server",
-					accessToken: "unused",
-					connections: [],
-				},
-				{
-					clientIdentifier: "usable",
-					name: "Available",
-					provides: "server",
-					accessToken: "server-token",
-					connections: [{ uri: "https://example.com" }],
-				},
-			]),
-		);
-		const provider = createPlexProvider({
-			clientIdentifier: PLEX_IDENTIFIER,
-			plexUrl: baseUrl,
+			(await provider.servers(new Secret("owner-token"))).map(({ id }) => id),
+		).toEqual(["owned"]);
+		const users = await provider.directory({
+			token: new Secret("owner-token"),
+			owner: { userId: "1", name: "Owner" },
+			serverId: "owned",
 		});
-		const resources = await provider.servers(new Secret("profile-token"));
-		expect(
-			resources.map(({ id, name, connections, token }) => ({
-				id,
-				name,
-				connections,
-				token: token.reveal(),
-			})),
-		).toEqual([
-			{
-				id: "usable",
-				name: "Available",
-				connections: ["https://example.com"],
-				token: "server-token",
-			},
+		expect(users.map(({ id, access }) => [id, access.kind])).toEqual([
+			["1", "owner"],
+			["10", "shared_grant"],
+			["12", "unavailable"],
+			["11", "shared_grant"],
 		]);
+		expect(users.find((user) => user.id === "11")?.name).toBe("Friend");
+		const access = users.find((user) => user.id === "10")?.access;
+		if (access?.kind !== "shared_grant") throw new Error("Missing Dad grant");
+		expect(access.token.reveal()).toBe("dad-token");
 	});
-
-	it("keeps Home and server tokens separate while reading every page and marking once", async () => {
-		let baseUrl = "";
+	it("uses OAuth owner identity and the granted user token for watched writes", async () => {
 		let scrobbles = 0;
-		const pageStarts: number[] = [];
-		const metadata = Array.from({ length: PAGE_SIZE + 1 }, (_, index) => ({
-			ratingKey: String(index + 1),
-			title: `Movie ${index + 1}`,
-			Guid: [{ id: `imdb://tt${String(index + 1).padStart(7, "0")}` }],
-			viewCount: index === 0 ? scrobbles : 0,
-		}));
+		const usedTokens: string[] = [];
+		let baseUrl = "";
 		baseUrl = serve((request) => {
-			const url = new URL(request.url);
-			const token = request.headers.get("X-Plex-Token");
-			if (url.pathname === "/api/v2/pins" && request.method === "POST") {
+			const path = new URL(request.url).pathname;
+			const token = request.headers.get("X-Plex-Token") ?? "";
+			if (path === "/api/v2/pins" && request.method === "POST")
 				return json({ id: 7, code: "ABCD", expiresIn: 300 });
-			}
-			if (url.pathname === "/api/v2/pins/7")
+			if (path === "/api/v2/pins/7")
 				return json({ id: 7, code: "ABCD", authToken: "owner-token" });
-			if (url.pathname === "/api/v2/user") {
-				if (token === "owner-token") return json({ id: 1, title: "Owner" });
-				if (token === "profile-token") return json({ id: 2, title: "Child" });
-				return json({}, 401);
-			}
-			if (url.pathname === "/api/v2/home/users") {
-				if (token !== "owner-token") return json({}, 401);
-				return json({
-					users: [{ id: 2, title: "Child", protected: true }],
-				});
-			}
-			if (url.pathname === "/api/home/users/2/switch") {
-				if (token !== "owner-token" || url.searchParams.get("pin") !== "1234")
-					return json({}, 401);
-				return new Response(
-					'<user id="2" authenticationToken="profile-token"/>',
-					{
-						status: 201,
-						headers: { "content-type": "application/xml" },
-					},
-				);
-			}
-			if (url.pathname === "/api/v2/resources") {
-				if (token !== "profile-token") return json({}, 401);
+			if (path === "/api/v2/user")
+				return token === "owner-token"
+					? json({ id: 1, title: "Owner" })
+					: json({}, 401);
+			if (path === "/api/v2/resources")
 				return json([
 					{
-						clientIdentifier: "player-1",
-						name: "Player",
-						provides: "player",
-						accessToken: null,
-					},
-					{
-						clientIdentifier: "machine-1",
-						name: "Plex",
+						clientIdentifier: "machine",
+						name: "Nas",
 						provides: "server",
-						accessToken: "server-token",
+						owned: true,
+						accessToken: "owner-token",
 						connections: [{ uri: `${baseUrl}/plex` }],
 					},
 				]);
-			}
-			if (token !== "server-token") return json({}, 401);
-			if (url.pathname === "/plex/identity")
-				return json({ MediaContainer: { machineIdentifier: "machine-1" } });
-			if (url.pathname === "/plex/library/sections")
+			if (path === "/api/v2/home/users")
+				return json({ users: [{ id: 2, title: "Child", protected: true }] });
+			if (path === "/api/servers/machine/shared_servers")
+				return new Response(
+					'<MediaContainer><SharedServer userID="2" acceptedAt="1" accessToken="grant-token"/></MediaContainer>',
+				);
+			if (path === "/plex/identity")
+				return json({ MediaContainer: { machineIdentifier: "machine" } });
+			if (path === "/plex/library/sections") {
+				usedTokens.push(token);
 				return json({
 					MediaContainer: { Directory: [{ key: "3", type: "movie" }] },
 				});
-			if (url.pathname === "/plex/library/sections/3/all") {
-				const offset = Number(request.headers.get("X-Plex-Container-Start"));
-				pageStarts.push(offset);
-				return json({
-					MediaContainer: {
-						totalSize: metadata.length,
-						offset,
-						Metadata: metadata.slice(offset, offset + PAGE_SIZE),
-					},
-				});
 			}
-			if (url.pathname === "/plex/library/metadata/1")
+			if (path === "/plex/library/sections/3/all")
 				return json({
 					MediaContainer: {
-						Metadata: [{ ...metadata[0], viewCount: scrobbles }],
+						totalSize: 1,
+						offset: 0,
+						Metadata: [
+							{ ratingKey: "1", title: "Arrival", viewCount: scrobbles },
+						],
 					},
 				});
-			if (url.pathname === "/plex/:/scrobble" && request.method === "PUT") {
+			if (path === "/plex/library/metadata/1")
+				return json({
+					MediaContainer: {
+						Metadata: [
+							{ ratingKey: "1", title: "Arrival", viewCount: scrobbles },
+						],
+					},
+				});
+			if (path === "/plex/:/scrobble" && request.method === "PUT") {
+				usedTokens.push(token);
 				scrobbles++;
 				return new Response(null, { status: 204 });
 			}
@@ -277,47 +154,69 @@ describe("Plex provider", () => {
 		});
 		const provider = createPlexProvider({
 			clientIdentifier: PLEX_IDENTIFIER,
-			plexUrl: `${baseUrl}/api/v2`,
+			plexUrl: baseUrl,
 		});
 		const pin = await provider.startLogin();
-		expect(pin).toEqual({
-			id: 7,
-			code: "ABCD",
-			expiresIn: 300,
-			authorizationUrl: expect.stringContaining("clientID=plex-client"),
-		});
 		const owner = await provider.pollLogin(pin);
-		expect(owner?.userId).toBe("1");
-		if (!owner) throw new Error("Missing owner");
-		expect(await provider.homeUsers(owner.token)).toEqual([
-			{ id: "2", name: "Child", protected: true },
-		]);
-		const profile = await provider.switchUser({
-			token: owner.token,
-			userId: "2",
-			pin: "1234",
-		});
-		expect(profile.name).toBe("Child");
-		const [server] = await provider.servers(profile.token);
-		expect(server?.id).toBe("machine-1");
-		if (!server) throw new Error("Missing Plex server");
-		const access = { url: server.connections[0] ?? "", token: server.token };
-		await provider.verifyServer(access, server.id);
-		const items = await provider.items(access);
-		expect(items).toHaveLength(PAGE_SIZE + 1);
-		expect(items[0]).toEqual({
-			id: "1",
-			kind: "movie",
-			title: "Movie 1",
-			ids: [{ provider: "imdb", value: "tt0000001" }],
-			watched: false,
-		});
-		expect(pageStarts).toEqual([0, PAGE_SIZE]);
+		if (!owner) throw new Error("Missing OAuth owner");
+		expect(owner.userId).toBe("1");
+		const [server] = await provider.servers(owner.token);
+		if (!server) throw new Error("Missing server");
+		await provider.verifyServer(
+			{ url: `${baseUrl}/plex`, token: owner.token },
+			server.id,
+		);
+		const grant = (
+			await provider.directory({
+				token: owner.token,
+				owner,
+				serverId: server.id,
+			})
+		).find((user) => user.id === "2")?.access;
+		if (grant?.kind !== "shared_grant") throw new Error("Missing grant");
+		const access = { url: `${baseUrl}/plex`, token: grant.token };
+		expect((await provider.items(access))[0]?.watched).toBe(false);
 		await provider.markWatched(access, "1");
 		await provider.markWatched(access, "1");
 		expect(scrobbles).toBe(1);
+		expect(usedTokens.slice(1)).toEqual(["grant-token", "grant-token"]);
 	});
-
+	it("reads every Plex page and rejects duplicate items", async () => {
+		let duplicate = false;
+		const starts: number[] = [];
+		const baseUrl = serve((request) => {
+			const path = new URL(request.url).pathname;
+			if (path === "/plex/library/sections")
+				return json({
+					MediaContainer: { Directory: [{ key: "1", type: "movie" }] },
+				});
+			if (path === "/plex/library/sections/1/all") {
+				const offset = Number(request.headers.get("X-Plex-Container-Start"));
+				starts.push(offset);
+				const entries = Array.from(
+					{ length: offset === 0 ? PAGE_SIZE : 1 },
+					(_, index) => ({
+						ratingKey: String(duplicate && offset > 0 ? 1 : offset + index + 1),
+						title: "Movie",
+					}),
+				);
+				return json({
+					MediaContainer: {
+						totalSize: PAGE_SIZE + 1,
+						offset,
+						Metadata: entries,
+					},
+				});
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		const access = { url: `${baseUrl}/plex`, token: new Secret("grant-token") };
+		expect(await provider.items(access)).toHaveLength(PAGE_SIZE + 1);
+		expect(starts).toEqual([0, PAGE_SIZE]);
+		duplicate = true;
+		await expect(provider.items(access)).rejects.toThrow("duplicate item");
+	});
 	it("rejects an incomplete inventory", async () => {
 		const baseUrl = serve((request) => {
 			const path = new URL(request.url).pathname;
@@ -361,28 +260,6 @@ describe("Plex provider", () => {
 		expect(redirected).toBe(false);
 	});
 
-	it("rejects a switched token for another profile", async () => {
-		const baseUrl = serve((request) => {
-			const path = new URL(request.url).pathname;
-			if (path === "/api/home/users/2/switch") {
-				return new Response(
-					'<user id="3" authenticationToken="wrong-profile-token"/>',
-					{ status: 201, headers: { "content-type": "application/xml" } },
-				);
-			}
-			if (path === "/api/v2/user")
-				return json({ id: 3, title: "Another user" });
-			return json({}, 404);
-		});
-		const provider = createPlexProvider({
-			clientIdentifier: PLEX_IDENTIFIER,
-			plexUrl: baseUrl,
-		});
-		await expect(
-			provider.switchUser({ token: new Secret("owner-token"), userId: "2" }),
-		).rejects.toThrow("different Home user");
-	});
-
 	it("checks library access before accepting a Plex server", async () => {
 		const baseUrl = serve((request) => {
 			const path = new URL(request.url).pathname;
@@ -398,6 +275,24 @@ describe("Plex provider", () => {
 				"machine-1",
 			),
 		).rejects.toThrow("rejected these credentials");
+	});
+	it("rejects a partial required directory response", async () => {
+		const baseUrl = serve((request) =>
+			new URL(request.url).pathname === "/api/v2/home/users"
+				? json({ users: [] })
+				: json({}, 503),
+		);
+		const provider = createPlexProvider({
+			clientIdentifier: PLEX_IDENTIFIER,
+			plexUrl: baseUrl,
+		});
+		expect(
+			provider.directory({
+				token: new Secret("owner"),
+				owner: { userId: "1", name: "Owner" },
+				serverId: "owned",
+			}),
+		).rejects.toThrow();
 	});
 });
 
@@ -597,35 +492,6 @@ it("keeps direct episode identifiers and rejects series paths as episode identif
 			watched: false,
 		},
 	]);
-});
-
-it("validates the identity in a Plex Home XML switch response", async () => {
-	const baseUrl = serve((request) => {
-		const path = new URL(request.url).pathname;
-		if (path === "/api/home/users/2/switch")
-			return new Response(
-				'<user id="2" authenticationToken="managed-token"/>',
-				{ status: 201, headers: { "content-type": "application/xml" } },
-			);
-		if (
-			path === "/api/v2/user" &&
-			request.headers.get("X-Plex-Token") === "managed-token"
-		)
-			return json({ id: 2, title: "Child" });
-		return json({}, 401);
-	});
-	const provider = createPlexProvider({
-		clientIdentifier: PLEX_IDENTIFIER,
-		plexUrl: `${baseUrl}/api/v2`,
-	});
-	const user = await provider.switchUser({
-		token: new Secret("owner"),
-		userId: "2",
-		pin: "1234",
-	});
-	expect(user.userId).toBe("2");
-	expect(user.name).toBe("Child");
-	expect(user.token.reveal()).toBe("managed-token");
 });
 
 describe("library display details", () => {

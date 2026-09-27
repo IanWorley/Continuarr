@@ -36,7 +36,8 @@ async function setup(now: () => number = Date.now) {
 			name: "Owner",
 			token: new Secret("owner-token"),
 		},
-		homePin: "",
+		grant: true,
+		failDirectory: false,
 		writes: [] as string[],
 	};
 	const plex: PlexProvider = {
@@ -48,10 +49,22 @@ async function setup(now: () => number = Date.now) {
 		}),
 		pollLogin: async () => state.plexLogin,
 		homeUsers: async () => [{ id: "child", name: "Child", protected: true }],
-		sharedUsers: async () => ({ users: [], issues: [] }),
-		switchUser: async ({ userId, pin }) => {
-			state.homePin = pin ?? "";
-			return { userId, name: "Child", token: new Secret("child-token") };
+		directory: async () => {
+			if (state.failDirectory)
+				throw new MediaError("Plex directory failed.", 502);
+			return [
+				{ id: "owner", name: "Owner", access: { kind: "owner" as const } },
+				{
+					id: "child",
+					name: "Child",
+					access: state.grant
+						? {
+								kind: "shared_grant" as const,
+								token: new Secret("child-token-server"),
+							}
+						: { kind: "unavailable" as const },
+				},
+			];
 		},
 		servers: async (token) => [
 			{
@@ -107,12 +120,10 @@ async function setup(now: () => number = Date.now) {
 		const attempt = await service.startLogin();
 		const login = await service.pollLogin(attempt.id);
 		if (login.status !== "linked") throw new Error("Expected linked account");
-		const selection = await service.selectProfile({
+		const selection = await service.selectPlexServer({
 			accountId: login.accountId,
-			userId: "child",
-			pin: "1234",
 		});
-		const p = await service.connectPlex({
+		await service.connectPlex({
 			selectionId: selection.id,
 			serverId: "machine",
 			url: "http://plex:32400",
@@ -124,7 +135,14 @@ async function setup(now: () => number = Date.now) {
 		});
 		const j = (await repo.jellyfinProfiles())[0];
 		if (!j) throw new Error("Missing Jellyfin profile");
-		return service.addPairing({ plexProfileId: p.id, jellyfinProfileId: j.id });
+		const child = (await repo.plexProfiles()).find(
+			(profile) => profile.userId === "child",
+		);
+		if (!child) throw new Error("Missing Plex child profile");
+		return service.addPairing({
+			plexProfileId: child.id,
+			jellyfinProfileId: j.id,
+		});
 	}
 	return {
 		db,
@@ -140,117 +158,194 @@ async function setup(now: () => number = Date.now) {
 }
 
 describe("media account and sync service", () => {
-	it("shows owner, Home, and shared users and saves only the friend's server token", async () => {
-		const { service, repo, secrets, plex } = await setup();
-		plex.sharedUsers = async () => ({
-			issues: ["Could not load shared Plex users from Offline. Try again."],
-			users: [
-				{ id: "child", name: "Duplicate", servers: [] },
-				{
-					id: "friend",
-					name: "Friend",
-					servers: [
-						{
-							id: "machine",
-							name: "Plex",
-							token: new Secret("friend-server-token"),
-							connections: ["http://plex:32400"],
-						},
-					],
-				},
-			],
-		});
-		plex.switchUser = async () => {
-			throw new Error("Shared users must not use Home switching");
-		};
+	it("imports owner and granted Home user without a PIN and exposes no token", async () => {
+		const { service, repo, pair } = await setup();
+		const pairing = await pair();
+		const profiles = await repo.plexProfiles();
+		expect(
+			profiles.map(({ userId, accessStatus }) => [userId, accessStatus]).sort(),
+		).toEqual([
+			["child", "available"],
+			["owner", "available"],
+		]);
+		expect(
+			(await repo.plexProfile(pairing.plexProfileId))?.token?.startsWith("v1:"),
+		).toBe(true);
+		expect(JSON.stringify(await service.state())).not.toMatch(
+			/owner-token|child-token|j-token|v1:/,
+		);
+	});
+	it("keeps the last good Plex snapshot on failure and revokes a missing grant after a complete refresh", async () => {
+		const { service, repo, state, pair } = await setup();
+		const pairing = await pair();
+		const server = (await repo.plexServers())[0];
+		if (!server) throw new Error("Missing Plex server");
+		state.failDirectory = true;
+		expect((await service.refreshPlexUsers(server.id)).kind).toBe("failed");
+		expect((await repo.plexProfile(pairing.plexProfileId))?.accessStatus).toBe(
+			"available",
+		);
+		state.failDirectory = false;
+		state.grant = false;
+		expect((await service.refreshPlexUsers(server.id)).kind).toBe("updated");
+		expect((await repo.plexProfile(pairing.plexProfileId))?.accessStatus).toBe(
+			"unavailable",
+		);
+		await expect(service.preview(pairing.id)).rejects.toThrow(
+			"no server grant",
+		);
+	});
+	it("keeps an unadopted legacy profile usable, then marks absent legacy users missing on verified adoption", async () => {
+		const { service, repo, secrets, state } = await setup();
 		const attempt = await service.startLogin();
 		const login = await service.pollLogin(attempt.id);
-		if (login.status !== "linked") throw new Error("Expected Plex login");
-		expect(await service.plexUsers(login.accountId)).toEqual({
-			users: [
-				{ kind: "owner", id: "owner", name: "Owner" },
-				{ kind: "home", id: "child", name: "Child", protected: true },
-				{ kind: "shared", id: "friend", name: "Friend" },
-			],
-			issues: ["Could not load shared Plex users from Offline. Try again."],
-		});
-		const selection = await service.selectProfile({
+		if (login.status !== "linked") throw new Error("Expected login");
+		const legacyId = crypto.randomUUID();
+		await repo.savePlexProfile({
+			id: legacyId,
 			accountId: login.accountId,
-			userId: "friend",
+			userId: "old-user",
+			name: "Old user",
+			serverId: "machine",
+			serverName: "Plex",
+			url: "http://plex:32400",
+			token: secrets.encrypt(legacyId, new Secret("legacy-token")),
 		});
-		const connected = await service.connectPlex({
+		await repo.backfillPlexServers();
+		expect((await repo.plexProfile(legacyId))?.connectionId).toBeNull();
+		expect(
+			secrets
+				.decrypt(legacyId, (await repo.plexProfile(legacyId))?.token ?? "")
+				.reveal(),
+		).toBe("legacy-token");
+		const selection = await service.selectPlexServer({
+			accountId: login.accountId,
+		});
+		await service.connectPlex({
 			selectionId: selection.id,
 			serverId: "machine",
 			url: "http://plex:32400",
 		});
-		const stored = await repo.plexProfile(connected.id);
-		if (!stored) throw new Error("Missing Plex profile");
-		expect(stored.userId).toBe("friend");
-		expect(secrets.decrypt(stored.id, stored.token).reveal()).toBe(
-			"friend-server-token",
+		expect((await repo.plexProfile(legacyId))?.presence).toBe("missing");
+		expect((await repo.plexProfile(legacyId))?.accessStatus).toBe(
+			"unavailable",
 		);
-		expect(JSON.stringify(await service.state())).not.toContain(
-			"friend-server-token",
+		expect((await repo.plexProfile(legacyId))?.connectionId).toBe(
+			(await repo.plexServers())[0]?.id,
 		);
+		expect(state.writes).toEqual([]);
 	});
-
-	it("reports a shared lookup failure while keeping owner and Home selectable", async () => {
-		const { service, plex } = await setup();
-		plex.sharedUsers = async () => {
-			throw new Error("Plex unavailable");
+	it("lets the verified owner take over an unverified candidate from a shared account", async () => {
+		const { service, repo, secrets, state, plex } = await setup();
+		const firstAttempt = await service.startLogin();
+		const firstLogin = await service.pollLogin(firstAttempt.id);
+		if (firstLogin.status !== "linked")
+			throw new Error("Missing first account");
+		const candidateId = crypto.randomUUID();
+		await repo.savePlexProfile({
+			id: candidateId,
+			accountId: firstLogin.accountId,
+			userId: "owner",
+			name: "Owner",
+			serverId: "machine",
+			serverName: "Plex",
+			url: "http://plex:32400",
+			token: secrets.encrypt(candidateId, new Secret("old-token")),
+		});
+		await repo.backfillPlexServers();
+		const candidate = (await repo.plexServers())[0];
+		expect(candidate?.verified).toBe(false);
+		state.plexLogin = {
+			userId: "real-owner",
+			name: "Real owner",
+			token: new Secret("real-owner-token"),
+		};
+		const ownerAttempt = await service.startLogin();
+		const ownerLogin = await service.pollLogin(ownerAttempt.id);
+		if (ownerLogin.status !== "linked")
+			throw new Error("Missing owner account");
+		plex.directory = async () => [
+			{ id: "real-owner", name: "Real owner", access: { kind: "owner" } },
+		];
+		const selection = await service.selectPlexServer({
+			accountId: ownerLogin.accountId,
+		});
+		await service.connectPlex({
+			selectionId: selection.id,
+			serverId: "machine",
+			url: "http://plex:32400",
+		});
+		expect((await repo.plexServers())[0]).toMatchObject({
+			id: candidate?.id,
+			accountId: ownerLogin.accountId,
+			verified: true,
+		});
+		expect((await repo.plexProfile(candidateId))?.presence).toBe("missing");
+	});
+	it("rejects an old refresh after owner reauthorization", async () => {
+		const { service, repo, secrets, state, plex, pair } = await setup();
+		const pairing = await pair();
+		const server = (await repo.plexServers())[0];
+		if (!server) throw new Error("Missing server");
+		let release: (() => void) | undefined;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		plex.directory = async () => {
+			await gate;
+			return [{ id: "owner", name: "Owner", access: { kind: "owner" } }];
+		};
+		const oldRefresh = service.refreshPlexUsers(server.id);
+		state.plexLogin = {
+			userId: "owner",
+			name: "Owner",
+			token: new Secret("new-owner-token"),
 		};
 		const attempt = await service.startLogin();
-		const login = await service.pollLogin(attempt.id);
-		if (login.status !== "linked") throw new Error("Expected Plex login");
-		expect(await service.plexUsers(login.accountId)).toEqual({
-			users: [
-				{ kind: "owner", id: "owner", name: "Owner" },
-				{ kind: "home", id: "child", name: "Child", protected: true },
-			],
-			issues: ["Could not load shared Plex users. Try again."],
-		});
+		await service.pollLogin(attempt.id);
+		release?.();
+		expect((await oldRefresh).kind).toBe("superseded");
+		expect((await repo.plexProfile(pairing.plexProfileId))?.accessStatus).toBe(
+			"available",
+		);
+		const owner = (await repo.plexProfiles()).find(
+			(profile) => profile.userId === "owner",
+		);
+		expect(secrets.decrypt(owner?.id ?? "", owner?.token ?? "").reveal()).toBe(
+			"new-owner-token",
+		);
 	});
-
-	it("does not treat a protected Home user as shared when Home discovery fails", async () => {
-		const { service, plex, state } = await setup();
-		plex.sharedUsers = async () => ({
-			issues: [],
-			users: [
-				{
-					id: "child",
-					name: "Child",
-					servers: [
-						{
-							id: "machine",
-							name: "Plex",
-							token: new Secret("shared-token"),
-							connections: ["http://plex:32400"],
-						},
-					],
-				},
-			],
+	it("rejects a stale overlapping reconnect before it can replace newer grants", async () => {
+		const { service, repo, plex, pair } = await setup();
+		await pair();
+		const accountId = (await repo.accounts())[0]?.id;
+		if (!accountId) throw new Error("Missing account");
+		const first = await service.selectPlexServer({ accountId });
+		const second = await service.selectPlexServer({ accountId });
+		let release: (() => void) | undefined;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
 		});
-		const attempt = await service.startLogin();
-		const login = await service.pollLogin(attempt.id);
-		if (login.status !== "linked") throw new Error("Expected Plex login");
-		await service.selectProfile({
-			accountId: login.accountId,
-			userId: "child",
-			pin: "1234",
-		});
-		expect(state.homePin).toBe("1234");
-		plex.homeUsers = async () => {
-			throw new Error("Home unavailable");
+		let requests = 0;
+		plex.directory = async () => {
+			requests++;
+			if (requests === 1) await gate;
+			return [{ id: "owner", name: "Owner", access: { kind: "owner" } }];
 		};
-		expect(await service.plexUsers(login.accountId)).toEqual({
-			users: [{ kind: "owner", id: "owner", name: "Owner" }],
-			issues: ["Could not load Plex Home users. Try again."],
+		const stale = service.connectPlex({
+			selectionId: first.id,
+			serverId: "machine",
+			url: "http://plex:32400",
 		});
-		await expect(
-			service.selectProfile({ accountId: login.accountId, userId: "child" }),
-		).rejects.toThrow("Could not load Plex Home users");
+		while (requests === 0) await Bun.sleep(1);
+		await service.connectPlex({
+			selectionId: second.id,
+			serverId: "machine",
+			url: "http://plex:32400",
+		});
+		release?.();
+		await expect(stale).rejects.toThrow("connection changed");
 	});
-
 	it("imports every user and retains the full details", async () => {
 		const { service, jellyfin, repo } = await setup();
 		jellyfin.directory = async (): Promise<JellyfinDirectory> => ({
@@ -344,23 +439,16 @@ describe("media account and sync service", () => {
 		);
 	});
 
-	it("stores polling settings and polls only when due after service recreation", async () => {
-		let clock = 1_000_000;
-		const { service, repo, secrets, plex, jellyfin } = await setup(() => clock);
-		await service.importJellyfin({
-			kind: "new",
-			url: "http://jellyfin:8096",
-			apiKey: "j-token",
+	it("persists one directory schedule across restart and visits both providers", async () => {
+		let clock = 10_000;
+		const { service, repo, secrets, plex, jellyfin, pair } = await setup(
+			() => clock,
+		);
+		await pair();
+		await service.configureDirectoryPolling({
+			enabled: true,
+			intervalMinutes: 60,
 		});
-		const server = (await repo.jellyfinServers())[0];
-		if (!server) throw new Error("Missing server");
-		let reads = 0;
-		const originalDirectory = jellyfin.directory;
-		jellyfin.directory = async (access) => {
-			reads++;
-			return originalDirectory(access);
-		};
-		await service.configureJellyfinPolling(server.id, true, 5);
 		const restarted = createMediaService({
 			repo,
 			secrets,
@@ -368,76 +456,29 @@ describe("media account and sync service", () => {
 			jellyfin,
 			now: () => clock,
 		});
-		clock += 5 * 60_000 - 1;
-		await restarted.tick();
-		expect(reads).toBe(0);
-		clock++;
-		await restarted.tick();
-		expect(reads).toBe(1);
-		expect((await repo.jellyfinServer(server.id))?.nextAttemptAt).toBe(
-			clock + 5 * 60_000,
+		expect((await restarted.state()).directoryPolling.nextAttemptAt).toBe(
+			clock + 60 * 60_000,
 		);
-		await restarted.configureJellyfinPolling(server.id, false, 5);
-		clock += 5 * 60_000;
+		clock += 60 * 60_000;
 		await restarted.tick();
-		expect(reads).toBe(1);
+		const state = await restarted.state();
+		expect(state.directoryPolling.lastAttemptAt).toBe(clock);
+		expect(state.plexServers[0]?.lastAttemptAt).toBe(clock);
+		expect((await repo.jellyfinServers())[0]?.lastAttemptAt).toBe(clock);
 	});
-
-	it("does not commit a refresh started before key replacement", async () => {
-		const { service, repo, jellyfin, secrets } = await setup();
-		const imported = await service.importJellyfin({
-			kind: "new",
-			url: "http://jellyfin:8096",
-			apiKey: "old-key",
-		});
-		let release = () => {};
-		let entered = () => {};
-		const blocked = new Promise<void>((resolve) => {
-			release = resolve;
-		});
-		const started = new Promise<void>((resolve) => {
-			entered = resolve;
-		});
-		jellyfin.directory = async (access) => {
-			if (access.token.reveal() === "old-key") {
-				entered();
-				await blocked;
-				return { server: { id: "j-server", name: "Old" }, users: [] };
-			}
-			return {
-				server: { id: "j-server", name: "New" },
-				users: [
-					{
-						id: "j-child",
-						name: "Fresh",
-						disabled: false,
-						administrator: false,
-						lastActivityDate: null,
-						lastLoginDate: null,
-						details: { Id: "j-child", Name: "Fresh" },
-					},
-				],
-			};
-		};
-		const pending = service.refreshJellyfinUsers(imported.id);
-		await started;
-		const current = await repo.jellyfinServer(imported.id);
-		if (!current) throw new Error("Missing server");
-		await service.importJellyfin({
-			kind: "replace",
-			id: imported.id,
-			revision: current.revision,
-			url: "http://jellyfin:8096",
-			apiKey: "new-key",
-		});
-		release();
-		expect(await pending).toEqual({ kind: "superseded" });
-		expect((await repo.jellyfinProfiles())[0]?.name).toBe("Fresh");
-		const updated = await repo.jellyfinServer(imported.id);
-		if (!updated) throw new Error("Missing server");
-		expect(secrets.decrypt(updated.id, updated.token).reveal()).toBe("new-key");
+	it("refreshes Jellyfin when Plex directory fails", async () => {
+		const { service, repo, state, pair } = await setup();
+		await pair();
+		state.failDirectory = true;
+		const results = (await service.refreshDirectories()).results;
+		expect(
+			results.map(({ kind, result }) => [kind, result.kind]).sort(),
+		).toEqual([
+			["jellyfin", "updated"],
+			["plex", "failed"],
+		]);
+		expect((await repo.jellyfinServers())[0]?.lastError).toBeNull();
 	});
-
 	it("backfills shared credentials without changing profile or pairing IDs", async () => {
 		const { db, repo, secrets } = await setup();
 		await db.insert(schema.plexAccounts).values({
@@ -605,20 +646,20 @@ describe("media account and sync service", () => {
 		);
 	});
 	it("persists encrypted profile tokens and exposes no credentials", async () => {
-		const { service, repo, state, pair } = await setup();
+		const { service, repo, pair } = await setup();
 		await pair();
-		expect(state.homePin).toBe("1234");
-		expect((await repo.plexProfiles())[0]?.token.startsWith("v1:")).toBe(true);
+		expect((await repo.plexProfiles())[0]?.token?.startsWith("v1:")).toBe(true);
 		expect((await repo.jellyfinServers())[0]?.token.startsWith("v1:")).toBe(
 			true,
 		);
 		expect(JSON.stringify(await service.state())).not.toMatch(
 			/owner-token|child-token|j-token|never-store|1234|v1:/,
 		);
-		expect((await service.state()).plexProfiles[0]).toMatchObject({
-			userId: "child",
-			serverId: "machine",
-		});
+		expect(
+			(await service.state()).plexProfiles.find(
+				(profile) => profile.userId === "child",
+			),
+		).toMatchObject({ serverId: "machine", accessStatus: "available" });
 	});
 	it("previews without writing, merges both directions, and does nothing on a repeated run", async () => {
 		const { service, state, pair } = await setup();

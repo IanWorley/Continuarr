@@ -1,6 +1,7 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback } from "react";
+import { DirectoryPolling } from "~/components/media/DirectoryPolling";
 import { JellyfinConnect } from "~/components/media/JellyfinConnect";
 import { PlexConnect } from "~/components/media/PlexConnect";
 import {
@@ -87,7 +88,7 @@ function Home() {
 							account={state.data.accounts.find(
 								(account) => account.id === state.data.activePlexAccountId,
 							)}
-							profiles={state.data.plexProfiles}
+							servers={state.data.plexServers}
 							refresh={refresh}
 						/>
 					)}
@@ -105,6 +106,13 @@ function Home() {
 					)}
 				</div>
 			</section>
+			{state.data && (
+				<DirectoryPolling
+					key={`${state.data.directoryPolling.enabled}:${state.data.directoryPolling.intervalMinutes}`}
+					settings={state.data.directoryPolling}
+					refresh={refresh}
+				/>
+			)}
 		</main>
 	);
 }

@@ -65,18 +65,11 @@ export function mediaRoutes(
 				body: t.Object({ id }),
 			},
 		)
-		.get("/plex/:id/users", async ({ params }) =>
-			(await getService()).plexUsers(params.id),
-		)
 		.post(
 			"/plex/select",
-			async ({ body }) => (await getService()).selectProfile(body),
+			async ({ body }) => (await getService()).selectPlexServer(body),
 			{
-				body: t.Object({
-					accountId: id,
-					userId: id,
-					pin: t.Optional(t.String({ maxLength: 20 })),
-				}),
+				body: t.Object({ accountId: id }),
 			},
 		)
 		.post(
@@ -101,14 +94,12 @@ export function mediaRoutes(
 		.post("/jellyfin/:id/refresh", async ({ params }) =>
 			(await getService()).refreshJellyfinUsers(params.id),
 		)
+		.post("/directory/refresh", async () =>
+			(await getService()).refreshDirectories(),
+		)
 		.post(
-			"/jellyfin/:id/polling",
-			async ({ params, body }) =>
-				(await getService()).configureJellyfinPolling(
-					params.id,
-					body.enabled,
-					body.intervalMinutes,
-				),
+			"/directory/polling",
+			async ({ body }) => (await getService()).configureDirectoryPolling(body),
 			{
 				body: t.Object({
 					enabled: t.Boolean(),

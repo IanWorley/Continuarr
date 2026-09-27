@@ -24,6 +24,7 @@ export function getMediaService() {
 					console.error(error.message);
 				throw error;
 			});
+		await repo.backfillPlexServers();
 		const service = createMediaService({
 			repo,
 			secrets: secretStorage,

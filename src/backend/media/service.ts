@@ -1,21 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { type createSecretStorage, Secret } from "~/backend/secrets/storage";
-import {
-	DEFAULT_USER_POLL_MINUTES,
-	MAX_USER_POLL_MINUTES,
-	MILLISECONDS_PER_MINUTE,
-	MIN_USER_POLL_MINUTES,
-} from "./constants";
+import { MAX_USER_POLL_MINUTES, MIN_USER_POLL_MINUTES } from "./constants";
 import {
 	type JellyfinProvider,
 	type ManualMatch,
 	MediaError,
-	type PlexIdentity,
 	type PlexPin,
 	type PlexProvider,
 	type PlexServer,
-	type PlexUserOption,
 	serverUrl,
 } from "./model";
 import { planWatchedUnion } from "./plan";
@@ -34,7 +27,7 @@ type PendingLogin = {
 };
 type Selection = {
 	accountId: string;
-	identity: Pick<PlexIdentity, "userId" | "name">;
+	expectedToken: string;
 	servers: PlexServer[];
 	expiresAt: number;
 };
@@ -88,40 +81,6 @@ export function createMediaService({
 		if (!result) throw new MediaError("Plex account not found.", 404);
 		return result;
 	}
-	async function plexDirectory(stored: Awaited<ReturnType<typeof account>>) {
-		const token = secrets.decrypt(stored.id, stored.token);
-		const [homeResult, sharedResult] = await Promise.allSettled([
-			plex.homeUsers(token),
-			plex.sharedUsers(token),
-		]);
-		const issues: string[] = [];
-		if (homeResult.status === "rejected")
-			issues.push("Could not load Plex Home users. Try again.");
-		if (sharedResult.status === "rejected")
-			issues.push("Could not load shared Plex users. Try again.");
-		else issues.push(...sharedResult.value.issues);
-		const users: PlexUserOption[] = [
-			{ kind: "owner", id: stored.userId, name: stored.name },
-		];
-		const seen = new Set([stored.userId]);
-		for (const user of homeResult.status === "fulfilled"
-			? homeResult.value
-			: []) {
-			if (seen.has(user.id)) continue;
-			users.push({ kind: "home", ...user });
-			seen.add(user.id);
-		}
-		const shared =
-			homeResult.status === "fulfilled" && sharedResult.status === "fulfilled"
-				? sharedResult.value.users
-				: [];
-		for (const user of shared) {
-			if (seen.has(user.id)) continue;
-			users.push({ kind: "shared", id: user.id, name: user.name });
-			seen.add(user.id);
-		}
-		return { users, shared, issues, token };
-	}
 	async function pairing(id: string) {
 		const result = await repo.pairing(id);
 		if (!result) throw new MediaError("Pairing not found.", 404);
@@ -142,13 +101,27 @@ export function createMediaService({
 		]);
 		if (!p || !j)
 			throw new MediaError("Reconnect the profiles for this pairing.");
+		if (
+			p.connectionId &&
+			(p.presence !== "present" || p.accessStatus !== "available")
+		)
+			throw new MediaError("This Plex user is missing or has no server grant.");
 		if (j.presence !== "present" || j.disabled || !j.connectionId)
 			throw new MediaError(
 				"This Jellyfin user is missing, disabled, or awaiting refresh.",
 			);
 		const server = await repo.jellyfinServer(j.connectionId);
 		if (!server) throw new MediaError("Reconnect the Jellyfin server.");
-		const plexAccess = { url: p.url, token: secrets.decrypt(p.id, p.token) };
+		const plexServer = p.connectionId
+			? await repo.plexServer(p.connectionId)
+			: null;
+		if (p.connectionId && !plexServer?.verified)
+			throw new MediaError("Reconnect the Plex server.");
+		if (!p.token) throw new MediaError("This Plex user has no server grant.");
+		const plexAccess = {
+			url: plexServer?.url ?? p.url,
+			token: secrets.decrypt(p.id, p.token),
+		};
 		const jellyfinAccess = {
 			url: server.url,
 			userId: j.userId,
@@ -186,9 +159,6 @@ export function createMediaService({
 						name,
 						url,
 						revision,
-						pollEnabled,
-						intervalMinutes,
-						nextAttemptAt,
 						lastAttemptAt,
 						lastSuccessAt,
 						lastError,
@@ -198,9 +168,6 @@ export function createMediaService({
 						name,
 						url,
 						revision,
-						pollEnabled,
-						intervalMinutes,
-						nextAttemptAt,
 						lastAttemptAt,
 						lastSuccessAt,
 						lastError,
@@ -268,9 +235,6 @@ export function createMediaService({
 							name: directory.server.name,
 							url,
 							token: secrets.encrypt(id, new Secret(input.apiKey)),
-							intervalMinutes: DEFAULT_USER_POLL_MINUTES,
-							nextAttemptAt:
-								now() + DEFAULT_USER_POLL_MINUTES * MILLISECONDS_PER_MINUTE,
 						},
 						directory.users,
 						now(),
@@ -304,7 +268,8 @@ export function createMediaService({
 			});
 		},
 		async refreshJellyfinUsers(id: string) {
-			const active = refreshes.get(id);
+			const key = `jellyfin:${id}`;
+			const active = refreshes.get(key);
 			if (active) return active;
 			const work = (async () => {
 				const claim = await repo.claimJellyfinRefresh(id, now());
@@ -319,13 +284,16 @@ export function createMediaService({
 							"The saved Jellyfin URL points to a different server.",
 							409,
 						);
-					const updated = await repo.finishJellyfinRefresh(
-						id,
-						claim.revision,
-						directory.users,
-						now(),
-						directory.server.name,
-					);
+					const updated = await withConnectionWrite(async () => {
+						ensureIdle();
+						return repo.finishJellyfinRefresh(
+							id,
+							claim.revision,
+							directory.users,
+							now(),
+							directory.server.name,
+						);
+					});
 					return updated
 						? {
 								kind: "updated" as const,
@@ -347,37 +315,136 @@ export function createMediaService({
 						: { kind: "superseded" as const };
 				}
 			})();
-			refreshes.set(id, work);
+			refreshes.set(key, work);
 			try {
 				return await work;
 			} finally {
-				refreshes.delete(id);
+				refreshes.delete(key);
 			}
 		},
-		async configureJellyfinPolling(
-			id: string,
-			enabled: boolean,
-			intervalMinutes: number,
-		) {
+		async configureDirectoryPolling(input: {
+			enabled: boolean;
+			intervalMinutes: number;
+		}) {
 			if (
-				!Number.isInteger(intervalMinutes) ||
-				intervalMinutes < MIN_USER_POLL_MINUTES ||
-				intervalMinutes > MAX_USER_POLL_MINUTES
+				!Number.isInteger(input.intervalMinutes) ||
+				input.intervalMinutes < MIN_USER_POLL_MINUTES ||
+				input.intervalMinutes > MAX_USER_POLL_MINUTES
 			)
 				throw new MediaError(
 					"Choose a polling interval from 1 to 1440 minutes.",
 				);
-			const server = await repo.configureJellyfinPolling(
-				id,
-				enabled,
-				intervalMinutes,
+			const row = await repo.configureDirectoryPolling(
+				input.enabled,
+				input.intervalMinutes,
 				now(),
 			);
-			if (!server) throw new MediaError("Jellyfin server not found.", 404);
 			return {
-				enabled: server.pollEnabled,
-				intervalMinutes: server.intervalMinutes,
+				enabled: row.enabled,
+				intervalMinutes: row.intervalMinutes,
+				nextAttemptAt: row.nextAttemptAt,
+				lastAttemptAt: row.lastAttemptAt,
 			};
+		},
+		async refreshDirectories() {
+			const [plexServers, jellyfinServers] = await Promise.all([
+				repo.plexServers(),
+				repo.jellyfinServers(),
+			]);
+			const safeRefresh = async (
+				refresh: () => Promise<{
+					kind: "updated" | "superseded" | "failed";
+					importedCount?: number;
+					message?: string;
+				}>,
+			) => {
+				try {
+					return await refresh();
+				} catch {
+					return {
+						kind: "failed" as const,
+						message: "Could not refresh this directory.",
+					};
+				}
+			};
+			const results = await Promise.all([
+				...plexServers.map(async ({ id }) => ({
+					kind: "plex" as const,
+					id,
+					result: await safeRefresh(() => service.refreshPlexUsers(id)),
+				})),
+				...jellyfinServers.map(async ({ id }) => ({
+					kind: "jellyfin" as const,
+					id,
+					result: await safeRefresh(() => service.refreshJellyfinUsers(id)),
+				})),
+			]);
+			return { results };
+		},
+		async refreshPlexUsers(id: string) {
+			const key = `plex:${id}`;
+			const active = refreshes.get(key);
+			if (active) return active;
+			const work = (async () => {
+				const claim = await repo.claimPlexRefresh(id, now());
+				if (!claim) throw new MediaError("Plex server not found.", 404);
+				try {
+					const token = secrets.decrypt(claim.account.id, claim.account.token);
+					const owned = (await plex.servers(token)).find(
+						(server) => server.id === claim.server.externalId,
+					);
+					if (
+						!owned?.connections.some(
+							(connection) => serverUrl(connection) === claim.server.url,
+						)
+					)
+						throw new MediaError(
+							"The Plex owner no longer has this server resource.",
+							409,
+						);
+					await plex.verifyServer(
+						{ url: claim.server.url, token },
+						claim.server.externalId,
+					);
+					const users = await plex.directory({
+						token,
+						owner: claim.account,
+						serverId: claim.server.externalId,
+					});
+					const updated = await withConnectionWrite(async () => {
+						ensureIdle();
+						return repo.finishPlexRefresh(
+							id,
+							claim.server.revision,
+							users,
+							secrets,
+							now(),
+						);
+					});
+					return updated
+						? { kind: "updated" as const, importedCount: users.length }
+						: { kind: "superseded" as const };
+				} catch (error) {
+					const message =
+						error instanceof MediaError
+							? error.message
+							: "Could not refresh Plex users. Check the owner authorization and server.";
+					const saved = await repo.failPlexRefresh(
+						id,
+						claim.server.revision,
+						message,
+					);
+					return saved
+						? { kind: "failed" as const, message }
+						: { kind: "superseded" as const };
+				}
+			})();
+			refreshes.set(key, work);
+			try {
+				return await work;
+			} finally {
+				refreshes.delete(key);
+			}
 		},
 		async library(id: string) {
 			const { plex, jellyfin } = await snapshot(id);
@@ -428,6 +495,8 @@ export function createMediaService({
 				accounts,
 				activePlexAccountId,
 				plexProfiles,
+				plexServers,
+				directoryPolling,
 				jellyfinProfiles,
 				jellyfinServers,
 				pairings,
@@ -436,6 +505,8 @@ export function createMediaService({
 				repo.accounts(),
 				repo.activePlexAccountId(),
 				repo.plexProfiles(),
+				repo.plexServers(),
+				repo.directoryPolling(),
 				repo.jellyfinProfiles(),
 				repo.jellyfinServers(),
 				repo.pairings(),
@@ -450,8 +521,35 @@ export function createMediaService({
 					userId,
 					name,
 				})),
+				plexServers: plexServers.map(
+					({
+						id,
+						accountId,
+						externalId,
+						name,
+						url,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}) => ({
+						id,
+						accountId,
+						externalId,
+						name,
+						url,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}),
+				),
+				directoryPolling: {
+					enabled: directoryPolling.enabled,
+					intervalMinutes: directoryPolling.intervalMinutes,
+					nextAttemptAt: directoryPolling.nextAttemptAt,
+					lastAttemptAt: directoryPolling.lastAttemptAt,
+				},
 				plexProfiles: plexProfiles.map(
-					({ id, accountId, userId, name, serverId, serverName, url }) => ({
+					({
 						id,
 						accountId,
 						userId,
@@ -459,6 +557,24 @@ export function createMediaService({
 						serverId,
 						serverName,
 						url,
+						connectionId,
+						presence,
+						accessStatus,
+					}) => ({
+						id,
+						accountId,
+						userId,
+						name,
+						serverId,
+						serverName:
+							plexServers.find((server) => server.id === connectionId)?.name ??
+							serverName,
+						url:
+							plexServers.find((server) => server.id === connectionId)?.url ??
+							url,
+						connectionId,
+						presence,
+						accessStatus,
 					}),
 				),
 				jellyfinProfiles: jellyfinProfiles.map(
@@ -523,82 +639,36 @@ export function createMediaService({
 					(item) => item.userId === identity.userId,
 				);
 				const id = existing?.id ?? randomUUID();
-				await repo.saveAccount({
-					id,
-					userId: identity.userId,
-					name: identity.name,
-					token: secrets.encrypt(id, identity.token),
-				});
+				await repo.saveAccount(
+					{
+						id,
+						userId: identity.userId,
+						name: identity.name,
+						token: secrets.encrypt(id, identity.token),
+					},
+					secrets,
+				);
 				await repo.saveActivePlexAccountId(id);
 				return id;
 			});
 			attempt.accountId = accountId;
 			return { status: "linked" as const, accountId };
 		},
-		async plexUsers(id: string) {
-			const stored = await account(id);
-			const { users, issues } = await plexDirectory(stored);
-			return { users, issues };
-		},
-		async selectProfile(input: {
-			accountId: string;
-			userId: string;
-			pin?: string;
-		}) {
+		async selectPlexServer(input: { accountId: string }) {
 			prune();
 			if (selections.size >= MAX_PENDING_ATTEMPTS)
 				throw new MediaError(
-					"Too many pending profile selections. Try again shortly.",
+					"Too many pending server selections. Try again shortly.",
 					409,
 				);
 			const stored = await account(input.accountId);
-			const directory = await plexDirectory(stored);
-			const selected = directory.users.find((user) => user.id === input.userId);
-			if (!selected)
-				throw new MediaError(
-					directory.issues.length
-						? `${directory.issues.join(" ")} Select the profile again.`
-						: "Plex user not found. Reload the user list.",
-				);
-			let identity: Pick<PlexIdentity, "userId" | "name">;
-			let servers: PlexServer[];
-			switch (selected.kind) {
-				case "owner":
-					identity = { userId: stored.userId, name: stored.name };
-					servers = await plex.servers(directory.token);
-					break;
-				case "home": {
-					const switched = await plex.switchUser({
-						token: directory.token,
-						userId: selected.id,
-						pin: input.pin,
-					});
-					if (switched.userId !== selected.id)
-						throw new MediaError(
-							"Plex returned a different profile. No connection was saved.",
-							502,
-						);
-					identity = { userId: switched.userId, name: switched.name };
-					servers = await plex.servers(switched.token);
-					break;
-				}
-				case "shared": {
-					const friend = directory.shared.find(
-						(user) => user.id === selected.id,
-					);
-					if (!friend)
-						throw new MediaError(
-							"Plex shared user not found. Reload the user list.",
-						);
-					identity = { userId: friend.id, name: friend.name };
-					servers = friend.servers;
-					break;
-				}
-			}
+			const servers = await plex.servers(
+				secrets.decrypt(stored.id, stored.token),
+			);
 			const id = randomUUID();
 			selections.set(id, {
 				accountId: stored.id,
-				identity,
+				expectedToken: stored.token,
 				servers,
 				expiresAt: now() + SELECTION_TTL_MS,
 			});
@@ -621,7 +691,7 @@ export function createMediaService({
 			const selection = selections.get(input.selectionId);
 			if (!selection)
 				throw new MediaError(
-					"Profile selection expired. Select the Plex profile again.",
+					"Server selection expired. Select the Plex server again.",
 				);
 			const server = selection.servers.find(
 				(item) => item.id === input.serverId,
@@ -633,30 +703,42 @@ export function createMediaService({
 				throw new MediaError(
 					"Choose a connection advertised by this Plex server.",
 				);
-			await plex.verifyServer({ url, token: server.token }, server.id);
-			ensureIdle();
+			const stored = await account(selection.accountId);
+			if (stored.token !== selection.expectedToken)
+				throw new MediaError(
+					"Plex authorization changed. Select the server again.",
+					409,
+				);
+			const expectedRevision =
+				(await repo.plexServerByExternalId(server.id))?.revision ?? null;
+			const token = secrets.decrypt(stored.id, stored.token);
+			await plex.verifyServer({ url, token }, server.id);
+			const users = await plex.directory({
+				token,
+				owner: stored,
+				serverId: server.id,
+			});
 			const id = await withConnectionWrite(async () => {
 				ensureIdle();
-				const existing = (await repo.plexProfiles()).find(
-					(item) =>
-						item.userId === selection.identity.userId &&
-						item.serverId === server.id,
-				);
-				const profileId = existing?.id ?? randomUUID();
-				await repo.savePlexProfile({
-					id: profileId,
-					accountId: selection.accountId,
-					userId: selection.identity.userId,
-					name: selection.identity.name,
+				return repo.connectPlexServer({
+					accountId: stored.id,
+					expectedToken: stored.token,
+					expectedRevision,
 					serverId: server.id,
-					serverName: server.name,
+					name: server.name,
 					url,
-					token: secrets.encrypt(profileId, server.token),
+					users,
+					secrets,
+					now: now(),
 				});
-				return profileId;
 			});
+			if (!id)
+				throw new MediaError(
+					"Plex connection changed. Select the server again.",
+					409,
+				);
 			selections.delete(input.selectionId);
-			return { id };
+			return { id, importedCount: users.length };
 		},
 		async addPairing(input: {
 			plexProfileId: string;
@@ -672,6 +754,15 @@ export function createMediaService({
 			if (jellyfinProfile.presence !== "present" || jellyfinProfile.disabled)
 				throw new MediaError(
 					"Refresh this Jellyfin user before pairing. Missing or disabled users cannot be paired.",
+					409,
+				);
+			if (
+				plexProfile.connectionId &&
+				(plexProfile.presence !== "present" ||
+					plexProfile.accessStatus !== "available")
+			)
+				throw new MediaError(
+					"This Plex user is missing or has no server grant.",
 					409,
 				);
 			ensureIdle();
@@ -712,8 +803,8 @@ export function createMediaService({
 			if (ticking) return;
 			ticking = true;
 			try {
-				for (const server of await repo.dueJellyfinServers(now()))
-					await service.refreshJellyfinUsers(server.id);
+				if (await repo.claimDirectoryPoll(now()))
+					await service.refreshDirectories();
 				if (running) return;
 				for (const pair of await repo.pairings()) {
 					const profile = await repo.jellyfinProfile(pair.jellyfinProfileId);
