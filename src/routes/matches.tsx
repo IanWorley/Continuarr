@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { z } from "zod";
 import type { ManualMatch, MediaItem } from "~/backend/media/model";
 import { getApi } from "~/routes/api.$";
@@ -11,6 +11,7 @@ const buttonClass =
 	"rounded-lg bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40";
 const errorSchema = z.object({ value: z.object({ error: z.string() }) });
 const HTTP_UNAUTHORIZED = 401;
+const PAGE_SIZE = 25;
 function responseData<T>(response: {
 	data: T | null;
 	error: unknown;
@@ -370,6 +371,12 @@ function LibraryPicker({
 	const [show, setShow] = useState("");
 	const [season, setSeason] = useState("");
 	const [search, setSearch] = useState("");
+	const [page, setPage] = useState(0);
+	const listRef = useRef<HTMLDivElement>(null);
+	const resetPage = () => {
+		setPage(0);
+		if (listRef.current) listRef.current.scrollTop = 0;
+	};
 	const shows = new Map(
 		items
 			.filter((item) => item.kind === "episode")
@@ -399,6 +406,15 @@ function LibraryPicker({
 				.toLowerCase()
 				.includes(search.toLowerCase()),
 	);
+	const lastPage = Math.max(0, Math.ceil(visible.length / PAGE_SIZE) - 1);
+	const currentPage = Math.min(page, lastPage);
+	const start = currentPage * PAGE_SIZE;
+	const pageItems = visible.slice(start, start + PAGE_SIZE);
+	const changePage = (nextPage: number) => {
+		setPage(nextPage);
+		onSelect("");
+		if (listRef.current) listRef.current.scrollTop = 0;
+	};
 	return (
 		<fieldset
 			disabled={disabled}
@@ -412,6 +428,7 @@ function LibraryPicker({
 					value={kind}
 					onChange={(event) => {
 						setKind(event.target.value === "movie" ? "movie" : "episode");
+						resetPage();
 						onSelect("");
 					}}
 				>
@@ -429,6 +446,7 @@ function LibraryPicker({
 							onChange={(event) => {
 								setShow(event.target.value);
 								setSeason("");
+								resetPage();
 								onSelect("");
 							}}
 						>
@@ -449,6 +467,7 @@ function LibraryPicker({
 							value={season}
 							onChange={(event) => {
 								setSeason(event.target.value);
+								resetPage();
 								onSelect("");
 							}}
 						>
@@ -469,15 +488,42 @@ function LibraryPicker({
 					value={search}
 					onChange={(event) => {
 						setSearch(event.target.value);
+						resetPage();
 						onSelect("");
 					}}
 				/>
 			</label>
-			<div className="mt-4 max-h-96 space-y-2 overflow-y-auto">
+			<div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+				<p aria-live="polite" className="text-slate-400">
+					Showing {visible.length ? start + 1 : 0}–{start + pageItems.length} of{" "}
+					{visible.length}
+				</p>
+				<div className="flex gap-3">
+					<button
+						type="button"
+						className="text-cyan-300 disabled:opacity-40"
+						aria-label={`Previous ${provider} results page`}
+						disabled={currentPage === 0}
+						onClick={() => changePage(currentPage - 1)}
+					>
+						Previous
+					</button>
+					<button
+						type="button"
+						className="text-cyan-300 disabled:opacity-40"
+						aria-label={`Next ${provider} results page`}
+						disabled={currentPage === lastPage}
+						onClick={() => changePage(currentPage + 1)}
+					>
+						Next
+					</button>
+				</div>
+			</div>
+			<div ref={listRef} className="mt-4 max-h-96 space-y-2 overflow-y-auto">
 				{!visible.length && (
 					<p className="text-sm text-slate-400">No items found.</p>
 				)}
-				{visible.map((item) => (
+				{pageItems.map((item) => (
 					<label
 						key={item.id}
 						className={`block rounded-lg border p-3 ${selected === item.id ? "border-cyan-300 bg-cyan-300/5" : "border-slate-800"}`}
