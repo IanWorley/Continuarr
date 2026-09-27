@@ -11,6 +11,7 @@ import {
 	MediaError,
 	type MediaItem,
 	type PlexProvider,
+	type PlexSharedUser,
 } from "~/backend/media/model";
 import { Secret } from "~/backend/secrets/storage";
 
@@ -51,10 +52,37 @@ const resourceSchema = z.object({
 	clientIdentifier: z.string().min(1),
 	name: z.string(),
 	provides: z.string(),
+	owned: z.union([z.boolean(), z.number(), z.string()]).optional(),
 	accessToken: z.string().min(1).nullish(),
 	connections: z.array(connectionSchema).optional(),
 });
 const resourcesSchema = z.array(resourceSchema);
+const xmlIdSchema = z.union([
+	z.string().min(1),
+	z.number().int().nonnegative(),
+]);
+const sharedServerSchema = z.object({
+	userID: xmlIdSchema,
+	accessToken: z.string().optional(),
+	acceptedAt: xmlIdSchema.optional(),
+});
+const sharedServersSchema = z.object({
+	MediaContainer: z.object({
+		SharedServer: z
+			.union([sharedServerSchema, z.array(sharedServerSchema)])
+			.optional(),
+	}),
+});
+const friendSchema = z.object({
+	id: xmlIdSchema,
+	username: z.string().optional(),
+	title: z.string().optional(),
+});
+const friendsSchema = z.object({
+	MediaContainer: z.object({
+		User: z.union([friendSchema, z.array(friendSchema)]).optional(),
+	}),
+});
 const serverIdentitySchema = z.object({
 	MediaContainer: z.object({ machineIdentifier: z.string().min(1) }),
 });
@@ -212,6 +240,103 @@ export function createPlexProvider(options: {
 					user.protected === "1" ||
 					user.protected === "true",
 			}));
+		},
+
+		async sharedUsers(token) {
+			const url = endpoint(accountUrl, "resources");
+			url.searchParams.set("includeHttps", "1");
+			const resources = await requestJson({
+				fetch: fetcher,
+				url,
+				schema: resourcesSchema,
+				headers: plexHeaders(options.clientIdentifier, token.reveal()),
+			});
+			const owned = resources.filter(
+				(resource) =>
+					resource.provides.split(",").includes("server") &&
+					(resource.owned === true ||
+						resource.owned === 1 ||
+						resource.owned === "1" ||
+						resource.owned === "true") &&
+					resource.connections?.length,
+			);
+			const names = new Map<string, string>();
+			try {
+				const xml = await requestText({
+					fetch: fetcher,
+					url: endpoint(homeUrl, "users"),
+					headers: plexHeaders(options.clientIdentifier, token.reveal()),
+				});
+				const parsed = friendsSchema.safeParse(xmlParser.parse(xml, true));
+				if (parsed.success) {
+					const users = parsed.data.MediaContainer.User;
+					for (const user of users === undefined
+						? []
+						: Array.isArray(users)
+							? users
+							: [users]) {
+						const name = user.username?.trim() || user.title?.trim();
+						if (name) names.set(String(user.id), name);
+					}
+				}
+			} catch {
+				names.clear();
+			}
+			const users = new Map<string, PlexSharedUser>();
+			const issues: string[] = [];
+			for (const resource of owned) {
+				try {
+					const xml = await requestText({
+						fetch: fetcher,
+						url: endpoint(
+							homeUrl,
+							`servers/${encodeURIComponent(resource.clientIdentifier)}/shared_servers`,
+						),
+						headers: plexHeaders(options.clientIdentifier, token.reveal()),
+					});
+					const grants = sharedServersSchema.parse(xmlParser.parse(xml, true))
+						.MediaContainer.SharedServer;
+					for (const grant of grants === undefined
+						? []
+						: Array.isArray(grants)
+							? grants
+							: [grants]) {
+						const acceptedAt = Number(grant.acceptedAt);
+						if (
+							!Number.isFinite(acceptedAt) ||
+							acceptedAt <= 0 ||
+							!grant.accessToken
+						)
+							continue;
+						const id = String(grant.userID);
+						const user: PlexSharedUser = users.get(id) ?? {
+							id,
+							name: names.get(id) ?? `Plex user ${id}`,
+							servers: [],
+						};
+						if (
+							!user.servers.some(
+								(server) => server.id === resource.clientIdentifier,
+							)
+						) {
+							user.servers.push({
+								id: resource.clientIdentifier,
+								name: resource.name,
+								token: new Secret(grant.accessToken),
+								connections:
+									resource.connections?.map((connection) => connection.uri) ??
+									[],
+							});
+						}
+						users.set(id, user);
+					}
+				} catch {
+					issues.push(
+						`Could not load shared Plex users from ${resource.name}. Try again.`,
+					);
+				}
+			}
+			return { users: [...users.values()], issues };
 		},
 
 		async switchUser({ token, userId, pin }) {
