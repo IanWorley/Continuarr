@@ -286,7 +286,7 @@ describe("Plex provider", () => {
 			clientIdentifier: PLEX_IDENTIFIER,
 			plexUrl: baseUrl,
 		});
-		expect(
+		await expect(
 			provider.directory({
 				token: new Secret("owner"),
 				owner: { userId: "1", name: "Owner" },

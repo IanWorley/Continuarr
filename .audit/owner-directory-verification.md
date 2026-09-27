@@ -4,7 +4,7 @@ The isolated app used port 3011 and the existing fixture PostgreSQL database. Ap
 
 ## Browser and live reads
 
-- Reused the owner's previously completed Plex OAuth authorization. Find Plex servers offered Nas. Saving its advertised address succeeded and imported owner ia6730, Dad, Mom, and one shared user. No Home PIN field, input, or Home switch was used.
+- Reused the owner's previously completed Plex OAuth authorization. Find Plex servers offered the owned server. Saving its advertised address succeeded and imported the owner, two Home members, and one shared user. No Home PIN field, input, or Home switch was used.
 - Users displayed those four Plex identities plus the separate existing local fixture profile, along with both imported Jellyfin fixture users. Existing pairings remained visible.
 - Changed global import interval to 30 minutes, saved, reloaded, and confirmed PostgreSQL retained 30. Disabled automatic imports, saved, and confirmed the UI state. Refresh all users now still updated both Plex and Jellyfin server timestamps and reported success. Restored enabled hourly imports.
 - The initial due scheduled import also advanced both servers' timestamps and persisted the next shared due time.
@@ -25,5 +25,5 @@ Compared two architecture candidates and selected provider-specific storage. A s
 - Typecheck, Biome across 79 files, Drizzle migration check, production build, and diff check passed.
 - Tests retain library pagination, duplicate/incomplete inventory, server identity/library access, credential redirect rejection, and scoped watched writes. Removed Home-switch behavior tests were replaced with owner/grant import tests.
 - Added cases prove unavailable users have no credential, missing legacy users cannot bypass adoption guards, a true owner can adopt an unverified candidate, optional shared-name enrichment survives, and stale reauthorization/reconnect results cannot win.
-- Restarted app cleanly; hourly enabled schedule and server/user data persisted. App session 52453; fixture session 1205 remains running.
-- Final desktop screenshot: `/Users/ianworley/.t3/userdata/browser-artifacts/browser-screenshot-100-67-34-53-muj6hwi8-60b12f3b.png`.
+- Restarted app cleanly; hourly enabled schedule and server/user data persisted. The local sessions were retained for follow-up checks.
+- Final desktop screenshot was captured in local browser evidence; the machine-specific path is omitted from this committed report.

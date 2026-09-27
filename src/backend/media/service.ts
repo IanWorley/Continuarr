@@ -379,11 +379,13 @@ export function createMediaService({
 				}
 			};
 			const results = await Promise.all([
-				...plexServers.map(async ({ id }) => ({
-					kind: "plex" as const,
-					id,
-					result: await safeRefresh(() => service.refreshPlexUsers(id)),
-				})),
+				...plexServers
+					.filter((server) => server.verified)
+					.map(async ({ id }) => ({
+						kind: "plex" as const,
+						id,
+						result: await safeRefresh(() => service.refreshPlexUsers(id)),
+					})),
 				...jellyfinServers.map(async ({ id }) => ({
 					kind: "jellyfin" as const,
 					id,
@@ -397,6 +399,13 @@ export function createMediaService({
 			const active = refreshes.get(key);
 			if (active) return active;
 			const work = (async () => {
+				const server = await repo.plexServer(id);
+				if (!server) throw new MediaError("Plex server not found.", 404);
+				if (!server.verified)
+					throw new MediaError(
+						"Save this Plex server as its owner before refreshing users.",
+						409,
+					);
 				const claim = await repo.claimPlexRefresh(id, now());
 				if (!claim) throw new MediaError("Plex server not found.", 404);
 				try {
@@ -531,27 +540,29 @@ export function createMediaService({
 					userId,
 					name,
 				})),
-				plexServers: plexServers.map(
-					({
-						id,
-						accountId,
-						externalId,
-						name,
-						url,
-						lastAttemptAt,
-						lastSuccessAt,
-						lastError,
-					}) => ({
-						id,
-						accountId,
-						externalId,
-						name,
-						url,
-						lastAttemptAt,
-						lastSuccessAt,
-						lastError,
-					}),
-				),
+				plexServers: plexServers
+					.filter((server) => server.verified)
+					.map(
+						({
+							id,
+							accountId,
+							externalId,
+							name,
+							url,
+							lastAttemptAt,
+							lastSuccessAt,
+							lastError,
+						}) => ({
+							id,
+							accountId,
+							externalId,
+							name,
+							url,
+							lastAttemptAt,
+							lastSuccessAt,
+							lastError,
+						}),
+					),
 				directoryPolling: {
 					enabled: directoryPolling.enabled,
 					intervalMinutes: directoryPolling.intervalMinutes,

@@ -29,8 +29,8 @@ The reviewer suggested disabling legacy credentials until reconnect. We retain w
 Read-only live probe, 2026-09-26, owner credentials already authorized in the isolated Continuarr session. Secrets never logged. No watched writes, Home switches, or PIN attempts were performed.
 
 - Owner account is marked protected in Home listing but has its own OAuth credential.
-- Dad and Mom are Home members AND have accepted server grants for Nas.
-- Both grant tokens returned HTTP 200 for library sections and a movie sample. Dad sample contains watched metadata; Mom sample lacks watched metadata, normal for an unwatched sample.
+- Two Home members also have accepted grants for the owned server.
+- Both grant tokens returned HTTP 200 for library sections and a movie sample. One sample contains watched metadata; the other lacks watched metadata, normal for an unwatched sample.
 - Third shared user grant returned HTTP 200 for library sections; no movie section in sample probe.
 - No claim of a production write test: existing user-scoped scrobble implementation/fixture validates write protocol; live check only establishes granted user-scoped reads.
 - Python PlexAPI MyPlexUser.get_token uses the same owner-authorized /api/servers/{machineId}/shared_servers API. Source https://github.com/pkkid/python-plexapi/blob/master/plexapi/myplex.py, retrieved in this task.

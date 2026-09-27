@@ -3,11 +3,9 @@
 ## Environment
 
 - Base commit after requested fetch/rebase: `7172000`, merged PRs #118 and #119.
-- Isolated fixture terminal session: `1205`, HTTP port `43123`, PostgreSQL port `55453`.
-- App terminal session: `56969`, port `3011`.
-- Browser URL: `http://100.67.34.53:3011`.
-- Temporary owner: `continuarr-test`, password `Continuarr-local-test-2026!`.
-- Keep both sessions running. Stopping the fixture removes its temporary database.
+- Used an isolated local fixture, temporary PostgreSQL database, and test owner.
+- Machine addresses, terminal session IDs, and temporary sign-in credentials remain in local session notes.
+- The fixture database was retained for follow-up checks.
 
 ## Observed before implementation
 

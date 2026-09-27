@@ -197,6 +197,51 @@ describe("media account and sync service", () => {
 			"no server grant",
 		);
 	});
+	for (const refresh of ["scheduled", "individual"] as const) {
+		it(`preserves legacy Plex grants during ${refresh} refresh until explicit owner adoption`, async () => {
+			const { service, repo, secrets, state } = await setup();
+			const attempt = await service.startLogin();
+			const login = await service.pollLogin(attempt.id);
+			if (login.status !== "linked") throw new Error("Expected login");
+			for (const userId of ["owner", "child"]) {
+				const id = crypto.randomUUID();
+				await repo.savePlexProfile({
+					id,
+					accountId: login.accountId,
+					userId,
+					name: userId,
+					serverId: "machine",
+					serverName: "Plex",
+					url: "http://plex:32400",
+					token: secrets.encrypt(id, new Secret(`legacy-${userId}-token`)),
+				});
+			}
+			await repo.backfillPlexServers();
+			const server = (await repo.plexServers())[0];
+			if (!server) throw new Error("Missing backfilled server");
+			expect((await service.state()).plexServers).toEqual([]);
+			const originalProfiles = await repo.plexProfiles();
+			state.grant = false;
+			if (refresh === "scheduled") {
+				await service.tick();
+				expect((await repo.directoryPolling()).lastAttemptAt).toBeGreaterThan(
+					0,
+				);
+			} else {
+				await expect(service.refreshPlexUsers(server.id)).rejects.toThrow(
+					"Save this Plex server as its owner before refreshing users.",
+				);
+			}
+			for (const original of originalProfiles) {
+				expect(await repo.plexProfile(original.id)).toEqual(original);
+				expect(original.connectionId).toBeNull();
+				expect(
+					secrets.decrypt(original.id, original.token ?? "").reveal(),
+				).toBe(`legacy-${original.userId}-token`);
+			}
+			expect(await repo.plexServer(server.id)).toEqual(server);
+		});
+	}
 	it("keeps an unadopted legacy profile usable, then marks absent legacy users missing on verified adoption", async () => {
 		const { service, repo, secrets, state } = await setup();
 		const attempt = await service.startLogin();
@@ -257,6 +302,7 @@ describe("media account and sync service", () => {
 		await repo.backfillPlexServers();
 		const candidate = (await repo.plexServers())[0];
 		expect(candidate?.verified).toBe(false);
+		expect((await service.state()).plexServers).toEqual([]);
 		state.plexLogin = {
 			userId: "real-owner",
 			name: "Real owner",
@@ -282,6 +328,9 @@ describe("media account and sync service", () => {
 			accountId: ownerLogin.accountId,
 			verified: true,
 		});
+		expect(
+			(await service.state()).plexServers.map((server) => server.id),
+		).toEqual([candidate?.id]);
 		expect((await repo.plexProfile(candidateId))?.presence).toBe("missing");
 	});
 	it("rejects an old refresh after owner reauthorization", async () => {
