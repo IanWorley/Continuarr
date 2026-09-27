@@ -64,8 +64,8 @@ Only stop after setup when the user explicitly asks for setup alone.
 For media pairing or sync checks, use the existing local fixtures:
 
 - Jellyfin URL: `http://127.0.0.1:43123/jellyfin`
-- Jellyfin username: `alex`
-- Jellyfin password: `fixture-password`
+- Jellyfin API key: `fixture-jellyfin-token`
+- Choose **Find Jellyfin users**, then select **Alex** and connect the profile.
 - Seeded Plex profile: `Alex (Home)` on `Fixture Plex`
 
 When the ask involves pairing or sync, connect the fixture Jellyfin account and pair it with the seeded Plex profile. On a fresh fixture, preview should show two updates. Run sync, then repeat it and expect zero updates. Inspect `http://127.0.0.1:43123/fixture-state` to confirm that Plex contains watched IDs `1` and `2`, and Jellyfin contains `j1` and `j2`. These fixtures do not exercise real Plex sign-in.

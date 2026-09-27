@@ -18,11 +18,6 @@ const publicInfoSchema = z.object({
 	ServerName: z.string().min(1),
 });
 const userSchema = z.object({ Id: z.string().min(1), Name: z.string().min(1) });
-const loginSchema = z.object({
-	AccessToken: z.string().min(1),
-	User: userSchema,
-	ServerId: z.string().min(1),
-});
 const providerIdsSchema = z.record(z.string(), z.string());
 const itemSchema = z.object({
 	Id: z.string().min(1),
@@ -87,45 +82,47 @@ export function createJellyfinProvider(options: {
 	fetch?: typeof globalThis.fetch;
 }): JellyfinProvider {
 	const fetcher = options.fetch ?? globalThis.fetch;
+	async function server({ url, apiKey }: { url: string; apiKey: string }) {
+		const info = await requestJson({
+			fetch: fetcher,
+			url: endpoint(serverUrl(url), "System/Info"),
+			schema: publicInfoSchema,
+			headers: jellyfinHeaders(options.clientIdentifier, apiKey),
+		});
+		return { id: info.Id, name: info.ServerName };
+	}
 
 	return {
-		async login({ url, username, password }) {
+		server,
+		async users({ url, apiKey }) {
+			const users = await requestJson({
+				fetch: fetcher,
+				url: endpoint(serverUrl(url), "Users"),
+				schema: z.array(userSchema),
+				headers: jellyfinHeaders(options.clientIdentifier, apiKey),
+			});
+			return users.map((user) => ({ id: user.Id, name: user.Name }));
+		},
+		async connect({ url, apiKey, userId }) {
 			const normalizedUrl = serverUrl(url);
-			const info = await requestJson({
-				fetch: fetcher,
-				url: endpoint(normalizedUrl, "System/Info/Public"),
-				schema: publicInfoSchema,
-				headers: jellyfinHeaders(options.clientIdentifier),
-			});
-			const login = await requestJson({
-				fetch: fetcher,
-				url: endpoint(normalizedUrl, "Users/AuthenticateByName"),
-				schema: loginSchema,
-				method: "POST",
-				headers: jellyfinHeaders(options.clientIdentifier),
-				body: { Username: username, Pw: password },
-			});
-			if (login.ServerId !== info.Id)
-				throw new MediaError(
-					"Jellyfin returned a different server identity.",
-					502,
-				);
+			const headers = jellyfinHeaders(options.clientIdentifier, apiKey);
+			const info = await server({ url: normalizedUrl, apiKey });
 			const profile = await requestJson({
 				fetch: fetcher,
-				url: endpoint(normalizedUrl, "Users/Me"),
+				url: endpoint(normalizedUrl, `Users/${encodeURIComponent(userId)}`),
 				schema: userSchema,
-				headers: jellyfinHeaders(options.clientIdentifier, login.AccessToken),
+				headers,
 			});
-			if (profile.Id !== login.User.Id)
+			if (profile.Id !== userId)
 				throw new MediaError(
 					"Jellyfin returned a different user identity.",
 					502,
 				);
 			return {
 				url: normalizedUrl,
-				token: new Secret(login.AccessToken),
+				token: new Secret(apiKey),
 				userId: profile.Id,
-				serverId: info.Id,
+				serverId: info.id,
 				name: profile.Name,
 			};
 		},

@@ -3,6 +3,16 @@ import { MediaError } from "./model";
 import type { MediaService } from "./service";
 
 const id = t.String({ minLength: 1, maxLength: 200 });
+const MAX_SERVER_URL_LENGTH = 2048;
+const MAX_API_KEY_LENGTH = 1024;
+const jellyfinSource = t.Union([
+	t.Object({
+		kind: t.Literal("new"),
+		url: t.String({ minLength: 1, maxLength: MAX_SERVER_URL_LENGTH }),
+		apiKey: t.String({ minLength: 1, maxLength: MAX_API_KEY_LENGTH }),
+	}),
+	t.Object({ kind: t.Literal("saved"), profileId: id }),
+]);
 export function mediaRoutes(
 	service?: MediaService | (() => Promise<MediaService>),
 ) {
@@ -49,7 +59,7 @@ export function mediaRoutes(
 			},
 		)
 		.get("/plex/:id/users", async ({ params }) =>
-			(await getService()).homeUsers(params.id),
+			(await getService()).plexUsers(params.id),
 		)
 		.post(
 			"/plex/select",
@@ -69,7 +79,16 @@ export function mediaRoutes(
 				body: t.Object({
 					selectionId: id,
 					serverId: id,
-					url: t.String({ minLength: 1, maxLength: 2048 }),
+					url: t.String({ minLength: 1, maxLength: MAX_SERVER_URL_LENGTH }),
+				}),
+			},
+		)
+		.post(
+			"/jellyfin/users",
+			async ({ body }) => (await getService()).jellyfinUsers(body),
+			{
+				body: t.Object({
+					source: jellyfinSource,
 				}),
 			},
 		)
@@ -78,9 +97,8 @@ export function mediaRoutes(
 			async ({ body }) => (await getService()).connectJellyfin(body),
 			{
 				body: t.Object({
-					url: t.String({ minLength: 1, maxLength: 2048 }),
-					username: t.String({ minLength: 1, maxLength: 200 }),
-					password: t.String({ maxLength: 1024 }),
+					source: jellyfinSource,
+					userId: id,
 				}),
 			},
 		)

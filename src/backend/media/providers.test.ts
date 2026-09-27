@@ -25,6 +25,115 @@ afterEach(() => {
 });
 
 describe("Plex provider", () => {
+	it("binds accepted shared grants to their owner server without filtering unknown users", async () => {
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/api/v2/resources")
+				return json([
+					{
+						clientIdentifier: "owned",
+						name: "Nas",
+						provides: "server",
+						owned: true,
+						accessToken: "owner-server-token",
+						connections: [{ uri: "https://owned.example" }],
+					},
+					{
+						clientIdentifier: "other",
+						name: "Other",
+						provides: "server",
+						owned: false,
+						accessToken: "other-token",
+						connections: [{ uri: "https://other.example" }],
+					},
+				]);
+			if (url.pathname === "/api/users")
+				return new Response(
+					'<MediaContainer><User id="10" username="Dad"/></MediaContainer>',
+				);
+			if (url.pathname === "/api/servers/owned/shared_servers")
+				return new Response(
+					'<MediaContainer><SharedServer userID="10" name="Nas" username="" acceptedAt="1" accessToken="dad-token"/><SharedServer userID="11" name="Nas" username="" acceptedAt="2" accessToken="unknown-token"/><SharedServer userID="12" acceptedAt="0" accessToken="pending-token"/><SharedServer userID="13" acceptedAt="3"/></MediaContainer>',
+				);
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({
+			clientIdentifier: PLEX_IDENTIFIER,
+			plexUrl: baseUrl,
+		});
+		const { users, issues } = await provider.sharedUsers(
+			new Secret("owner-account-token"),
+		);
+		expect(issues).toEqual([]);
+		expect(
+			users.map(({ id, name, servers }) => ({
+				id,
+				name,
+				servers: servers.map(({ id, token }) => ({
+					id,
+					token: token.reveal(),
+				})),
+			})),
+		).toEqual([
+			{ id: "10", name: "Dad", servers: [{ id: "owned", token: "dad-token" }] },
+			{
+				id: "11",
+				name: "Plex user 11",
+				servers: [{ id: "owned", token: "unknown-token" }],
+			},
+		]);
+	});
+
+	it.each([
+		{ label: "HTTP failure", body: "unavailable", status: 503 },
+		{ label: "malformed XML", body: "<MediaContainer><", status: 200 },
+		{ label: "invalid response shape", body: "<Unexpected/>", status: 200 },
+	])(
+		"keeps healthy shared users after $label on another server",
+		async ({ body, status }) => {
+			const baseUrl = serve((request) => {
+				const path = new URL(request.url).pathname;
+				if (path === "/api/v2/resources")
+					return json(
+						["first", "broken", "last"].map((id) => ({
+							clientIdentifier: id,
+							name: id,
+							provides: "server",
+							owned: true,
+							connections: [{ uri: `https://${id}.example` }],
+						})),
+					);
+				if (path === "/api/users") return new Response("<MediaContainer/>");
+				if (path === "/api/servers/broken/shared_servers")
+					return new Response(body, { status });
+				const id = path.includes("/first/") ? "10" : "20";
+				return new Response(
+					`<MediaContainer><SharedServer userID="${id}" acceptedAt="1" accessToken="friend-${id}"/></MediaContainer>`,
+				);
+			});
+			const provider = createPlexProvider({
+				clientIdentifier: PLEX_IDENTIFIER,
+				plexUrl: baseUrl,
+			});
+			const result = await provider.sharedUsers(new Secret("owner-token"));
+			expect(
+				result.users.map((user) => ({
+					id: user.id,
+					servers: user.servers.map((server) => ({
+						id: server.id,
+						token: server.token.reveal(),
+					})),
+				})),
+			).toEqual([
+				{ id: "10", servers: [{ id: "first", token: "friend-10" }] },
+				{ id: "20", servers: [{ id: "last", token: "friend-20" }] },
+			]);
+			expect(result.issues).toEqual([
+				"Could not load shared Plex users from broken. Try again.",
+			]);
+		},
+	);
+
 	it("skips inaccessible servers without hiding usable resources", async () => {
 		const baseUrl = serve(() =>
 			json([
@@ -293,7 +402,7 @@ describe("Plex provider", () => {
 });
 
 describe("Jellyfin provider", () => {
-	it("keeps the user token on requests, reads every page, and marks once", async () => {
+	it("keeps the API key on requests, reads every page, and marks once", async () => {
 		let played = false;
 		let marks = 0;
 		const starts: number[] = [];
@@ -306,20 +415,16 @@ describe("Jellyfin provider", () => {
 		}));
 		const baseUrl = serve((request) => {
 			const url = new URL(request.url);
-			if (url.pathname === "/jf/System/Info/Public")
+			if (url.pathname === "/jf/System/Info")
 				return json({ Id: "server-1", ServerName: "Jellyfin" });
-			if (url.pathname === "/jf/Users/AuthenticateByName")
-				return json({
-					AccessToken: "user-token",
-					User: { Id: "user-1", Name: "Ian" },
-					ServerId: "server-1",
-				});
 			if (
 				request.headers.get("Authorization") !==
 				'MediaBrowser Client="Continuarr", Device="server", DeviceId="jellyfin-client", Version="1.0.0", Token="user-token"'
 			)
 				return json({}, 401);
-			if (url.pathname === "/jf/Users/Me")
+			if (url.pathname === "/jf/Users")
+				return json([{ Id: "user-1", Name: "Ian" }]);
+			if (url.pathname === "/jf/Users/user-1")
 				return json({ Id: "user-1", Name: "Ian" });
 			if (url.pathname === "/jf/Users/user-1/Items") {
 				const offset = Number(url.searchParams.get("StartIndex"));
@@ -344,10 +449,13 @@ describe("Jellyfin provider", () => {
 		const provider = createJellyfinProvider({
 			clientIdentifier: JELLYFIN_IDENTIFIER,
 		});
-		const access = await provider.login({
+		expect(
+			await provider.users({ url: `${baseUrl}/jf`, apiKey: "user-token" }),
+		).toEqual([{ id: "user-1", name: "Ian" }]);
+		const access = await provider.connect({
 			url: `${baseUrl}/jf`,
-			username: "user",
-			password: "password",
+			userId: "user-1",
+			apiKey: "user-token",
 		});
 		expect(access.serverId).toBe("server-1");
 		expect(access.userId).toBe("user-1");
@@ -365,6 +473,30 @@ describe("Jellyfin provider", () => {
 		await provider.markWatched(access, "item-1");
 		await provider.markWatched(access, "item-1");
 		expect(marks).toBe(1);
+	});
+
+	it("rejects an invalid API key when listing users", async () => {
+		const url = serve(() => json({}, 401));
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		await expect(
+			provider.users({ url, apiKey: "invalid-key" }),
+		).rejects.toThrow("rejected these credentials");
+	});
+
+	it("rejects a different user returned for the selected identity", async () => {
+		const url = serve((request) =>
+			new URL(request.url).pathname === "/System/Info"
+				? json({ Id: "server", ServerName: "Jellyfin" })
+				: json({ Id: "other-user", Name: "Other" }),
+		);
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		await expect(
+			provider.connect({ url, apiKey: "api-key", userId: "selected-user" }),
+		).rejects.toThrow("different user identity");
 	});
 
 	it("rejects a response without played state", async () => {
