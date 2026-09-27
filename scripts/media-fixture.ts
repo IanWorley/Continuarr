@@ -219,7 +219,7 @@ const server = Bun.serve({
 	},
 });
 console.log(
-	`Fixture running at ${server.url}. Start the app in another terminal:\nDATABASE_URL=${databaseUrl} CREDENTIAL_ENCRYPTION_KEY=${KEY} bun run dev --host 127.0.0.1\nCreate a temporary Continuarr owner in the browser. Open Users and import Jellyfin at ${base}/jellyfin with API key fixture-jellyfin-token. Pair Alex with the seeded Alex Plex Home profile. Preview should show two writes; the second sync should show zero. Inspect ${base}/fixture-state for both watched item IDs on each service. Stop this process when finished. Its PostgreSQL container is isolated and stops with this process.`,
+	`Fixture running at ${server.url}. Start the app in another terminal:\nDATABASE_URL=${databaseUrl} CREDENTIAL_ENCRYPTION_KEY=${KEY} bun run dev --host 127.0.0.1\nCreate a temporary Continuarr owner in the browser. Open Connections & sync and import Jellyfin at ${base}/jellyfin with API key fixture-jellyfin-token. Open Users and pair Alex with the seeded Alex Plex Home profile. Preview should show two writes; the second sync should show zero. Inspect ${base}/fixture-state for both watched item IDs on each service. Stop this process when finished. Its PostgreSQL container is isolated and stops with this process.`,
 );
 
 async function stop() {

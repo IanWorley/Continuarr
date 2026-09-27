@@ -1,85 +1,94 @@
 ---
 name: continuarr-test-session
-description: Verify the user's requested Continuarr change or feature in the running app. Set up an isolated environment, create a test owner, and sign in as needed, then exercise the requested behavior and report evidence. Use when asked to test the ask, verify a change, or check that a feature works.
+description: Verify Continuarr through its browser UI and authenticated API in an isolated Plex/Jellyfin fixture environment. Use to test requested features, reproduce regressions, and capture persisted results.
 ---
 
-# Test the requested Continuarr behavior
+# Verify Continuarr
 
-Test the user's original request in the running app. Setup and login are prerequisites, not the completion criteria. Run commands from the repository root.
+Run from the repository root. Derive acceptance checks from the user's request, then read the matching entries in [the feature map](features/README.md). Setup and login are prerequisites, not proof of the requested feature.
 
-## Define what must work
+## Launch
 
-Read the current request and relevant conversation context. Identify the requested behavior, the action that triggers it, and the observable expected result. Inspect the relevant implementation or diff to locate the workflow, but derive the expected behavior from the user's request.
-
-Turn the request into a short set of concrete acceptance checks. Ask for clarification only when the expected behavior cannot be inferred. Keep the checks focused on the ask rather than running an unrelated tour of the app.
-
-## Start the test environment
-
-1. Check `git status --short` and read the local startup instructions in `README.md`. Check that Bun and Docker are available and that `docker info` succeeds. If a prerequisite is missing, report it instead of changing the machine's configuration.
-2. Run `bun install --frozen-lockfile` to install the committed dependencies.
-3. Start the existing fixture runner in a persistent terminal:
+1. Read `README.md` and `git status --short`. Check `bun --version` and `docker info`. Run `bun install --frozen-lockfile`. Report missing prerequisites rather than changing the machine's configuration.
+2. Choose unused fixture and app ports. Defaults are `43123` and `3000`; this recipe uses `43124` and `3012` to coexist with another session. Check with `lsof -nP -iTCP:43124 -iTCP:3012 -sTCP:LISTEN`. Change the ports if occupied, never kill the existing process.
+3. Create an evidence directory outside the temporary database and record the revision:
 
    ```bash
-   bun scripts/media-fixture.ts
+   VERIFY_EVIDENCE="/tmp/continuarr-verify-$(date +%Y%m%d-%H%M%S)"
+   mkdir -p "$VERIFY_EVIDENCE"
+   git rev-parse HEAD > "$VERIFY_EVIDENCE/revision.txt"
+   git diff --stat > "$VERIFY_EVIDENCE/working-tree.txt"
    ```
 
-   Wait for `Fixture running at ...` and its application startup command. The runner creates an isolated PostgreSQL container, applies migrations, and seeds a Plex profile. It leaves the installation owner unconfigured. Keep this process running for the entire test session.
+4. Start the fixture in a persistent terminal:
 
-4. In another persistent terminal, run the printed startup command with `--strictPort` appended. Copy its actual `DATABASE_URL` and `CREDENTIAL_ENCRYPTION_KEY` values, since the database port changes between runs. Keep these values in the process environment, without writing them to `.env`.
-5. Record the app URL and both terminal session identifiers. Use the URL printed by Vite consistently, including the same hostname. Wait for `GET /api/v1/health` to succeed, then verify that `GET /api/v1/admin/setup` returns `{"configured":false}`.
+   ```bash
+   FIXTURE_PORT=43124 bun scripts/media-fixture.ts
+   ```
 
-The default app port is `3000`. The fixture server uses `43123`. If the app port is occupied, choose a free port and append `--port <port>` to the startup command. If the fixture port is occupied, identify the process and reuse it only if it belongs to this task and its state is suitable. Otherwise report the conflict. Do not kill unrelated processes.
+   Wait for `Fixture running at ...` and its printed startup command. It creates a temporary PostgreSQL container, migrates it, and seeds `Alex (Home)` on `Fixture Plex`. The installation owner does not yet exist.
+5. Run the printed app command in a second persistent terminal, retaining its actual `DATABASE_URL` and `CREDENTIAL_ENCRYPTION_KEY`. Append `--port 3012 --strictPort`. Use the printed `--host 127.0.0.1` when the browser can reach loopback. For a remote collaborative browser, use `--host 0.0.0.0` and the reachable network URL printed by Vite. Do not put credentials in `.env` or evidence.
+6. Record both terminal session IDs, the chosen ports, browser URL, and owned container ID in the evidence notes. Wait for Vite's ready message and run Doctor. Keep one Continuarr process per database.
 
-This environment has seeded media data but no owner account. If the feature specifically needs an empty media library or real provider authentication, inspect `scripts/media-fixture.ts` and establish the required test data before claiming that the fixture covers it.
+Use the same reachable browser origin throughout the run. Cookies are shared across ports on one hostname, so separate ports do not isolate browser sessions. Use separate browser contexts or distinct reachable hostnames when two instances must remain signed in. Do not switch to localhost unless the collaborative browser can reach it. The fixture's `127.0.0.1` server URL is resolved by the Continuarr backend, so it remains correct even when the browser uses a network address.
 
-## Create the owner and sign in
+## Doctor
 
-Use these credentials only in the isolated local fixture environment:
+Run this read-only check first when the instance looks wrong:
 
-- Username: `continuarr-test`
-- Password: `Continuarr-local-test-2026!`
+```bash
+curl -fsS http://127.0.0.1:3012/api/v1/health
+curl -fsS http://127.0.0.1:3012/api/v1/admin/setup
+curl -fsS http://127.0.0.1:43124/fixture-state
+lsof -nP -iTCP:3012 -iTCP:43124 -sTCP:LISTEN
+```
 
-Continuarr supports one installation owner, separate from Plex and Jellyfin accounts. It has no additional-user registration flow.
+Require health `{"application":"Continuarr","status":"ok"}` and listeners belonging to the recorded sessions. A fresh database returns `{"configured":false}`. Compare the checkout revision and working diff with the evidence notes. After browser sign-in, read `/api/v1/admin/session` using same-origin browser `fetch`; require `{"authenticated":true}`. Do not print cookies.
 
-1. Use the available browser automation. In T3 Code, call `preview_status` first and `preview_open` if no automation-capable preview is attached. Use snapshots to locate form fields and buttons.
-2. Open `<app-url>/sign-in` and verify that the heading says **Set up Continuarr**.
-3. Fill **Username** and **Password**, then click **Create owner and sign in**. This action creates the owner and signs in automatically.
-4. Verify that the browser reaches `/`, shows the **Continuarr** heading and **Sign out** button, and displays no authentication error. Reload the page to confirm that the session persists.
-5. If the ask concerns returning-user login, click **Sign out**. Open `/sign-in`, confirm **Sign in to Continuarr**, and sign in with the same credentials. Otherwise continue directly to the requested feature.
+A configured owner on an allegedly fresh run means the wrong database or a reused session. Investigate. Never reset the owner or truncate tables to make setup available.
 
-If setup reports `configured: true`, confirm which database the app is using. Reuse the known test owner only when resuming this task's environment. For a genuinely fresh session, start a new isolated fixture environment. Never reset an existing owner, truncate tables, delete data, or remove Docker volumes to make bootstrap available without the user's permission.
+## Drive
 
-If browser automation is unavailable, report that login through the UI remains unverified. API authentication alone does not establish a session in the user's browser. For API checks, bootstrap and sign-in accept JSON `{ "username": "…", "password": "…" }`. Mutations require an `Origin` header matching the app origin, and subsequent authenticated requests require the returned session cookie. `GET /api/v1/admin/session` returns `{"authenticated":true}` for a valid session.
+Use T3 Code's collaborative preview when available. Call `preview_status`, then `preview_open` if needed. Open a separate tab for a separate fixture run. Use `preview_snapshot` before interaction, `preview_type` with `clear:true` for labelled inputs and `preview_click` for buttons. For native selects, focus the select and use `preview_press` keys, or set its DOM value and dispatch a bubbling `change` event through `preview_evaluate`. Discover tool schemas in the current session; do not guess argument shapes. Prefer roles and accessible names from snapshots.
 
-## Test the requested feature
+If T3 preview tools are absent, use the available browser automation. If `preview_open` reports that automation is unavailable, document that limitation before using another browser. API-only verification does not prove the UI.
 
-For each acceptance check, prepare the required data, perform the user's action through the app, and compare the observed result with the expected result. Capture relevant browser snapshots or screenshots. Check persisted state or API results when the visible UI alone cannot prove the behavior.
+Read the relevant recipe:
 
-Cover error paths or boundary cases when they are part of the ask. Successful startup, login, a passing build, or an unrelated sync check does not prove that the requested feature works.
+- [Owner setup and login](features/owner.md).
+- [Server connections and directory imports](features/connections.md).
+- [User pairing and watched sync](features/users.md).
+- [Manual media matching](features/matching.md).
 
-If a check fails, record the reproduction steps, expected result, actual result, and relevant errors. When implementing a change is already authorized, fix the failure and rerun the affected check. For a testing-only request, report the finding without changing application code. If a dependency blocks a check, mark it blocked rather than passed.
+API checks supplement browser actions. Mutations require an `Origin` header matching the app origin and the owner session cookie. Browser same-origin `fetch` supplies both. Read `/api/v1/media/state` for saved pairings, schedules, and runs, and `/api/v1/media/jellyfin/directory` for server and directory results. Do not use internal setters or test-only endpoints as the action being proved.
 
-Only stop after setup when the user explicitly asks for setup alone.
+## Evidence
 
-For media pairing or sync checks, use the existing local fixtures:
+Save action notes, semantic snapshots, screenshots, and redacted API results under `$VERIFY_EVIDENCE`. Use `preview_snapshot` with `save:true`, then copy its returned screenshot path into that directory. Capture the initiating action and the resulting state, not just a final screen. Reload after a save and compare an authenticated API read to the UI.
 
-- Jellyfin URL: `http://127.0.0.1:43123/jellyfin`
-- Jellyfin API key: `fixture-jellyfin-token`
-- Open **Connections & sync**, enter the fixture Jellyfin URL and API key, then choose **Connect and import users**. Open **Users** and verify Alex and Other appear with details.
-- Seeded Plex profile: `Alex (Home)` on `Fixture Plex`
+For watched sync, save `/fixture-state` before preview, after preview, and after each run. Preview must leave watched IDs unchanged. The fixture mocks only external media-server HTTP boundaries; the browser, routes, repository, encryption, migrations, and PostgreSQL are real. Never exercise watched writes against real Plex/Jellyfin users. Real owner OAuth is a separate read-only check and requires an authorized account.
 
-When the ask involves pairing or sync, import the fixture Jellyfin server on **Connections & sync**, then open **Users** and pair Alex with the seeded Plex profile. On a fresh fixture, preview should show two updates. Run sync, then repeat it and expect zero updates. Inspect `http://127.0.0.1:43123/fixture-state` to confirm that Plex contains watched IDs `1` and `2`, and Jellyfin contains `j1` and `j2`. These fixtures do not exercise real Plex sign-in.
+For timing and migration regressions, supplement the user path with:
 
-## Verify server-owner directory imports
+```bash
+bun test src/backend/media/service.test.ts
+bun test src/db/schema.container.test.ts
+```
 
-For the server-owner flow, sign in through Plex OAuth as the owner and choose **Find Plex servers**. Save an owned server and reachable address with **Save server and import users**. Verify that the connection card shows the saved server and that **Users** shows the owner plus returned Home/shared users without a Home PIN field. A Home user with a selected-server grant must remain available; a user without watched access must show unavailable. Do not run watched sync against real user accounts as a verification shortcut.
+The service suite deterministically covers both import/sync overlap orders and migrated Jellyfin access before the first successful import. These checks do not replace browser proof that the user's controls are enabled and usable.
 
-On **Connections & sync**, save one **Automatic user imports** interval and enabled state. Reload and verify persistence. **Refresh all users now** should update both providers' server timestamps; individual server failures must remain visible without blocking the other imports. Confirm existing pairing IDs survive refresh. Use the local fixture pairing to verify watched sync, and use service/provider tests for a protected Home user with a grant, missing users, stale credentials, and scheduler restart.
+Record expected result, actual result, evidence path, and pass/fail/blocked for each acceptance check. A passing build or unrelated feature is not evidence for the requested behavior.
 
-## Report the result
+## Cleanup
 
-Lead with whether the requested behavior passed, failed, or remains blocked. List each acceptance check with its expected result, observed result, and evidence. State any unverified behavior explicitly.
+For a disposable run created solely to prove this skill, stop the app terminal first, then send SIGINT to the fixture terminal using their recorded session IDs. The fixture stops its own PostgreSQL container. Confirm the two owned ports no longer listen and that the owned container is stopped. Never kill by process name or run broad Docker cleanup commands.
 
-Include the app URL and local test-owner credentials when handing off the running session. Identify the running terminal sessions so the user or a later agent can resume it. Leave them running when the user wants to test features.
+Leave pre-existing sessions untouched. If the user wants the new session for further testing, leave both terminals running and report their IDs, browser URL, and test-owner credentials. Obtain permission before discarding a session that the user is retaining or whose data is not disposable.
 
-The fixture database is temporary. Stopping the fixture runner also stops its database container. Obtain permission before discarding a session's data, and never use a broad Docker cleanup command.
+After cleanup, confirm the evidence files still exist. Do not delete the evidence directory.
+
+## Helpers
+
+`scripts/media-fixture.ts` is the existing fixture runner, invoked with `FIXTURE_PORT=43124 bun scripts/media-fixture.ts`. `FIXTURE_PORT` controls its HTTP port; PostgreSQL gets a separate dynamically assigned port. This skill adds no alternate server launcher.
+
+Use `/maintain-verification-skill` when routes, controls, or fixture behavior change. Update the feature map from code and live observations.
