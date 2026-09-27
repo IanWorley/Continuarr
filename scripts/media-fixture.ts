@@ -1,6 +1,5 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { GenericContainer, Wait } from "testcontainers";
-import { z } from "zod";
 import {
 	CREDENTIAL_KEY_BYTES,
 	createSecretStorage,
@@ -122,23 +121,11 @@ const server = Bun.serve({
 			plexWatched.add(url.searchParams.get("key") ?? "");
 			return new Response(null, { status: 200 });
 		}
-		if (path === "/jellyfin/System/Info/Public")
+		if (path === "/jellyfin/System/Info")
 			return Response.json({
 				Id: "fixture-jellyfin-server",
 				ServerName: "Fixture Jellyfin",
 			});
-		if (path === "/jellyfin/Users/AuthenticateByName") {
-			const body = z
-				.object({ Username: z.string(), Pw: z.string() })
-				.parse(await request.json());
-			if (body.Username !== "alex" || body.Pw !== "fixture-password")
-				return new Response(null, { status: 401 });
-			return Response.json({
-				AccessToken: "fixture-jellyfin-token",
-				ServerId: "fixture-jellyfin-server",
-				User: { Id: "alex-id", Name: "Alex" },
-			});
-		}
 		if (
 			path.startsWith("/jellyfin/") &&
 			!request.headers
@@ -146,7 +133,16 @@ const server = Bun.serve({
 				?.endsWith(', Token="fixture-jellyfin-token"')
 		)
 			return new Response(null, { status: 401 });
-		if (path === "/jellyfin/Users/Me")
+		if (path === "/jellyfin/Users")
+			return Response.json([
+				{ Id: "alex-id", Name: "Alex" },
+				{ Id: "other-id", Name: "Other" },
+			]);
+		if (path === "/jellyfin/Users/other-id")
+			return Response.json({ Id: "other-id", Name: "Other" });
+		if (path === "/jellyfin/Users/other-id/Items")
+			return Response.json({ Items: [], TotalRecordCount: 0 });
+		if (path === "/jellyfin/Users/alex-id")
 			return Response.json({ Id: "alex-id", Name: "Alex" });
 		if (path === "/jellyfin/Users/alex-id/Items")
 			return Response.json({
@@ -168,7 +164,7 @@ const server = Bun.serve({
 	},
 });
 console.log(
-	`Fixture running at ${server.url}. Start the app in another terminal:\nDATABASE_URL=${databaseUrl} CREDENTIAL_ENCRYPTION_KEY=${KEY} bun run dev --host 127.0.0.1\nCreate a temporary Continuarr owner in the browser. Connect Jellyfin at ${base}/jellyfin with alex / fixture-password. Pair with the seeded Alex Plex Home profile. Preview should show two writes; the second sync should show zero. Inspect ${base}/fixture-state for both watched item IDs on each service. Stop this process when finished. Its PostgreSQL container is isolated and stops with this process.`,
+	`Fixture running at ${server.url}. Start the app in another terminal:\nDATABASE_URL=${databaseUrl} CREDENTIAL_ENCRYPTION_KEY=${KEY} bun run dev --host 127.0.0.1\nCreate a temporary Continuarr owner in the browser. Connect Jellyfin at ${base}/jellyfin with API key fixture-jellyfin-token and select Alex. Pair with the seeded Alex Plex Home profile. Preview should show two writes; the second sync should show zero. Inspect ${base}/fixture-state for both watched item IDs on each service. Stop this process when finished. Its PostgreSQL container is isolated and stops with this process.`,
 );
 
 async function stop() {

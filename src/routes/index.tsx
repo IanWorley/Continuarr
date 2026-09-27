@@ -18,6 +18,7 @@ const secondaryClass =
 	"rounded-lg border border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40";
 const errorSchema = z.object({ value: z.object({ error: z.string() }) });
 type MediaState = Awaited<ReturnType<MediaService["state"]>>;
+type JellyfinSource = Parameters<MediaService["jellyfinUsers"]>[0]["source"];
 type PlexSelection = Awaited<ReturnType<MediaService["selectProfile"]>>;
 type Preview = Awaited<ReturnType<MediaService["preview"]>>;
 type Authorization =
@@ -195,6 +196,8 @@ function PlexConnect({
 	const [serverId, setServerId] = useState("");
 	const [serverUrl, setServerUrl] = useState("");
 	const [message, setMessage] = useState("");
+	const [userId, setUserId] = useState("");
+	const [pin, setPin] = useState("");
 	const selectedServer = selection?.servers.find(
 		(server) => server.id === serverId,
 	);
@@ -204,6 +207,18 @@ function PlexConnect({
 		(authorization.kind !== "linked" || account.id === authorization.accountId)
 			? account
 			: null;
+
+	const directory = useQuery({
+		queryKey: ["plex-users", activeAccount?.id],
+		enabled: !!activeAccount,
+		queryFn: async () => {
+			if (!activeAccount) throw new Error("Sign in to Plex first.");
+			return responseData(
+				await getApi().v1.media.plex({ id: activeAccount.id }).users.get(),
+			);
+		},
+	});
+	const chosenUser = directory.data?.users.find((user) => user.id === userId);
 
 	useEffect(() => {
 		if (authorization.kind !== "waiting") return;
@@ -227,6 +242,8 @@ function PlexConnect({
 				if (result.status === "linked") {
 					setAuthorization({ kind: "linked", accountId: result.accountId });
 					setSelection(null);
+					setUserId("");
+					setPin("");
 					await refresh();
 				} else if (result.status === "expired") {
 					setAuthorization({
@@ -268,7 +285,8 @@ function PlexConnect({
 			</div>
 			<div className="space-y-4">
 				<p className="text-sm leading-6 text-slate-400">
-					Sign in to Plex, then find a server for your account.
+					Choose your account, a Plex Home member, or a shared user, then find
+					their server.
 				</p>
 				<button
 					type="button"
@@ -311,7 +329,7 @@ function PlexConnect({
 				)}
 				{authorization.kind === "linked" && (
 					<p role="status" className="text-sm text-emerald-300">
-						Account linked. Find a server below.
+						Account linked. Choose a person below.
 					</p>
 				)}
 				{authorization.kind === "failed" && (
@@ -327,22 +345,89 @@ function PlexConnect({
 								const result = responseData(
 									await getApi().v1.media.plex.select.post({
 										accountId: activeAccount.id,
-										userId: activeAccount.userId,
+										userId,
+										pin:
+											chosenUser?.kind === "home" && chosenUser.protected
+												? pin
+												: undefined,
 									}),
 								);
 								setSelection(result);
+								setPin("");
 								setServerId("");
 								setServerUrl("");
 							});
 						}}
 					>
-						<p className="text-sm text-slate-400">
-							Using {activeAccount.name} as the Plex profile.
-						</p>
+						<label className="block text-sm text-slate-300" htmlFor="plex-user">
+							Plex user
+							<select
+								id="plex-user"
+								className={fieldClass}
+								value={userId}
+								required
+								disabled={action.busy || directory.isPending}
+								onChange={(event) => {
+									setUserId(event.target.value);
+									setPin("");
+									setSelection(null);
+									setMessage("");
+								}}
+							>
+								<option value="">
+									{directory.isPending
+										? "Loading Plex users…"
+										: "Choose a person"}
+								</option>
+								{directory.data?.users.map((user) => (
+									<option key={user.id} value={user.id}>
+										{user.name} ·{" "}
+										{user.kind === "owner"
+											? "Signed-in account"
+											: user.kind === "home"
+												? "Plex Home"
+												: "Shared user"}
+									</option>
+								))}
+							</select>
+						</label>
+						{chosenUser?.kind === "home" && chosenUser.protected && (
+							<label
+								className="block text-sm text-slate-300"
+								htmlFor="plex-home-pin"
+							>
+								Plex Home PIN
+								<input
+									id="plex-home-pin"
+									className={fieldClass}
+									type="password"
+									inputMode="numeric"
+									autoComplete="off"
+									required
+									value={pin}
+									disabled={action.busy}
+									onChange={(event) => setPin(event.target.value)}
+								/>
+							</label>
+						)}
+						{directory.error && (
+							<ErrorMessage message={directory.error.message} />
+						)}
+						{directory.data?.issues.map((issue) => (
+							<ErrorMessage key={issue} message={issue} />
+						))}
+						<button
+							type="button"
+							className="block text-sm text-slate-400 underline underline-offset-4"
+							disabled={directory.isFetching}
+							onClick={() => void directory.refetch()}
+						>
+							Refresh Plex users
+						</button>
 						<button
 							type="submit"
 							className={secondaryClass}
-							disabled={action.busy}
+							disabled={action.busy || !chosenUser}
 						>
 							{action.busy ? "Checking profile…" : "Find Plex servers"}
 						</button>
@@ -473,8 +558,35 @@ function JellyfinConnect({
 }) {
 	const action = useAction();
 	const [url, setUrl] = useState("");
-	const [username, setUsername] = useState("");
-	const [password, setPassword] = useState("");
+	const [apiKey, setApiKey] = useState("");
+	const [userId, setUserId] = useState("");
+	const [newUsers, setUsers] = useState<
+		Awaited<ReturnType<MediaService["jellyfinUsers"]>>
+	>([]);
+	const [savedProfileId, setSavedProfileId] = useState(profiles[0]?.id ?? "");
+	const savedServerMap = new Map<
+		string,
+		MediaState["jellyfinProfiles"][number]
+	>();
+	for (const profile of profiles) {
+		if (!savedServerMap.has(profile.serverId) || profile.id === savedProfileId)
+			savedServerMap.set(profile.serverId, profile);
+	}
+	const savedServers = [...savedServerMap.values()];
+	const savedUsers = useQuery({
+		queryKey: ["jellyfin-users", savedProfileId],
+		enabled: !!savedProfileId,
+		queryFn: async () =>
+			responseData(
+				await getApi().v1.media.jellyfin.users.post({
+					source: { kind: "saved", profileId: savedProfileId },
+				}),
+			),
+	});
+	const users = savedProfileId ? (savedUsers.data ?? []) : newUsers;
+	const source: JellyfinSource = savedProfileId
+		? { kind: "saved", profileId: savedProfileId }
+		: { kind: "new", url, apiKey };
 	const [message, setMessage] = useState("");
 	return (
 		<section
@@ -488,8 +600,9 @@ function JellyfinConnect({
 				</h3>
 			</div>
 			<p className="mb-4 text-sm leading-6 text-slate-400">
-				Sign in as the person you want to sync. Your password is used once to
-				connect and is not saved.
+				{savedProfileId
+					? "Choose a person from this server. Continuarr reuses its saved API key."
+					: "Create an API key in Jellyfin’s Dashboard → API Keys, then choose the person to sync. The key grants server-wide access and is stored encrypted."}
 			</p>
 			<form
 				className="space-y-4"
@@ -497,68 +610,163 @@ function JellyfinConnect({
 					event.preventDefault();
 					void action.perform(async () => {
 						setMessage("");
-						try {
-							responseData(
-								await getApi().v1.media.jellyfin.connect.post({
-									url,
-									username,
-									password,
-								}),
+						if (users.length === 0) {
+							const found = responseData(
+								await getApi().v1.media.jellyfin.users.post({ source }),
 							);
-							setMessage("Jellyfin profile connected. Create a pairing below.");
-							await refresh();
-						} finally {
-							setPassword("");
+							setUsers(found);
+							if (found.length === 0) setMessage("No Jellyfin users found.");
+							return;
 						}
+						const connected = responseData(
+							await getApi().v1.media.jellyfin.connect.post({
+								source,
+								userId,
+							}),
+						);
+						setMessage("Jellyfin profile connected. Create a pairing below.");
+						await refresh();
+						if (!savedProfileId) setSavedProfileId(connected.id);
+						setApiKey("");
+						setUsers([]);
+						setUserId("");
 					});
 				}}
 			>
-				<label className="block text-sm text-slate-300" htmlFor="jellyfin-url">
-					Server URL
-					<input
-						id="jellyfin-url"
-						className={fieldClass}
-						type="url"
-						placeholder="http://jellyfin.local:8096"
-						autoComplete="url"
-						required
-						value={url}
-						disabled={action.busy}
-						onChange={(event) => setUrl(event.target.value)}
-					/>
-				</label>
-				<label
-					className="block text-sm text-slate-300"
-					htmlFor="jellyfin-username"
+				{savedServers.length > 0 && (
+					<label
+						className="block text-sm text-slate-300"
+						htmlFor="jellyfin-source"
+					>
+						Jellyfin server
+						<select
+							id="jellyfin-source"
+							className={fieldClass}
+							value={savedProfileId}
+							disabled={action.busy}
+							onChange={(event) => {
+								setSavedProfileId(event.target.value);
+								setUserId("");
+								setUsers([]);
+								setMessage("");
+							}}
+						>
+							<option value="">Add a server or replace an API key</option>
+							{savedServers.map((profile) => (
+								<option key={profile.serverId} value={profile.id}>
+									{profile.url}
+								</option>
+							))}
+						</select>
+					</label>
+				)}
+				{!savedProfileId && (
+					<>
+						<label
+							className="block text-sm text-slate-300"
+							htmlFor="jellyfin-url"
+						>
+							Server URL
+							<input
+								id="jellyfin-url"
+								className={fieldClass}
+								type="url"
+								placeholder="http://jellyfin.local:8096"
+								autoComplete="url"
+								required
+								value={url}
+								disabled={action.busy}
+								onChange={(event) => {
+									setUrl(event.target.value);
+									setUsers([]);
+									setUserId("");
+								}}
+							/>
+						</label>
+						<label
+							className="block text-sm text-slate-300"
+							htmlFor="jellyfin-api-key"
+						>
+							API key
+							<input
+								id="jellyfin-api-key"
+								className={fieldClass}
+								type="password"
+								autoComplete="off"
+								required
+								value={apiKey}
+								disabled={action.busy}
+								onChange={(event) => {
+									setApiKey(event.target.value);
+									setUsers([]);
+									setUserId("");
+								}}
+							/>
+						</label>
+					</>
+				)}
+				{savedProfileId && (
+					<>
+						{savedUsers.isPending && (
+							<p role="status" className="text-sm text-slate-400">
+								Loading Jellyfin users…
+							</p>
+						)}
+						{savedUsers.error && (
+							<ErrorMessage message={savedUsers.error.message} />
+						)}
+						{savedUsers.data?.length === 0 && (
+							<p role="status" className="text-sm text-slate-400">
+								No Jellyfin users found.
+							</p>
+						)}
+						<button
+							type="button"
+							className="text-sm text-slate-400 underline underline-offset-4"
+							disabled={savedUsers.isFetching}
+							onClick={() => void savedUsers.refetch()}
+						>
+							Refresh Jellyfin users
+						</button>
+					</>
+				)}
+				{users.length > 0 && (
+					<label
+						className="block text-sm text-slate-300"
+						htmlFor="jellyfin-user"
+					>
+						User to sync
+						<select
+							id="jellyfin-user"
+							className={fieldClass}
+							required
+							value={userId}
+							disabled={action.busy}
+							onChange={(event) => setUserId(event.target.value)}
+						>
+							<option value="">Choose a user</option>
+							{users.map((user) => (
+								<option key={user.id} value={user.id}>
+									{user.name}
+								</option>
+							))}
+						</select>
+					</label>
+				)}
+				<button
+					type="submit"
+					className={buttonClass}
+					disabled={
+						action.busy ||
+						(!!savedProfileId &&
+							(!userId || savedUsers.isPending || !!savedUsers.error))
+					}
 				>
-					Username
-					<input
-						id="jellyfin-username"
-						className={fieldClass}
-						autoComplete="username"
-						required
-						value={username}
-						disabled={action.busy}
-						onChange={(event) => setUsername(event.target.value)}
-					/>
-				</label>
-				<label
-					className="block text-sm text-slate-300"
-					htmlFor="jellyfin-password"
-				>
-					Password
-					<input
-						id="jellyfin-password"
-						className={fieldClass}
-						type="password"
-						autoComplete="current-password"
-						value={password}
-						disabled={action.busy}
-						onChange={(event) => setPassword(event.target.value)}
-					/>
-				</label>
-				<button type="submit" className={buttonClass} disabled={action.busy}>
-					{action.busy ? "Connecting…" : "Connect Jellyfin profile"}
+					{action.busy
+						? "Connecting…"
+						: users.length > 0
+							? "Connect Jellyfin profile"
+							: "Find Jellyfin users"}
 				</button>
 				<ErrorMessage message={action.error} />
 				{message && (

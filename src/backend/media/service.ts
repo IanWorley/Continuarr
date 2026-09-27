@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { createSecretStorage } from "~/backend/secrets/storage";
 import {
 	type JellyfinProvider,
+	type JellyfinSource,
 	MediaError,
 	type PlexIdentity,
 	type PlexPin,
 	type PlexProvider,
 	type PlexServer,
+	type PlexUserOption,
 	serverUrl,
 } from "./model";
 import { planWatchedUnion } from "./plan";
@@ -25,7 +27,7 @@ type PendingLogin = {
 };
 type Selection = {
 	accountId: string;
-	identity: PlexIdentity;
+	identity: Pick<PlexIdentity, "userId" | "name">;
 	servers: PlexServer[];
 	expiresAt: number;
 };
@@ -65,6 +67,39 @@ export function createMediaService({
 		const result = await repo.account(id);
 		if (!result) throw new MediaError("Plex account not found.", 404);
 		return result;
+	}
+	async function plexDirectory(stored: Awaited<ReturnType<typeof account>>) {
+		const token = secrets.decrypt(stored.id, stored.token);
+		const [homeResult, sharedResult] = await Promise.allSettled([
+			plex.homeUsers(token),
+			plex.sharedUsers(token),
+		]);
+		const issues: string[] = [];
+		if (homeResult.status === "rejected")
+			issues.push("Could not load Plex Home users. Try again.");
+		if (sharedResult.status === "rejected")
+			issues.push("Could not load shared Plex users. Try again.");
+		const users: PlexUserOption[] = [
+			{ kind: "owner", id: stored.userId, name: stored.name },
+		];
+		const seen = new Set([stored.userId]);
+		for (const user of homeResult.status === "fulfilled"
+			? homeResult.value
+			: []) {
+			if (seen.has(user.id)) continue;
+			users.push({ kind: "home", ...user });
+			seen.add(user.id);
+		}
+		const shared =
+			homeResult.status === "fulfilled" && sharedResult.status === "fulfilled"
+				? sharedResult.value
+				: [];
+		for (const user of shared) {
+			if (seen.has(user.id)) continue;
+			users.push({ kind: "shared", id: user.id, name: user.name });
+			seen.add(user.id);
+		}
+		return { users, shared, issues, token };
 	}
 	async function pairing(id: string) {
 		const result = await repo.pairing(id);
@@ -200,17 +235,10 @@ export function createMediaService({
 			attempt.accountId = accountId;
 			return { status: "linked" as const, accountId };
 		},
-		async homeUsers(id: string) {
+		async plexUsers(id: string) {
 			const stored = await account(id);
-			const users = await plex.homeUsers(
-				secrets.decrypt(stored.id, stored.token),
-			);
-			return users.some((user) => user.id === stored.userId)
-				? users
-				: [
-						{ id: stored.userId, name: stored.name, protected: false },
-						...users,
-					];
+			const { users, issues } = await plexDirectory(stored);
+			return { users, issues };
 		},
 		async selectProfile(input: {
 			accountId: string;
@@ -224,21 +252,49 @@ export function createMediaService({
 					409,
 				);
 			const stored = await account(input.accountId);
-			const token = secrets.decrypt(stored.id, stored.token);
-			const identity =
-				input.userId === stored.userId
-					? { userId: stored.userId, name: stored.name, token }
-					: await plex.switchUser({
-							token,
-							userId: input.userId,
-							pin: input.pin,
-						});
-			if (identity.userId !== input.userId)
+			const directory = await plexDirectory(stored);
+			const selected = directory.users.find((user) => user.id === input.userId);
+			if (!selected)
 				throw new MediaError(
-					"Plex returned a different profile. No connection was saved.",
-					502,
+					directory.issues.length
+						? `${directory.issues.join(" ")} Select the profile again.`
+						: "Plex user not found. Reload the user list.",
 				);
-			const servers = await plex.servers(identity.token);
+			let identity: Pick<PlexIdentity, "userId" | "name">;
+			let servers: PlexServer[];
+			switch (selected.kind) {
+				case "owner":
+					identity = { userId: stored.userId, name: stored.name };
+					servers = await plex.servers(directory.token);
+					break;
+				case "home": {
+					const switched = await plex.switchUser({
+						token: directory.token,
+						userId: selected.id,
+						pin: input.pin,
+					});
+					if (switched.userId !== selected.id)
+						throw new MediaError(
+							"Plex returned a different profile. No connection was saved.",
+							502,
+						);
+					identity = { userId: switched.userId, name: switched.name };
+					servers = await plex.servers(switched.token);
+					break;
+				}
+				case "shared": {
+					const friend = directory.shared.find(
+						(user) => user.id === selected.id,
+					);
+					if (!friend)
+						throw new MediaError(
+							"Plex shared user not found. Reload the user list.",
+						);
+					identity = { userId: friend.id, name: friend.name };
+					servers = friend.servers;
+					break;
+				}
+			}
 			const id = randomUUID();
 			selections.set(id, {
 				accountId: stored.id,
@@ -302,33 +358,93 @@ export function createMediaService({
 			selections.delete(input.selectionId);
 			return { id };
 		},
-		async connectJellyfin(input: {
-			url: string;
-			username: string;
-			password: string;
-		}) {
-			ensureIdle();
-			const identity = await jellyfin.login({
-				...input,
-				url: serverUrl(input.url),
+		async jellyfinUsers(input: { source: JellyfinSource }) {
+			if (input.source.kind === "new")
+				return jellyfin.users({
+					url: serverUrl(input.source.url),
+					apiKey: input.source.apiKey,
+				});
+			const stored = await repo.jellyfinProfile(input.source.profileId);
+			if (!stored) throw new MediaError("Jellyfin profile not found.", 404);
+			const apiKey = secrets.decrypt(stored.id, stored.token).reveal();
+			const server = await jellyfin.server({
+				url: stored.url,
+				apiKey,
 			});
+			if (server.id !== stored.serverId)
+				throw new MediaError(
+					"The saved Jellyfin URL points to a different server.",
+					409,
+				);
+			return jellyfin.users({ url: stored.url, apiKey });
+		},
+		async connectJellyfin(input: { source: JellyfinSource; userId: string }) {
+			ensureIdle();
+			let source:
+				| { kind: "new"; url: string; apiKey: string }
+				| { kind: "saved"; url: string; apiKey: string; serverId: string };
+			if (input.source.kind === "new") {
+				source = {
+					kind: "new",
+					url: serverUrl(input.source.url),
+					apiKey: input.source.apiKey,
+				};
+			} else {
+				const stored = await repo.jellyfinProfile(input.source.profileId);
+				if (!stored) throw new MediaError("Jellyfin profile not found.", 404);
+				source = {
+					kind: "saved",
+					url: stored.url,
+					apiKey: secrets.decrypt(stored.id, stored.token).reveal(),
+					serverId: stored.serverId,
+				};
+			}
+			const identity = await jellyfin.connect({
+				url: source.url,
+				apiKey: source.apiKey,
+				userId: input.userId,
+			});
+			if (source.kind === "saved" && identity.serverId !== source.serverId)
+				throw new MediaError(
+					"The saved Jellyfin URL points to a different server.",
+					409,
+				);
 			ensureIdle();
 			const id = await withConnectionWrite(async () => {
 				ensureIdle();
-				const existing = (await repo.jellyfinProfiles()).find(
+				const existingProfiles = await repo.jellyfinProfiles();
+				const existing = existingProfiles.find(
 					(item) =>
 						item.userId === identity.userId &&
 						item.serverId === identity.serverId,
 				);
 				const profileId = existing?.id ?? randomUUID();
-				await repo.saveJellyfinProfile({
+				const selected = {
 					id: profileId,
 					userId: identity.userId,
 					name: identity.name,
 					serverId: identity.serverId,
 					url: identity.url,
 					token: secrets.encrypt(profileId, identity.token),
-				});
+				};
+				const rows =
+					input.source.kind === "new"
+						? [
+								...existingProfiles
+									.filter(
+										(item) =>
+											item.serverId === identity.serverId &&
+											item.id !== profileId,
+									)
+									.map((item) => ({
+										...item,
+										url: identity.url,
+										token: secrets.encrypt(item.id, identity.token),
+									})),
+								selected,
+							]
+						: [selected];
+				await repo.saveJellyfinProfiles(rows);
 				return profileId;
 			});
 			return { id };

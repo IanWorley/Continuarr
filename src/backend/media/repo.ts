@@ -67,12 +67,14 @@ export function createMediaRepository(
 				.limit(1);
 			return row;
 		},
-		saveJellyfinProfile: (row: typeof jellyfinProfiles.$inferInsert) =>
-			database()
-				.insert(jellyfinProfiles)
-				.values(row)
-				.onConflictDoUpdate({ target: jellyfinProfiles.id, set: row })
-				.execute(),
+		saveJellyfinProfiles: (rows: Array<typeof jellyfinProfiles.$inferInsert>) =>
+			database().transaction(async (transaction) => {
+				for (const row of rows)
+					await transaction
+						.insert(jellyfinProfiles)
+						.values(row)
+						.onConflictDoUpdate({ target: jellyfinProfiles.id, set: row });
+			}),
 		pairings: async () => await database().select().from(syncPairings),
 		pairing: async (id: string) => {
 			const [row] = await database()
