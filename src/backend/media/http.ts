@@ -15,6 +15,7 @@ export async function requestJson<T>(input: {
 	method?: "GET" | "POST" | "PUT";
 	headers?: HeadersInit;
 	body?: unknown;
+	requestTimeoutMs?: number;
 }): Promise<T> {
 	const response = await request(input);
 	let body: unknown;
@@ -57,6 +58,7 @@ async function request(input: {
 	method?: "GET" | "POST" | "PUT";
 	headers?: HeadersInit;
 	body?: unknown;
+	requestTimeoutMs?: number;
 }): Promise<Response> {
 	const headers = new Headers(input.headers);
 	headers.set("Accept", "application/json");
@@ -68,7 +70,7 @@ async function request(input: {
 			headers,
 			body: input.body === undefined ? undefined : JSON.stringify(input.body),
 			redirect: "manual",
-			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+			signal: AbortSignal.timeout(input.requestTimeoutMs ?? REQUEST_TIMEOUT_MS),
 		});
 	} catch {
 		throw new MediaError("The media server could not be reached.", 502);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jellyfinHeaders } from "~/backend/jellyfin/headers";
 import { endpoint, requestEmpty, requestJson } from "~/backend/media/http";
 import {
 	type JellyfinAccess,
@@ -11,8 +12,6 @@ import {
 } from "~/backend/media/model";
 
 const PAGE_SIZE = 100;
-const CLIENT_NAME = "Continuarr";
-const CLIENT_VERSION = "1.0.0";
 
 const publicInfoSchema = z.object({
 	Id: z.string().min(1),
@@ -55,12 +54,6 @@ const targetSchema = z.object({
 	Id: z.string().min(1),
 	UserData: z.object({ Played: z.boolean() }),
 });
-
-function jellyfinHeaders(clientIdentifier: string, token?: string): Headers {
-	return new Headers({
-		Authorization: `MediaBrowser Client="${CLIENT_NAME}", Device="server", DeviceId="${clientIdentifier}", Version="${CLIENT_VERSION}"${token ? `, Token="${token}"` : ""}`,
-	});
-}
 
 function toMediaItem(item: z.infer<typeof itemSchema>): MediaItem {
 	const ids: MediaItem["ids"] = [];
