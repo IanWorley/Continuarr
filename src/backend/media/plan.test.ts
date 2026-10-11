@@ -2,13 +2,18 @@ import { describe, expect, it } from "bun:test";
 import type { MediaItem } from "~/backend/media/model";
 import { planWatchedUnion } from "~/backend/media/plan";
 
+const NO_HISTORY: MediaItem["history"] = {
+	lastPlayedAt: null,
+	positionMs: null,
+};
+
 function movie(
 	id: string,
 	watched: boolean,
 	ids: MediaItem["ids"],
 	title = id,
 ): MediaItem {
-	return { id, kind: "movie", title, ids, watched };
+	return { id, kind: "movie", title, ids, watched, history: NO_HISTORY };
 }
 
 function episode(
@@ -16,7 +21,14 @@ function episode(
 	watched: boolean,
 	ids: MediaItem["ids"],
 ): MediaItem {
-	return { id, kind: "episode", title: id, ids, watched };
+	return {
+		id,
+		kind: "episode",
+		title: id,
+		ids,
+		watched,
+		history: NO_HISTORY,
+	};
 }
 
 describe("planWatchedUnion", () => {

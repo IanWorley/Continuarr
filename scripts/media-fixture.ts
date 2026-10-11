@@ -1,6 +1,8 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { GenericContainer, Wait } from "testcontainers";
 import { z } from "zod";
+import { MILLISECONDS_PER_SECOND } from "../src/backend/media/constants";
+import { TICKS_PER_MILLISECOND } from "../src/backend/media/jellyfin";
 import {
 	CREDENTIAL_KEY_BYTES,
 	createSecretStorage,
@@ -64,6 +66,10 @@ await db.insert(schema.plexProfiles).values({
 await client.end();
 const plexWatched = new Set(["1", "3"]);
 const jellyfinWatched = new Set(["j2"]);
+const plexInProgress = "2";
+const jellyfinInProgress = "j4";
+const LAST_PLAYED_AT_MS = Date.UTC(2026, 8, 1, 20);
+const RESUME_POSITION_MS = 754_000;
 const titles = [
 	"Arrival",
 	"The Martian",
@@ -100,6 +106,10 @@ function plexItem(index: number) {
 		title: titles[index],
 		Guid: ids[index] ? [{ id: `tmdb://${ids[index]}` }] : [],
 		...(plexWatched.has(id) ? { viewCount: 1 } : {}),
+		...(plexWatched.has(id) || id === plexInProgress
+			? { lastViewedAt: LAST_PLAYED_AT_MS / MILLISECONDS_PER_SECOND }
+			: {}),
+		...(id === plexInProgress ? { viewOffset: RESUME_POSITION_MS } : {}),
 	};
 }
 function jellyfinItem(index: number) {
@@ -118,7 +128,15 @@ function jellyfinItem(index: number) {
 				}
 			: {}),
 		ProviderIds: ids[index] ? { Tmdb: ids[index] } : {},
-		UserData: { Played: jellyfinWatched.has(id) },
+		UserData: {
+			Played: jellyfinWatched.has(id),
+			...(jellyfinWatched.has(id) || id === jellyfinInProgress
+				? { LastPlayedDate: new Date(LAST_PLAYED_AT_MS).toISOString() }
+				: {}),
+			...(id === jellyfinInProgress
+				? { PlaybackPositionTicks: RESUME_POSITION_MS * TICKS_PER_MILLISECOND }
+				: {}),
+		},
 	};
 }
 const server = Bun.serve({

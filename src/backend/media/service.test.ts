@@ -23,6 +23,7 @@ const movie = (id: string, watched: boolean): MediaItem => ({
 	title: "Arrival",
 	ids: [{ provider: "tmdb", value: "329865" }],
 	watched,
+	history: { lastPlayedAt: null, positionMs: null },
 });
 async function setup(now: () => number = Date.now) {
 	const { db, client } = await createTestDatabase();

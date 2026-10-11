@@ -13,6 +13,7 @@ import {
 const PAGE_SIZE = 100;
 const CLIENT_NAME = "Continuarr";
 const CLIENT_VERSION = "1.0.0";
+export const TICKS_PER_MILLISECOND = 10_000;
 
 const publicInfoSchema = z.object({
 	Id: z.string().min(1),
@@ -45,7 +46,11 @@ const itemSchema = z.object({
 	IndexNumber: z.number().int().nonnegative().nullish(),
 	Type: z.enum(["Movie", "Episode"]),
 	ProviderIds: providerIdsSchema.optional(),
-	UserData: z.object({ Played: z.boolean() }),
+	UserData: z.object({
+		Played: z.boolean(),
+		LastPlayedDate: z.iso.datetime({ offset: true }).nullish(),
+		PlaybackPositionTicks: z.number().int().nonnegative().nullish(),
+	}),
 });
 const pageSchema = z.object({
 	Items: z.array(itemSchema),
@@ -81,12 +86,20 @@ function toMediaItem(item: z.infer<typeof itemSchema>): MediaItem {
 				}
 			: {}),
 	};
+	const { LastPlayedDate, PlaybackPositionTicks } = item.UserData;
+	const positionMs = Math.floor(
+		(PlaybackPositionTicks ?? 0) / TICKS_PER_MILLISECOND,
+	);
 	return {
 		id: item.Id,
 		kind: item.Type === "Movie" ? "movie" : "episode",
 		title: item.Name,
 		ids,
 		watched: item.UserData.Played,
+		history: {
+			lastPlayedAt: LastPlayedDate ? Date.parse(LastPlayedDate) : null,
+			positionMs: positionMs > 0 ? positionMs : null,
+		},
 		...(Object.values(details).some((value) => value !== undefined)
 			? { details }
 			: {}),
