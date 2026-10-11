@@ -2,6 +2,7 @@ import { z } from "zod";
 import { endpoint, requestEmpty, requestJson } from "~/backend/media/http";
 import {
 	type JellyfinAccess,
+	type JellyfinCredentials,
 	type JellyfinProvider,
 	jsonObjectSchema,
 	type MediaAccess,
@@ -9,6 +10,7 @@ import {
 	type MediaItem,
 	serverUrl,
 } from "~/backend/media/model";
+import { Secret } from "~/backend/secrets/storage";
 
 const PAGE_SIZE = 100;
 const CLIENT_NAME = "Continuarr";
@@ -34,6 +36,16 @@ const userSchema = z
 		LastLoginDate: z.string().nullish(),
 	})
 	.catchall(z.json());
+const authenticationSchema = z.object({
+	AccessToken: z.string().min(1),
+	ServerId: z.string().min(1),
+	User: z.object({
+		Id: z.string().min(1),
+		Name: z.string().min(1),
+		ServerId: z.string().min(1).nullish(),
+		Policy: z.object({ IsAdministrator: z.boolean() }),
+	}),
+});
 const providerIdsSchema = z.record(z.string(), z.string());
 const itemSchema = z.object({
 	Id: z.string().min(1),
@@ -109,6 +121,30 @@ export function createJellyfinProvider(options: {
 	}
 
 	return {
+		async authenticate({ url, username, password }: JellyfinCredentials) {
+			const normalizedUrl = serverUrl(url);
+			const result = await requestJson({
+				fetch: fetcher,
+				url: endpoint(normalizedUrl, "Users/AuthenticateByName"),
+				method: "POST",
+				headers: jellyfinHeaders(options.clientIdentifier),
+				body: { Username: username, Pw: password.reveal() },
+				schema: authenticationSchema,
+			});
+			if (result.User.ServerId && result.User.ServerId !== result.ServerId)
+				throw new MediaError(
+					"Jellyfin returned a user from a different server.",
+					502,
+				);
+			if (!result.User.Policy.IsAdministrator)
+				throw new MediaError("Sign in with a Jellyfin administrator account.");
+			return {
+				serverId: result.ServerId,
+				user: { id: result.User.Id, name: result.User.Name },
+				access: { url: normalizedUrl, token: new Secret(result.AccessToken) },
+			};
+		},
+
 		async directory(access) {
 			const serverIdentity = await server(access);
 			const users = await requestJson({
