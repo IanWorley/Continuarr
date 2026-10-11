@@ -43,6 +43,13 @@
       "when": 1790475725653,
       "tag": "0005_remove_unused_jellyfin_polling",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791738133874,
+      "tag": "0006_add_event_inbox_and_delivery_outbox",
+      "breakpoints": true
     }
   ]
 }
