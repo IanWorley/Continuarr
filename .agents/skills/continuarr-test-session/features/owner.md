@@ -10,7 +10,7 @@ Create the single Continuarr owner and use the same account to return to the app
 
 ## How to get to it (user POV)
 
-Open `/sign-in` or an authenticated route while signed out. Use **Sign out** in the navigation to end the session.
+Open `/sign-in` or an authenticated route while signed out. Use **Sign out** in the navigation to end the session. Below the `md` breakpoint, open **Navigation menu** first.
 
 ## Driving it with T3 preview
 
@@ -18,8 +18,8 @@ Preconditions: Doctor reports `configured:false` for setup. Use only the isolate
 
 - Open `/sign-in` and snapshot. Require **Make yourself at home**.
 - Fill **Username** with `continuarr-test` and **Password** with `Continuarr-local-test-2026!`. Click **Create owner and sign in**.
-- Require `/`, the **Continuarr** heading, and **Sign out**. Reload and read `/api/v1/admin/session`; require `authenticated:true`.
-- Click **Sign out**. Require `/sign-in` and **Welcome back**. Sign in with the same credentials and verify the session again.
+- Require `/`, the **Connections & sync** heading, the **Continuarr home** link, and **Sign out**. Reload with `preview_navigate` and read `/api/v1/admin/session`; require `authenticated:true`.
+- Click **Sign out**. Require `/sign-in`, **Welcome back**, and a `401` from `/api/v1/admin/session`. Fill the same credentials, click **Sign in**, and verify the session again.
 
 ## Gotchas
 

@@ -10,18 +10,18 @@ Match media items when their provider metadata cannot establish the same movie o
 
 ## How to get to it (user POV)
 
-Open `/matches` or choose **Manual matching**. Select the fixture pairing in **Pairing**.
+Open `/matches` or choose **Manual matching**. Select the fixture pairing in **Person pairing**.
 
 ## Driving it with T3 preview
 
-Preconditions: the fixture Alex pairing exists. Capture initial saved matches and fixture-state.
+Preconditions: the fixture Alex pairing exists. The fixture does not seed one, so create it on Users first. Capture initial saved matches and fixture-state.
 
-- Select the pairing. Require two library browsers and **Choose a pair**. Use each browser's kind/show/season/search controls to locate fixture episodes.
-- Select **First contact (3)** in Plex and **First contact (j3)** in Jellyfin using their radio accessible names. Require the selected-pair summary and enabled **Save manual match**.
-- Click **Save manual match**. Require the match under saved matches. Reload, reselect the pairing if needed, and verify `/api/v1/media/pairings/<pairing-id>/library` returns the saved IDs in `matches`.
-- Return to Users and preview. Require this formerly unmatched episode to be included in the plan. Saving a manual match alone must leave fixture-state unchanged.
-- For removal coverage, remove only the match created by this run, using its confirmation control. Reload and verify its absence from `matches`.
+- In **Person pairing**, select **Alex (Home) / Alex (Fixture Plex)**. Require **Choose a pair**, the **Plex** and **Jellyfin** library browsers, and **Saved matches (0)** on a fresh run. Each browser has its own **Content**, **Show**, **Season**, and search controls for locating fixture episodes.
+- Select **First contact (3)** in Plex and **First contact (j3)** in Jellyfin using their radio accessible names. Require **Selected pair: First contact / First contact** and enabled **Save manual match**.
+- Click **Save manual match**. Require **Manual match saved. Watched status has not changed.**, **Saved matches (1)**, and both radios disabled. Reload, reselect the pairing if needed, and verify `/api/v1/media/pairings/<pairing-id>/library` returns `{plexItemId:"3", jellyfinItemId:"j3"}` in `matches`.
+- Return to Users and preview. Require **First contact** with **Mark watched in Jellyfin** in the plan and one more matched pair than before. Saving a manual match alone must leave fixture-state unchanged.
+- For removal coverage, click **Remove match** on the match created by this run, then **Confirm removal**. Require **Saved matches (0)**. Reload and verify its absence from `matches`.
 
 ## Gotchas
 
-A movie cannot be paired with an episode. Saving a match does not write watched status. Do not remove pre-existing user matches. Snapshot before selecting controls because library browsers repeat labels; scope actions to the Plex or Jellyfin browser.
+A movie cannot be paired with an episode. Saving a match does not write watched status. Do not remove pre-existing user matches. Snapshot before selecting controls because library browsers repeat labels; scope actions to the Plex or Jellyfin browser. Library lists scroll inside their own container, so `preview_click` on an off-screen radio fails. Scroll the target into view with `preview_evaluate` first, as described in the skill's Drive section.

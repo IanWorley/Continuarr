@@ -28,6 +28,8 @@ Run from the repository root. Derive acceptance checks from the user's request, 
 
    Wait for `Fixture running at ...` and its printed startup command. It creates a temporary PostgreSQL container, migrates it, and seeds `Alex (Home)` on `Fixture Plex`. The installation owner does not yet exist.
 5. Run the printed app command in a second persistent terminal, retaining its actual `DATABASE_URL` and `CREDENTIAL_ENCRYPTION_KEY`. Append `--port 3012 --strictPort`. Use the printed `--host 127.0.0.1` when the browser can reach loopback. For a remote collaborative browser, use `--host 0.0.0.0` and the reachable network URL printed by Vite. Do not put credentials in `.env` or evidence.
+
+   If `preview_open` with `127.0.0.1` lands on a Chrome error page, the browser is remote. Its `environment-port` target resolves to the machine's hostname, which Vite rejects with `403 Blocked request. This host ... is not allowed`. Open the IP-based `Network:` URL that Vite prints instead, such as the Tailscale `100.x` address. Do not edit `vite.config.ts` to allow the hostname.
 6. Record both terminal session IDs, the chosen ports, browser URL, and owned container ID in the evidence notes. Wait for Vite's ready message and run Doctor. Keep one Continuarr process per database.
 
 Use the same reachable browser origin throughout the run. Cookies are shared across ports on one hostname, so separate ports do not isolate browser sessions. Use separate browser contexts or distinct reachable hostnames when two instances must remain signed in. Do not switch to localhost unless the collaborative browser can reach it. The fixture's `127.0.0.1` server URL is resolved by the Continuarr backend, so it remains correct even when the browser uses a network address.
@@ -47,9 +49,15 @@ Require health `{"application":"Continuarr","status":"ok"}` and listeners belong
 
 A configured owner on an allegedly fresh run means the wrong database or a reused session. Investigate. Never reset the owner or truncate tables to make setup available.
 
+On the first browser load, Vite optimizes dependencies and reloads the page. The app log then shows `Error: aborted` with `ECONNRESET` and a `Failed to fetch dynamically imported module` message. These are expected startup noise. Treat later errors as real.
+
 ## Drive
 
 Use T3 Code's collaborative preview when available. Call `preview_status`, then `preview_open` if needed. Open a separate tab for a separate fixture run. Use `preview_snapshot` before interaction, `preview_type` with `clear:true` for labelled inputs and `preview_click` for buttons. For native selects, focus the select and use `preview_press` keys, or set its DOM value and dispatch a bubbling `change` event through `preview_evaluate`. Discover tool schemas in the current session; do not guess argument shapes. Prefer roles and accessible names from snapshots.
+
+- `preview_click` fails on a target outside the viewport, including radios inside the scrolling library lists and buttons below the fold. Run `preview_evaluate` with `[...document.querySelectorAll('input[type=radio]')].find(e => e.getAttribute('aria-label') === 'First contact (3)').scrollIntoView({block: 'center'})`, or the matching button lookup, then click by role and name.
+- Reload with `preview_navigate` to the current URL. A `location.reload()` inside `preview_evaluate` destroys the page it runs in and the call fails.
+- The preview client can reconnect mid-run. Errors then name a different `preview-…` client, the tab returns to `/sign-in` without the session cookie, and `preview_snapshot` may keep failing. Run Doctor, sign in again, and read the API state before repeating a mutation, because the interrupted click may not have applied. When snapshots keep failing, record visible text and API reads from `preview_evaluate` as evidence, and say so in the notes.
 
 If T3 preview tools are absent, use the available browser automation. If `preview_open` reports that automation is unavailable, document that limitation before using another browser. API-only verification does not prove the UI.
 
