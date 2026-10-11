@@ -2,6 +2,10 @@ import type { z } from "zod";
 import { MediaError, serverUrl } from "~/backend/media/model";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const UNAUTHORIZED = 401;
+const FORBIDDEN = 403;
+const REDIRECTION_FIRST = 300;
+const REDIRECTION_LAST = 399;
 
 export function endpoint(base: string, path: string): URL {
 	const normalized = serverUrl(base);
@@ -70,11 +74,22 @@ async function request(input: {
 			redirect: "manual",
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		});
-	} catch {
+	} catch (error) {
+		if (error instanceof DOMException && error.name === "TimeoutError")
+			throw new MediaError("The media server did not respond in time.", 502);
 		throw new MediaError("The media server could not be reached.", 502);
 	}
 	if (!response.ok) {
-		if (response.status === 401 || response.status === 403) {
+		// Redirects are never followed, so credentials cannot reach another host.
+		if (
+			response.status >= REDIRECTION_FIRST &&
+			response.status <= REDIRECTION_LAST
+		)
+			throw new MediaError(
+				"The media server redirected the request. Use the server's final URL.",
+				502,
+			);
+		if (response.status === UNAUTHORIZED || response.status === FORBIDDEN) {
 			throw new MediaError("The media server rejected these credentials.", 502);
 		}
 		throw new MediaError("The media server request failed.", 502);
