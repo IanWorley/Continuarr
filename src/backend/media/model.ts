@@ -1,13 +1,14 @@
 import { z } from "zod";
 import type { Secret } from "~/backend/secrets/storage";
 
+export const externalIdProviderSchema = z.enum(["imdb", "tmdb", "tvdb"]);
 export const mediaItemSchema = z.object({
 	id: z.string().min(1),
 	kind: z.enum(["movie", "episode"]),
 	title: z.string(),
 	ids: z.array(
 		z.object({
-			provider: z.enum(["imdb", "tmdb", "tvdb"]),
+			provider: externalIdProviderSchema,
 			value: z.string().min(1),
 		}),
 	),
