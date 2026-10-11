@@ -55,9 +55,15 @@ export type JellyfinUser = {
 	lastLoginDate: string | null;
 	details: JsonObject;
 };
+export type JellyfinServer = { id: string; name: string };
 export type JellyfinDirectory = {
-	server: { id: string; name: string };
+	server: JellyfinServer;
 	users: JellyfinUser[];
+};
+export type JellyfinAdminConnection = {
+	server: JellyfinServer;
+	user: { id: string; name: string };
+	access: MediaAccess;
 };
 export type PlexIdentity = { userId: string; name: string; token: Secret };
 export type PlexPin = {
@@ -81,6 +87,11 @@ export interface PlexProvider {
 	markWatched(access: MediaAccess, itemId: string): Promise<void>;
 }
 export interface JellyfinProvider {
+	authenticate(credentials: {
+		url: string;
+		username: string;
+		password: Secret;
+	}): Promise<JellyfinAdminConnection>;
 	directory(access: MediaAccess): Promise<JellyfinDirectory>;
 	items(access: JellyfinAccess): Promise<MediaItem[]>;
 	markWatched(access: JellyfinAccess, itemId: string): Promise<void>;

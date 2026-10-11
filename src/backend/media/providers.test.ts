@@ -256,7 +256,7 @@ describe("Plex provider", () => {
 				url: `${baseUrl}/plex`,
 				token: new Secret("private-token"),
 			}),
-		).rejects.toThrow("request failed");
+		).rejects.toThrow("redirected this request");
 		expect(redirected).toBe(false);
 	});
 
