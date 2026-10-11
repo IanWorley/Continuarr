@@ -176,14 +176,15 @@ describe("installation administrator", () => {
 		);
 	});
 
-	it("rejects unauthenticated APIs including Plex and unknown future routes", async () => {
-		for (const path of [
-			"/admin/session",
-			"/auth/plex/login/start",
-			"/configuration",
-			"/sync",
+	it("rejects unauthenticated APIs including media and unknown future routes", async () => {
+		for (const [method, path] of [
+			["GET", "/admin/session"],
+			["GET", "/media/state"],
+			["POST", "/media/pairings/1/run"],
+			["GET", "/configuration"],
+			["GET", "/sync"],
 		]) {
-			expect((await request(path)).status).toBe(401);
+			expect((await request(path, method)).status).toBe(401);
 		}
 		expect(
 			(
