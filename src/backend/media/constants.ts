@@ -1,3 +1,4 @@
+export const MILLISECONDS_PER_SECOND = 1_000;
 export const MILLISECONDS_PER_MINUTE = 60_000;
 export const DEFAULT_USER_POLL_MINUTES = 60;
 export const MIN_USER_POLL_MINUTES = 1;

@@ -383,6 +383,7 @@ describe("Jellyfin provider", () => {
 			title: "Film 1",
 			ids: [{ provider: "imdb", value: "tt0000001" }],
 			watched: false,
+			history: { lastPlayedAt: null, positionMs: null },
 		});
 		expect(starts).toEqual([0, PAGE_SIZE]);
 		await provider.markWatched(access, "item-1");
@@ -483,13 +484,21 @@ it("keeps direct episode identifiers and rejects series paths as episode identif
 	expect(
 		await provider.items({ url: baseUrl, token: new Secret("token") }),
 	).toEqual([
-		{ id: "1", kind: "episode", title: "Pilot", ids: [], watched: false },
+		{
+			id: "1",
+			kind: "episode",
+			title: "Pilot",
+			ids: [],
+			watched: false,
+			history: { lastPlayedAt: null, positionMs: null },
+		},
 		{
 			id: "2",
 			kind: "episode",
 			title: "Second",
 			ids: [{ provider: "tvdb", value: "349232" }],
 			watched: false,
+			history: { lastPlayedAt: null, positionMs: null },
 		},
 	]);
 });
@@ -580,5 +589,73 @@ describe("library display details", () => {
 		expect(items[1].details?.paths).toBeUndefined();
 		expect(items[1].details?.season).toBeUndefined();
 		expect(items[1].ids).toEqual([]);
+	});
+});
+
+describe("watch history", () => {
+	it("reads Plex last viewed time and resume position", async () => {
+		const url = serve((request) =>
+			new URL(request.url).pathname === "/library/sections"
+				? json({ MediaContainer: { Directory: [{ key: "1", type: "movie" }] } })
+				: json({
+						MediaContainer: {
+							totalSize: 3,
+							Metadata: [
+								{
+									ratingKey: "1",
+									lastViewedAt: 1_700_000_000,
+									viewOffset: 754_000,
+								},
+								{ ratingKey: "2", lastViewedAt: 1_700_000_001, viewOffset: 0 },
+								{ ratingKey: "3" },
+							],
+						},
+					}),
+		);
+		const items = await createPlexProvider({
+			clientIdentifier: PLEX_IDENTIFIER,
+		}).items({ url, token: new Secret("token") });
+		expect(items.map((item) => item.history)).toEqual([
+			{ lastPlayedAt: 1_700_000_000_000, positionMs: 754_000 },
+			{ lastPlayedAt: 1_700_000_001_000, positionMs: null },
+			{ lastPlayedAt: null, positionMs: null },
+		]);
+	});
+
+	it("reads Jellyfin last played date and resume position", async () => {
+		const url = serve(() =>
+			json({
+				TotalRecordCount: 3,
+				Items: [
+					{
+						Id: "j1",
+						Type: "Movie",
+						UserData: {
+							Played: false,
+							LastPlayedDate: "2023-11-14T22:13:20.1234567Z",
+							PlaybackPositionTicks: 7_540_000_000,
+						},
+					},
+					{
+						Id: "j2",
+						Type: "Movie",
+						UserData: {
+							Played: true,
+							LastPlayedDate: "2023-11-14T22:13:21Z",
+							PlaybackPositionTicks: 0,
+						},
+					},
+					{ Id: "j3", Type: "Movie", UserData: { Played: false } },
+				],
+			}),
+		);
+		const items = await createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		}).items({ url, userId: "person", token: new Secret("token") });
+		expect(items.map((item) => item.history)).toEqual([
+			{ lastPlayedAt: 1_700_000_000_123, positionMs: 754_000 },
+			{ lastPlayedAt: 1_700_000_001_000, positionMs: null },
+			{ lastPlayedAt: null, positionMs: null },
+		]);
 	});
 });

@@ -12,6 +12,10 @@ export const mediaItemSchema = z.object({
 		}),
 	),
 	watched: z.boolean(),
+	history: z.object({
+		lastPlayedAt: z.number().int().nullable(),
+		positionMs: z.number().int().positive().nullable(),
+	}),
 	details: z
 		.object({
 			paths: z.array(z.string()).optional(),

@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { z } from "zod";
+import { MILLISECONDS_PER_SECOND } from "~/backend/media/constants";
 import {
 	endpoint,
 	requestEmpty,
@@ -116,6 +117,8 @@ const metadataSchema = z.object({
 		.optional(),
 	title: z.string().default(""),
 	viewCount: z.number().optional(),
+	lastViewedAt: z.number().int().optional(),
+	viewOffset: z.number().int().nonnegative().optional(),
 	Guid: z.array(z.object({ id: z.string() })).optional(),
 	guid: z.string().optional(),
 });
@@ -189,6 +192,13 @@ function toMediaItem(
 			? { details }
 			: {}),
 		watched: (metadata.viewCount ?? 0) > 0,
+		history: {
+			lastPlayedAt:
+				metadata.lastViewedAt === undefined
+					? null
+					: metadata.lastViewedAt * MILLISECONDS_PER_SECOND,
+			positionMs: metadata.viewOffset || null,
+		},
 	};
 }
 
