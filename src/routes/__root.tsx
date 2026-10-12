@@ -7,10 +7,9 @@ import {
 	Scripts,
 	useRouterState,
 } from "@tanstack/react-router";
-
+import brandMarkUrl from "~/assets/brand-mark.svg?url";
 import { AppNavigation } from "~/components/app-navigation";
 import { getApi } from "~/routes/api.$";
-
 import appCss from "~/styles.css?url";
 
 interface RouterContext {
@@ -38,6 +37,11 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 		],
 		links: [
 			{
+				rel: "icon",
+				type: "image/svg+xml",
+				href: brandMarkUrl,
+			},
+			{
 				rel: "stylesheet",
 				href: appCss,
 			},
@@ -51,10 +55,13 @@ function RootLayout() {
 	const pathname = useRouterState({
 		select: (state) => state.location.pathname,
 	});
+	if (pathname === "/sign-in") return <Outlet />;
 	return (
 		<>
-			{pathname !== "/sign-in" && <AppNavigation key={pathname} />}
-			<Outlet />
+			<AppNavigation key={pathname} />
+			<div className="md:pl-60">
+				<Outlet />
+			</div>
 		</>
 	);
 }
@@ -65,7 +72,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			<head>
 				<HeadContent />
 			</head>
-			<body className="min-h-screen bg-slate-950 text-slate-100 antialiased">
+			<body className="min-h-screen bg-canvas font-sans text-ink antialiased">
 				{children}
 				<Scripts />
 			</body>

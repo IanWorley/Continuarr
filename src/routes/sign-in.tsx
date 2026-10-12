@@ -5,13 +5,13 @@ import {
 	MAX_USERNAME_LENGTH,
 	MIN_PASSWORD_LENGTH,
 } from "~/backend/admin/model";
+import { BrandMark, buttonClass, inputClass } from "~/components/ui";
 import { getApi } from "~/routes/api.$";
 
 const HTTP_CONFLICT = 409;
 const HTTP_UNAUTHORIZED = 401;
 const HTTP_TOO_MANY_REQUESTS = 429;
-const FIELD_CLASS_NAME =
-	"mt-2 block w-full rounded-xl border border-slate-700/80 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 hover:border-slate-500 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/10 aria-invalid:border-rose-400/70 aria-invalid:focus:ring-rose-400/10 read-only:opacity-60";
+const FIELD_CLASS_NAME = `${inputClass} mt-1.5 py-2.5 read-only:opacity-60`;
 
 type Credentials = { username: string; password: string };
 
@@ -117,30 +117,19 @@ function SignIn() {
 	}
 
 	return (
-		<main className="flex min-h-svh flex-col items-center justify-center bg-[radial-gradient(ellipse_at_top,rgba(8,145,178,0.10),transparent_60%)] px-5 py-12">
-			<div className="mb-8 flex items-center gap-3">
-				<span
-					aria-hidden="true"
-					className="flex size-9 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-lg font-semibold text-cyan-300"
-				>
-					C
-				</span>
-				<span className="text-lg font-semibold tracking-tight">Continuarr</span>
-			</div>
-			<section
-				aria-labelledby="sign-in-title"
-				className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-2xl shadow-black/20 sm:p-9"
-			>
-				<p className="mb-3 text-xs font-medium tracking-widest text-cyan-300 uppercase">
-					{configured ? "Your media, in sync" : "Welcome to Continuarr"}
-				</p>
+		<main className="flex min-h-svh flex-col items-center justify-center px-5 py-12">
+			<section aria-labelledby="sign-in-title" className="w-full max-w-sm">
+				<div className="mb-10 flex items-center gap-2.5 text-[15px] font-semibold tracking-tight">
+					<BrandMark />
+					Continuarr
+				</div>
 				<h1
 					id="sign-in-title"
-					className="text-3xl font-semibold tracking-tight"
+					className="text-2xl font-semibold tracking-tight"
 				>
 					{configured ? "Welcome back" : "Make yourself at home"}
 				</h1>
-				<p className="mt-3 text-sm leading-6 text-slate-400">
+				<p className="mt-2 text-sm text-muted">
 					{configured
 						? "Sign in with your installation-owner account."
 						: "Create your installation-owner account. This is separate from your Plex or Jellyfin account."}
@@ -168,12 +157,12 @@ function SignIn() {
 						}
 					}}
 					aria-busy={pending}
-					className="mt-8 flex flex-col gap-5"
+					className="mt-8 flex flex-col gap-4"
 				>
 					<div>
 						<label
 							htmlFor="username"
-							className="text-sm font-medium text-slate-200"
+							className="text-sm font-medium text-muted"
 						>
 							Username
 						</label>
@@ -200,7 +189,7 @@ function SignIn() {
 							<p
 								id="username-error"
 								role="alert"
-								className="mt-2 text-xs leading-5 text-rose-300"
+								className="mt-1.5 text-xs text-red-300"
 							>
 								{fieldErrors.username}
 							</p>
@@ -209,7 +198,7 @@ function SignIn() {
 					<div>
 						<label
 							htmlFor="password"
-							className="text-sm font-medium text-slate-200"
+							className="text-sm font-medium text-muted"
 						>
 							Password
 						</label>
@@ -237,16 +226,13 @@ function SignIn() {
 							<p
 								id="password-error"
 								role="alert"
-								className="mt-2 text-xs leading-5 text-rose-300"
+								className="mt-1.5 text-xs text-red-300"
 							>
 								{fieldErrors.password}
 							</p>
 						) : (
 							!configured && (
-								<p
-									id="password-hint"
-									className="mt-2 text-xs leading-5 text-slate-400"
-								>
+								<p id="password-hint" className="mt-1.5 text-xs text-faint">
 									Use {MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_LENGTH} characters.
 								</p>
 							)
@@ -255,7 +241,7 @@ function SignIn() {
 					{error && (
 						<div
 							role="alert"
-							className="rounded-xl border border-rose-400/20 bg-rose-400/5 px-4 py-3 text-sm leading-6 text-rose-200"
+							className="rounded-md border border-red-400/25 bg-red-400/5 px-3 py-2 text-sm text-red-200"
 						>
 							{error}
 						</div>
@@ -263,20 +249,16 @@ function SignIn() {
 					<button
 						type="submit"
 						disabled={pending}
-						className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 active:bg-cyan-400 disabled:cursor-wait disabled:opacity-60"
+						className={`${buttonClass("primary")} mt-2 min-h-10 w-full disabled:cursor-wait`}
 					>
 						{pending
 							? "Signing you in…"
 							: configured
 								? "Sign in"
 								: "Create owner and sign in"}
-						{!pending && <span aria-hidden="true">→</span>}
 					</button>
 				</form>
 			</section>
-			<p className="mt-6 text-xs text-slate-500">
-				One place for your Plex and Jellyfin sync.
-			</p>
 		</main>
 	);
 }

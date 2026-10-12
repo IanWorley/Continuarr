@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+	<title>Continuarr</title>
+	<defs>
+		<path id="play" d="M6 4 20 12 6 20Z" stroke-width="3" stroke-linejoin="round" />
+		<clipPath id="left"><rect width="13" height="24" /></clipPath>
+		<clipPath id="right"><rect x="13" width="11" height="24" /></clipPath>
+	</defs>
+	<use href="#play" clip-path="url(#left)" fill="#e5a00d" stroke="#e5a00d" />
+	<use href="#play" clip-path="url(#right)" fill="#aa5cc3" stroke="#aa5cc3" />
+</svg>
