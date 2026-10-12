@@ -17,11 +17,11 @@ Open `/` or choose **Connections & sync**. Open **Users** to inspect the importe
 
 Preconditions: signed in to the fixture app. Real Plex verification separately requires authorized owner OAuth.
 
-- In the Jellyfin card, fill **Server URL** with `http://127.0.0.1:43124/jellyfin` and **API key** with `fixture-jellyfin-token`. Click **Connect and import users**. Require the saved **Fixture Jellyfin** card.
-- Open **Users**. Require Alex and Other in the Jellyfin directory. Read `/api/v1/media/jellyfin/directory`; require both users, their saved details, and a successful server timestamp. Reload and verify they remain.
+- In the Jellyfin card, fill **Server URL** with `http://127.0.0.1:43124/jellyfin` and **API key** with `fixture-jellyfin-token`. Click **Connect and import users**. Require **Jellyfin users imported. Open Users to pair people.** and a **Fixture Jellyfin** heading under **Saved servers**.
+- Open **Users**. Require **Imported Jellyfin users (2)** listing Alex and Other. Read `/api/v1/media/jellyfin/directory`; require both users, their saved details, and a successful server timestamp. Reload and verify they remain.
 - On Connections & sync, set **Import interval in minutes** to `120`, toggle **Import automatically** off, and click **Save schedule**. Require **User import schedule saved.** Reload and compare `/api/v1/media/state`'s `directoryPolling` to the visible controls. New pairings must not acquire automatic watched sync.
 - Click **Refresh all users now**. Require **User directories refreshed.**, updated server timestamps, and unchanged pairing IDs. For both-provider verification, first save a real authorized Plex server; the seeded legacy Plex profile is not a saved owner connection.
-- For Plex, use the card's sign-in action, complete owner OAuth, choose **Find Plex servers**, select an owned server and advertised address, then **Save server and import users**. Require the owner and returned Home/shared users on Users, with unavailable users visibly distinguished and no Home PIN form. Keep this check read-only.
+- For Plex, click **Sign in to Plex**, complete owner OAuth, choose **Find Plex servers**, select an owned server and advertised address, then **Save server and import users**. Require the owner and returned Home/shared users on Users, with unavailable users visibly distinguished and no Home PIN form. Keep this check read-only.
 
 ## Gotchas
 

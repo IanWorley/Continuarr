@@ -30,7 +30,7 @@ Run from the repository root. Derive acceptance checks from the user's request, 
 5. Run the printed app command in a second persistent terminal, retaining its actual `DATABASE_URL` and `CREDENTIAL_ENCRYPTION_KEY`. Append `--port 3012 --strictPort`. Use the printed `--host 127.0.0.1` when the browser can reach loopback. For a remote collaborative browser, use `--host 0.0.0.0` and the reachable network URL printed by Vite. Do not put credentials in `.env` or evidence.
 6. Record both terminal session IDs, the chosen ports, browser URL, and owned container ID in the evidence notes. Wait for Vite's ready message and run Doctor. Keep one Continuarr process per database.
 
-Use the same reachable browser origin throughout the run. Cookies are shared across ports on one hostname, so separate ports do not isolate browser sessions. Use separate browser contexts or distinct reachable hostnames when two instances must remain signed in. Do not switch to localhost unless the collaborative browser can reach it. The fixture's `127.0.0.1` server URL is resolved by the Continuarr backend, so it remains correct even when the browser uses a network address.
+Use the same reachable browser origin throughout the run. Cookies are shared across ports on one hostname, so separate ports do not isolate browser sessions. Use separate browser contexts or distinct reachable hostnames when two instances must remain signed in. Do not switch to localhost unless the collaborative browser can reach it. To test an origin, navigate to its `/sign-in` and read `document.documentElement.outerHTML.length` with `preview_evaluate`. Treat a navigate failure, or an empty document of about 40 characters, as unreachable. Then try the next Network URL Vite printed. A VPN address such as Tailscale's may be the only one that works. `environment-port` targets can fail the same way. The fixture's `127.0.0.1` server URL is resolved by the Continuarr backend, so it remains correct even when the browser uses a network address.
 
 ## Doctor
 
@@ -51,6 +51,10 @@ A configured owner on an allegedly fresh run means the wrong database or a reuse
 
 Use T3 Code's collaborative preview when available. Call `preview_status`, then `preview_open` if needed. Open a separate tab for a separate fixture run. Use `preview_snapshot` before interaction, `preview_type` with `clear:true` for labelled inputs and `preview_click` for buttons. For native selects, focus the select and use `preview_press` keys, or set its DOM value and dispatch a bubbling `change` event through `preview_evaluate`. Discover tool schemas in the current session; do not guess argument shapes. Prefer roles and accessible names from snapshots.
 
+Navigation links render twice: in the desktop sidebar and in the collapsed mobile menu. Scope link clicks to `nav[aria-label='Main navigation']`. **Sign out** sits in the sidebar footer (`aside`), outside that nav. Password inputs have no `textbox` role, so target them as `input[type=password]` scoped to their form or card.
+
+If `preview_snapshot` fails while navigation, typing, clicking, and evaluation still work, keep driving with locators. Read headings, `[role=status]` text, form values, and API results with `preview_evaluate`. Save those reads as evidence and record that screenshots were unavailable.
+
 If T3 preview tools are absent, use the available browser automation. If `preview_open` reports that automation is unavailable, document that limitation before using another browser. API-only verification does not prove the UI.
 
 Read the relevant recipe:
@@ -64,7 +68,7 @@ API checks supplement browser actions. Mutations require an `Origin` header matc
 
 ## Evidence
 
-Save action notes, semantic snapshots, screenshots, and redacted API results under `$VERIFY_EVIDENCE`. Use `preview_snapshot` with `save:true`, then copy its returned screenshot path into that directory. Capture the initiating action and the resulting state, not just a final screen. Reload after a save and compare an authenticated API read to the UI.
+Save action notes, semantic snapshots, screenshots, and redacted API results under `$VERIFY_EVIDENCE`. Use `preview_snapshot` with `save:true`, then copy its returned screenshot path into that directory. If snapshots are unavailable, use the DOM-read fallback from Drive. Capture the initiating action and the resulting state, not just a final screen. Reload after a save and compare an authenticated API read to the UI.
 
 For watched sync, save `/fixture-state` before preview, after preview, and after each run. Preview must leave watched IDs unchanged. The fixture mocks only external media-server HTTP boundaries; the browser, routes, repository, encryption, migrations, and PostgreSQL are real. Never exercise watched writes against real Plex/Jellyfin users. Real owner OAuth is a separate read-only check and requires an authorized account.
 

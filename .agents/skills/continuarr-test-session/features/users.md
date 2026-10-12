@@ -25,4 +25,4 @@ Preconditions: import Fixture Jellyfin through Connections & sync. Use fixture a
 
 ## Gotchas
 
-Fresh fixtures do not represent migrated Jellyfin profiles. Do not claim upgrade coverage from a new connection. The fixture's first preview count is valid before any sync or manual match. Pairing a profile already used by another pairing must not be allowed. Watched sync merges flags, not play counts, timestamps, ratings, or positions.
+Fresh fixtures do not represent migrated Jellyfin profiles. Do not claim upgrade coverage from a new connection. The fixture's first preview count is valid before any sync or manual match. Pairing a profile already used by another pairing must not be allowed. The UI hides paired profiles from both selects and shows **No unpaired users are available on both services.** once none remain, so test rejection with a same-origin `POST /api/v1/media/pairings` and require `409`. For an unavailable Jellyfin user, preview is rejected, while a sync run records a failed run that shows as **Needs attention**. Watched sync merges flags, not play counts, timestamps, ratings, or positions.
