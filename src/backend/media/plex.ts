@@ -215,6 +215,24 @@ export function createPlexProvider(options: {
 	const accountUrl = `${plexRoot}/api/v2`;
 	const homeUrl = `${plexRoot}/api`;
 
+	async function readItem(access: MediaAccess, itemId: string) {
+		if (!/^\d+$/.test(itemId)) throw new MediaError("Invalid Plex item ID.");
+		const headers = plexHeaders(
+			options.clientIdentifier,
+			access.token.reveal(),
+		);
+		const response = await requestJson({
+			fetch: fetcher,
+			url: endpoint(access.url, `library/metadata/${itemId}`),
+			schema: metadataItemSchema,
+			headers,
+		});
+		const [item] = response.MediaContainer.Metadata;
+		if (!item || item.ratingKey !== itemId)
+			throw new MediaError("Plex item was not found.", 404);
+		return { item, headers };
+	}
+
 	return {
 		async startLogin() {
 			const url = endpoint(accountUrl, "pins");
@@ -497,20 +515,7 @@ export function createPlexProvider(options: {
 		},
 
 		async markWatched(access: MediaAccess, itemId: string) {
-			if (!/^\d+$/.test(itemId)) throw new MediaError("Invalid Plex item ID.");
-			const headers = plexHeaders(
-				options.clientIdentifier,
-				access.token.reveal(),
-			);
-			const response = await requestJson({
-				fetch: fetcher,
-				url: endpoint(access.url, `library/metadata/${itemId}`),
-				schema: metadataItemSchema,
-				headers,
-			});
-			const [item] = response.MediaContainer.Metadata;
-			if (!item || item.ratingKey !== itemId)
-				throw new MediaError("Plex item was not found.", 404);
+			const { item, headers } = await readItem(access, itemId);
 			if ((item.viewCount ?? 0) > 0) return;
 			const url = endpoint(access.url, ":/scrobble");
 			url.searchParams.set("key", itemId);
