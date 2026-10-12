@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "single_jellyfin_server" ON "jellyfin_servers" USING btree ((true));--> statement-breakpoint
+CREATE UNIQUE INDEX "single_verified_plex_server" ON "plex_servers" USING btree ((true)) WHERE "plex_servers"."verified";

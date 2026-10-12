@@ -13,7 +13,7 @@ import {
 	type MediaItem,
 	type PlexProvider,
 } from "./model";
-import { createMediaRepository } from "./repo";
+import { createMediaRepository, JellyfinMigrationError } from "./repo";
 import { createMediaService } from "./service";
 
 const createTestDatabase = setupTestDatabase();
@@ -122,7 +122,7 @@ async function setup(now: () => number = Date.now) {
 		},
 	};
 	const service = createMediaService({ repo, secrets, plex, jellyfin, now });
-	async function pair() {
+	async function pair({ legacyJellyfin = false } = {}) {
 		const attempt = await service.startLogin();
 		const login = await service.pollLogin(attempt.id);
 		if (login.status !== "linked") throw new Error("Expected linked account");
@@ -134,11 +134,26 @@ async function setup(now: () => number = Date.now) {
 			serverId: "machine",
 			url: "http://plex:32400",
 		});
-		await service.importJellyfin({
-			kind: "new",
-			url: "http://jellyfin:8096",
-			apiKey: "j-token",
-		});
+		if (legacyJellyfin) {
+			const id = crypto.randomUUID();
+			await repo.saveJellyfinProfiles([
+				{
+					id,
+					userId: "j-child",
+					name: "Child",
+					serverId: "legacy-server",
+					presence: "present",
+					url: "http://legacy-jellyfin",
+					token: secrets.encrypt(id, new Secret("j-token")),
+				},
+			]);
+		} else {
+			await service.importJellyfin({
+				kind: "new",
+				url: "http://jellyfin:8096",
+				apiKey: "j-token",
+			});
+		}
 		const j = (await repo.jellyfinProfiles())[0];
 		if (!j) throw new Error("Missing Jellyfin profile");
 		const child = (await repo.plexProfiles()).find(
@@ -164,6 +179,147 @@ async function setup(now: () => number = Date.now) {
 }
 
 describe("media account and sync service", () => {
+	it("rejects a different Jellyfin server and preserves the original connection", async () => {
+		const { service, repo, jellyfin } = await setup();
+		await service.importJellyfin({
+			kind: "new",
+			url: "http://jellyfin:8096",
+			apiKey: "j-token",
+		});
+		jellyfin.directory = async () => ({
+			server: { id: "other-jellyfin", name: "Other Jellyfin" },
+			users: [],
+		});
+		const error = await service
+			.importJellyfin({
+				kind: "new",
+				url: "http://other-jellyfin:8096",
+				apiKey: "other-key",
+			})
+			.then(
+				() => null,
+				(error: unknown) => {
+					if (!(error instanceof MediaError)) throw error;
+					return { status: error.status, message: error.message };
+				},
+			);
+		expect({
+			error,
+			externalIds: (await repo.jellyfinServers()).map(
+				(server) => server.externalId,
+			),
+		}).toEqual({
+			error: {
+				status: 409,
+				message:
+					"A Jellyfin server is already connected. Replace its key instead.",
+			},
+			externalIds: ["j-server"],
+		});
+	});
+	it("rejects a different verified Plex server and preserves the original connection", async () => {
+		const { service, repo, plex, pair } = await setup();
+		await pair();
+		const account = (await repo.accounts())[0];
+		if (!account) throw new Error("Missing Plex account");
+		plex.servers = async () => [
+			{
+				id: "other-plex",
+				name: "Other Plex",
+				token: new Secret("other-token"),
+				connections: ["http://other-plex:32400"],
+			},
+		];
+		const selection = await service.selectPlexServer({ accountId: account.id });
+		const error = await service
+			.connectPlex({
+				selectionId: selection.id,
+				serverId: "other-plex",
+				url: "http://other-plex:32400",
+			})
+			.then(
+				() => null,
+				(error: unknown) => {
+					if (!(error instanceof MediaError)) throw error;
+					return { status: error.status, message: error.message };
+				},
+			);
+		expect({
+			error,
+			externalIds: (await repo.plexServers())
+				.filter((server) => server.verified)
+				.map((server) => server.externalId),
+		}).toEqual({
+			error: {
+				status: 409,
+				message:
+					"A Plex server is already connected. Disconnect it before connecting another.",
+			},
+			externalIds: ["machine"],
+		});
+	});
+	it("rejects conflicting legacy Jellyfin server IDs before creating a connection", async () => {
+		const { repo, secrets } = await setup();
+		await repo.saveJellyfinProfiles(
+			["legacy-a", "legacy-b"].map((id) => ({
+				id,
+				userId: id,
+				name: id,
+				serverId: id,
+				url: "http://legacy-jellyfin",
+				token: secrets.encrypt(id, new Secret("legacy-key")),
+			})),
+		);
+		const message = await repo.backfillJellyfinServers(secrets).then(
+			() => null,
+			(error: unknown) => {
+				if (!(error instanceof JellyfinMigrationError)) throw error;
+				return error.message;
+			},
+		);
+		expect({ message, servers: await repo.jellyfinServers() }).toEqual({
+			message:
+				"The MVP allows one Jellyfin connection. Conflicting external server IDs: legacy-a, legacy-b. Saved rows were not changed.",
+			servers: [],
+		});
+	});
+	it("rejects a legacy Jellyfin candidate alongside an existing connection", async () => {
+		const { service, repo, secrets } = await setup();
+		await service.importJellyfin({
+			kind: "new",
+			url: "http://jellyfin:8096",
+			apiKey: "j-token",
+		});
+		const id = "legacy-profile";
+		await repo.saveJellyfinProfiles([
+			{
+				id,
+				userId: id,
+				name: id,
+				serverId: "legacy-server",
+				url: "http://legacy-jellyfin",
+				token: secrets.encrypt(id, new Secret("legacy-key")),
+			},
+		]);
+		const message = await repo.backfillJellyfinServers(secrets).then(
+			() => null,
+			(error: unknown) => {
+				if (!(error instanceof JellyfinMigrationError)) throw error;
+				return error.message;
+			},
+		);
+		expect({
+			message,
+			externalIds: (await repo.jellyfinServers()).map(
+				(server) => server.externalId,
+			),
+		}).toEqual({
+			message:
+				"The MVP allows one Jellyfin connection. Conflicting external server IDs: j-server, legacy-server. Saved rows were not changed.",
+			externalIds: ["j-server"],
+		});
+	});
+
 	it("imports owner and granted Home user without a PIN and exposes no token", async () => {
 		const { service, repo, pair } = await setup();
 		const pairing = await pair();
@@ -600,7 +756,7 @@ describe("media account and sync service", () => {
 		it(`preserves migrated Jellyfin credentials for ${operation} until the directory succeeds`, async () => {
 			const { db, service, repo, secrets, pair, jellyfin, state } =
 				await setup();
-			const pairing = await pair();
+			const pairing = await pair({ legacyJellyfin: true });
 			await db
 				.update(schema.jellyfinProfiles)
 				.set({

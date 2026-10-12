@@ -73,20 +73,29 @@ export const plexAccounts = pgTable("plex_accounts", {
 	token: text("token").notNull(),
 });
 
-export const plexServers = pgTable("plex_servers", {
-	id: text("id").primaryKey(),
-	accountId: text("account_id")
-		.notNull()
-		.references(() => plexAccounts.id),
-	externalId: text("external_id").notNull().unique(),
-	name: text("name").notNull(),
-	url: text("url").notNull(),
-	revision: bigint("revision", { mode: "number" }).notNull().default(0),
-	verified: boolean("verified").notNull().default(false),
-	lastAttemptAt: bigint("last_attempt_at", { mode: "number" }),
-	lastSuccessAt: bigint("last_success_at", { mode: "number" }),
-	lastError: text("last_error"),
-});
+export const plexServers = pgTable(
+	"plex_servers",
+	{
+		id: text("id").primaryKey(),
+		accountId: text("account_id")
+			.notNull()
+			.references(() => plexAccounts.id),
+		externalId: text("external_id").notNull().unique(),
+		name: text("name").notNull(),
+		url: text("url").notNull(),
+		revision: bigint("revision", { mode: "number" }).notNull().default(0),
+		verified: boolean("verified").notNull().default(false),
+		lastAttemptAt: bigint("last_attempt_at", { mode: "number" }),
+		lastSuccessAt: bigint("last_success_at", { mode: "number" }),
+		lastError: text("last_error"),
+	},
+	(table) => [
+		// The MVP allows one verified Plex connection while retaining legacy candidates.
+		uniqueIndex("single_verified_plex_server")
+			.on(sql`(true)`)
+			.where(sql`${table.verified}`),
+	],
+);
 
 export const plexProfiles = pgTable(
 	"plex_profiles",
@@ -135,17 +144,24 @@ export const jellyfinProfiles = pgTable(
 	],
 );
 
-export const jellyfinServers = pgTable("jellyfin_servers", {
-	id: text("id").primaryKey(),
-	externalId: text("external_id").notNull().unique(),
-	name: text("name").notNull(),
-	url: text("url").notNull(),
-	token: text("token").notNull(),
-	revision: bigint("revision", { mode: "number" }).notNull().default(0),
-	lastAttemptAt: bigint("last_attempt_at", { mode: "number" }),
-	lastSuccessAt: bigint("last_success_at", { mode: "number" }),
-	lastError: text("last_error"),
-});
+export const jellyfinServers = pgTable(
+	"jellyfin_servers",
+	{
+		id: text("id").primaryKey(),
+		externalId: text("external_id").notNull().unique(),
+		name: text("name").notNull(),
+		url: text("url").notNull(),
+		token: text("token").notNull(),
+		revision: bigint("revision", { mode: "number" }).notNull().default(0),
+		lastAttemptAt: bigint("last_attempt_at", { mode: "number" }),
+		lastSuccessAt: bigint("last_success_at", { mode: "number" }),
+		lastError: text("last_error"),
+	},
+	() => [
+		// The MVP allows one Jellyfin connection.
+		uniqueIndex("single_jellyfin_server").on(sql`(true)`),
+	],
+);
 
 export const directoryPolling = pgTable(
 	"directory_polling",

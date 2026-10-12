@@ -19,6 +19,7 @@ import {
 const RECENT_RUN_LIMIT = 50;
 const ACTIVE_PLEX_ACCOUNT_KEY = "active_plex_account_id";
 const DIRECTORY_POLLING_ID = 1;
+const MAX_JELLYFIN_CONNECTIONS = 1;
 
 export type MediaDatabase = AppDatabase;
 export class JellyfinMigrationError extends Error {}
@@ -492,6 +493,16 @@ export function createMediaRepository(
 					if (!url || credential === undefined)
 						throw new Error("Empty Jellyfin migration group.");
 					candidates.push({ externalId, url, token: credential, ids });
+				}
+				const existing = await transaction.select().from(jellyfinServers);
+				if (existing.length + candidates.length > MAX_JELLYFIN_CONNECTIONS) {
+					const externalIds = [
+						...existing.map((server) => server.externalId),
+						...candidates.map((candidate) => candidate.externalId),
+					].sort();
+					throw new JellyfinMigrationError(
+						`The MVP allows one Jellyfin connection. Conflicting external server IDs: ${externalIds.join(", ")}. Saved rows were not changed.`,
+					);
 				}
 				for (const candidate of candidates) {
 					const id = randomUUID();

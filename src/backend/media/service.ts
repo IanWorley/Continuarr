@@ -19,6 +19,11 @@ const SELECTION_TTL_MS = 10 * 60 * 1000;
 const MAX_PENDING_ATTEMPTS = 20;
 const POLL_INTERVAL_MS = 2000;
 const MILLISECONDS_PER_SECOND = 1000;
+const CONNECTION_CONFLICT_STATUS = 409;
+const JELLYFIN_ALREADY_CONNECTED =
+	"A Jellyfin server is already connected. Replace its key instead.";
+const PLEX_ALREADY_CONNECTED =
+	"A Plex server is already connected. Disconnect it before connecting another.";
 type PendingLogin = {
 	pin: PlexPin;
 	expiresAt: number;
@@ -230,14 +235,10 @@ export function createMediaService({
 			return withConnectionWrite(async () => {
 				ensureIdle();
 				if (input.kind === "new") {
-					if (
-						(await repo.jellyfinServers()).some(
-							(server) => server.externalId === directory.server.id,
-						)
-					)
+					if ((await repo.jellyfinServers()).length)
 						throw new MediaError(
-							"This Jellyfin server is already connected. Replace its key instead.",
-							409,
+							JELLYFIN_ALREADY_CONNECTED,
+							CONNECTION_CONFLICT_STATUS,
 						);
 					const id = randomUUID();
 					await repo.addJellyfinServer(
@@ -731,6 +732,16 @@ export function createMediaService({
 			});
 			const id = await withConnectionWrite(async () => {
 				ensureIdle();
+				if (
+					(await repo.plexServers()).some(
+						(connected) =>
+							connected.verified && connected.externalId !== server.id,
+					)
+				)
+					throw new MediaError(
+						PLEX_ALREADY_CONNECTED,
+						CONNECTION_CONFLICT_STATUS,
+					);
 				return repo.connectPlexServer({
 					accountId: stored.id,
 					expectedToken: stored.token,
