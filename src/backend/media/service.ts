@@ -51,6 +51,7 @@ export function createMediaService({
 }) {
 	const logins = new Map<string, PendingLogin>();
 	const selections = new Map<string, Selection>();
+	let discoveryEpoch = Symbol();
 	const refreshes = new Map<
 		string,
 		Promise<{
@@ -216,6 +217,32 @@ export function createMediaService({
 					};
 				}),
 			};
+		},
+		async disconnectPlex(id: string) {
+			ensureIdle();
+			return withConnectionWrite(async () => {
+				ensureIdle();
+				const removed = await repo.disconnectPlexServer(id);
+				if (removed) {
+					discoveryEpoch = Symbol();
+					for (const [selectionId, selection] of selections)
+						if (
+							selection.servers.some(
+								(server) => server.id === removed.externalId,
+							)
+						)
+							selections.delete(selectionId);
+				}
+				return { id };
+			});
+		},
+		async disconnectJellyfin(id: string) {
+			ensureIdle();
+			return withConnectionWrite(async () => {
+				ensureIdle();
+				await repo.disconnectJellyfinServer(id);
+				return { id };
+			});
 		},
 		async importJellyfin(
 			input:
@@ -672,6 +699,7 @@ export function createMediaService({
 			return { status: "linked" as const, accountId };
 		},
 		async selectPlexServer(input: { accountId: string }) {
+			const epoch = discoveryEpoch;
 			prune();
 			if (selections.size >= MAX_PENDING_ATTEMPTS)
 				throw new MediaError(
@@ -682,6 +710,11 @@ export function createMediaService({
 			const servers = await plex.servers(
 				secrets.decrypt(stored.id, stored.token),
 			);
+			if (epoch !== discoveryEpoch)
+				throw new MediaError(
+					"Plex connections changed. Find your servers again.",
+					409,
+				);
 			const id = randomUUID();
 			selections.set(id, {
 				accountId: stored.id,
@@ -737,6 +770,14 @@ export function createMediaService({
 			});
 			const id = await withConnectionWrite(async () => {
 				ensureIdle();
+				if (
+					selections.get(input.selectionId) !== selection ||
+					selection.expiresAt <= now()
+				)
+					throw new MediaError(
+						"Server selection expired. Select the Plex server again.",
+						409,
+					);
 				return repo.connectPlexServer({
 					accountId: stored.id,
 					expectedToken: stored.token,

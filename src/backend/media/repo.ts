@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNotNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import type {
 	JellyfinDirectory,
 	PlexDirectoryUser,
@@ -226,6 +226,42 @@ export function createMediaRepository(
 					.where(eq(plexServers.externalId, externalId))
 					.limit(1)
 			)[0],
+		disconnectPlexServer: async (id: string) =>
+			database().transaction(async (transaction) => {
+				const [server] = await transaction
+					.select({ externalId: plexServers.externalId })
+					.from(plexServers)
+					.where(eq(plexServers.id, id))
+					.for("update");
+				if (!server) return;
+				const affected = or(
+					eq(plexProfiles.connectionId, id),
+					eq(plexProfiles.serverId, server.externalId),
+				);
+				await transaction
+					.update(syncPairings)
+					.set({ automatic: false })
+					.where(
+						inArray(
+							syncPairings.plexProfileId,
+							transaction
+								.select({ id: plexProfiles.id })
+								.from(plexProfiles)
+								.where(affected),
+						),
+					);
+				await transaction
+					.update(plexProfiles)
+					.set({
+						connectionId: null,
+						token: null,
+						presence: "missing",
+						accessStatus: "unavailable",
+					})
+					.where(affected);
+				await transaction.delete(plexServers).where(eq(plexServers.id, id));
+				return server;
+			}),
 		backfillPlexServers: async () =>
 			database().transaction(async (transaction) => {
 				const profiles = await transaction.select().from(plexProfiles);
@@ -233,6 +269,8 @@ export function createMediaRepository(
 				for (const profile of profiles) {
 					if (
 						profile.connectionId ||
+						profile.presence !== "unverified" ||
+						!profile.token ||
 						accounts.find((account) => account.id === profile.accountId)
 							?.userId !== profile.userId
 					)
@@ -445,6 +483,38 @@ export function createMediaRepository(
 			await database().select().from(jellyfinProfiles),
 		jellyfinServers: async () =>
 			await database().select().from(jellyfinServers),
+		disconnectJellyfinServer: async (id: string) =>
+			database().transaction(async (transaction) => {
+				const [server] = await transaction
+					.select({ externalId: jellyfinServers.externalId })
+					.from(jellyfinServers)
+					.where(eq(jellyfinServers.id, id))
+					.for("update");
+				if (!server) return;
+				const affected = or(
+					eq(jellyfinProfiles.connectionId, id),
+					eq(jellyfinProfiles.serverId, server.externalId),
+				);
+				await transaction
+					.update(syncPairings)
+					.set({ automatic: false })
+					.where(
+						inArray(
+							syncPairings.jellyfinProfileId,
+							transaction
+								.select({ id: jellyfinProfiles.id })
+								.from(jellyfinProfiles)
+								.where(affected),
+						),
+					);
+				await transaction
+					.update(jellyfinProfiles)
+					.set({ connectionId: null, token: null, presence: "missing" })
+					.where(affected);
+				await transaction
+					.delete(jellyfinServers)
+					.where(eq(jellyfinServers.id, id));
+			}),
 		backfillJellyfinServers: async (
 			secrets: ReturnType<typeof createSecretStorage>,
 		) =>

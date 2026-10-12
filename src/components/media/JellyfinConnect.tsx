@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { MediaService } from "~/backend/media/service";
 import {
 	buttonClass,
@@ -26,6 +26,13 @@ export function JellyfinConnect({
 	const [apiKey, setApiKey] = useState("");
 	const [message, setMessage] = useState("");
 	const selected = servers.find((server) => server.id === selectedId);
+	useEffect(() => {
+		if (selectedId && !servers.some((server) => server.id === selectedId)) {
+			setSelectedId("");
+			setUrl("");
+			setApiKey("");
+		}
+	}, [selectedId, servers]);
 	return (
 		<section
 			aria-labelledby="jellyfin-heading"
@@ -133,6 +140,16 @@ export function JellyfinConnect({
 								key={server.id}
 								server={server}
 								refresh={refresh}
+								onDisconnect={() => {
+									if (selectedId === server.id) {
+										setSelectedId("");
+										setUrl("");
+										setApiKey("");
+									}
+									setMessage(
+										`${server.name} disconnected. Mappings and history are preserved. After reconnecting, enable automatic sync again to resume.`,
+									);
+								}}
 							/>
 						))}
 					</div>
@@ -145,11 +162,14 @@ export function JellyfinConnect({
 function JellyfinServerCard({
 	server,
 	refresh,
+	onDisconnect,
 }: {
 	server: Server;
 	refresh: () => Promise<void>;
+	onDisconnect: () => void;
 }) {
 	const action = useAction();
+	const [confirming, setConfirming] = useState(false);
 	return (
 		<article className="border-b border-slate-800 pb-4 last:border-0 last:pb-0">
 			<h5 className="text-sm font-medium text-slate-200">{server.name}</h5>
@@ -186,6 +206,61 @@ function JellyfinServerCard({
 					Refresh now
 				</button>
 			</div>
+
+			{confirming ? (
+				<fieldset
+					aria-label={`Disconnect ${server.name}`}
+					className="mt-3 space-y-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4"
+				>
+					<p className="text-sm font-medium text-slate-200">
+						Disconnect {server.name}?
+					</p>
+					<p className="text-sm leading-6 text-slate-300">
+						This removes this server's saved connection and local API key.
+						Users, mappings, manual matches, and sync history stay. Automatic
+						sync for its pairings pauses. After reconnecting, enable automatic
+						sync again to resume.
+					</p>
+					<div className="flex flex-wrap gap-3">
+						<button
+							type="button"
+							className={secondaryClass}
+							disabled={action.busy}
+							onClick={() => setConfirming(false)}
+						>
+							Cancel
+						</button>
+						<button
+							type="button"
+							className={buttonClass}
+							disabled={action.busy}
+							onClick={() =>
+								void action.perform(async () => {
+									responseData(
+										await getApi()
+											.v1.media.jellyfin({ id: server.id })
+											.delete(),
+									);
+									setConfirming(false);
+									onDisconnect();
+									await refresh();
+								})
+							}
+						>
+							{action.busy ? "Disconnecting…" : "Confirm disconnect"}
+						</button>
+					</div>
+				</fieldset>
+			) : (
+				<button
+					type="button"
+					className={`${secondaryClass} mt-3`}
+					disabled={action.busy}
+					onClick={() => setConfirming(true)}
+				>
+					Disconnect
+				</button>
+			)}
 			<ErrorMessage message={action.error} />
 		</article>
 	);

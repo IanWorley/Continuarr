@@ -38,6 +38,7 @@ export function PlexConnect({
 	const [serverId, setServerId] = useState("");
 	const [serverUrl, setServerUrl] = useState("");
 	const [message, setMessage] = useState("");
+	const [disconnectId, setDisconnectId] = useState<string | null>(null);
 	const selectedServer = selection?.servers.find(
 		(server) => server.id === serverId,
 	);
@@ -299,6 +300,72 @@ export function PlexConnect({
 											: "Waiting for first import"}
 									</p>
 									<ErrorMessage message={server.lastError ?? ""} />
+									{disconnectId === server.id ? (
+										<fieldset
+											aria-label={`Disconnect ${server.name}`}
+											className="mt-3 space-y-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4"
+										>
+											<p className="font-medium text-slate-200">
+												Disconnect {server.name}?
+											</p>
+											<p className="leading-6 text-slate-300">
+												This removes this server's saved connection and local
+												credentials. Users, mappings, manual matches, and sync
+												history stay. Automatic sync for its pairings pauses.
+												After reconnecting, enable automatic sync again to
+												resume. Your Plex owner account stays linked for other
+												servers.
+											</p>
+											<div className="flex flex-wrap gap-3">
+												<button
+													type="button"
+													className={secondaryClass}
+													disabled={action.busy}
+													onClick={() => setDisconnectId(null)}
+												>
+													Cancel
+												</button>
+												<button
+													type="button"
+													className={buttonClass}
+													disabled={action.busy}
+													onClick={() =>
+														void action.perform(async () => {
+															responseData(
+																await getApi()
+																	.v1.media.plex({ id: server.id })
+																	.delete(),
+															);
+															setDisconnectId(null);
+															setSelection(null);
+															setServerId("");
+															setServerUrl("");
+															setMessage(
+																`${server.name} disconnected. Mappings and history are preserved. After reconnecting, enable automatic sync again to resume.`,
+															);
+															await refresh();
+														})
+													}
+												>
+													{action.busy
+														? "Disconnecting…"
+														: "Confirm disconnect"}
+												</button>
+											</div>
+										</fieldset>
+									) : (
+										<button
+											type="button"
+											className={`${secondaryClass} mt-3`}
+											disabled={action.busy}
+											onClick={() => {
+												setMessage("");
+												setDisconnectId(server.id);
+											}}
+										>
+											Disconnect
+										</button>
+									)}
 								</li>
 							))}
 						</ul>

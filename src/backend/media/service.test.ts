@@ -1311,3 +1311,604 @@ it("keeps identical provider item IDs independent across people", async () => {
 	expect(await repo.manualMatches(firstPairing.id)).toEqual([first]);
 	expect(await repo.manualMatches(secondPairing.id)).toEqual([]);
 });
+
+describe("safe server disconnect", () => {
+	for (const provider of ["plex", "jellyfin"] as const) {
+		it(`disconnects ${provider} credentials atomically and reconnects retained identities without resuming automatic sync`, async () => {
+			const { db, service, repo, secrets, plex, jellyfin, pair, state } =
+				await setup();
+			const pairing = await pair();
+			await service.saveManualMatch({
+				pairingId: pairing.id,
+				plexItemId: "p1",
+				jellyfinItemId: "j1",
+			});
+			await service.run(pairing.id);
+			await service.automatic(pairing.id, true);
+			const runs = await repo.runs();
+			const matches = await repo.manualMatches(pairing.id);
+			const accounts = await repo.accounts();
+			const server =
+				provider === "plex"
+					? (await repo.plexServers())[0]
+					: (await repo.jellyfinServers())[0];
+			if (!server) throw new Error("Missing saved server");
+			const legacyId = crypto.randomUUID();
+			const linkedId = crypto.randomUUID();
+			if (provider === "plex") {
+				const account = accounts[0];
+				if (!account) throw new Error("Missing Plex account");
+				for (const [id, serverId, connectionId] of [
+					[legacyId, server.externalId, null],
+					[linkedId, "old-machine-id", server.id],
+				] as const)
+					await repo.savePlexProfile({
+						id,
+						accountId: account.id,
+						userId: id,
+						name: "Legacy",
+						serverId,
+						serverName: server.name,
+						url: server.url,
+						connectionId,
+						token: secrets.encrypt(id, new Secret("legacy-grant")),
+					});
+			} else {
+				for (const [id, serverId, connectionId] of [
+					[legacyId, server.externalId, null],
+					[linkedId, "old-machine-id", server.id],
+				] as const)
+					await db.insert(schema.jellyfinProfiles).values({
+						id,
+						userId: id,
+						name: "Legacy",
+						serverId,
+						url: server.url,
+						connectionId,
+						token: secrets.encrypt(id, new Secret("legacy-key")),
+					});
+			}
+			const disconnect =
+				provider === "plex"
+					? service.disconnectPlex
+					: service.disconnectJellyfin;
+			expect(await disconnect(server.id)).toEqual({ id: server.id });
+			expect(await disconnect(server.id)).toEqual({ id: server.id });
+			const profiles =
+				provider === "plex"
+					? await repo.plexProfiles()
+					: await repo.jellyfinProfiles();
+			for (const id of [
+				provider === "plex" ? pairing.plexProfileId : pairing.jellyfinProfileId,
+				legacyId,
+				linkedId,
+			]) {
+				const profile = profiles.find((profile) => profile.id === id);
+				expect(profile).toMatchObject({
+					id,
+					connectionId: null,
+					token: null,
+					presence: "missing",
+				});
+				if (provider === "plex")
+					expect(profile).toMatchObject({ accessStatus: "unavailable" });
+			}
+			expect(await repo.pairing(pairing.id)).toMatchObject({
+				id: pairing.id,
+				plexProfileId: pairing.plexProfileId,
+				jellyfinProfileId: pairing.jellyfinProfileId,
+				automatic: false,
+			});
+			expect(await repo.runs()).toEqual(runs);
+			expect(await repo.manualMatches(pairing.id)).toEqual(matches);
+			expect(await repo.accounts()).toEqual(accounts);
+			await repo.backfillPlexServers();
+			await repo.backfillJellyfinServers(secrets);
+			const restarted = createMediaService({ repo, secrets, plex, jellyfin });
+			expect(
+				provider === "plex"
+					? (await restarted.state()).plexServers
+					: (await restarted.jellyfinDirectory()).servers,
+			).toEqual([]);
+			await expect(restarted.preview(pairing.id)).rejects.toThrow(
+				provider === "plex" ? "no server grant" : "missing, disabled",
+			);
+			const writes = [...state.writes];
+			await restarted.tick();
+			expect(state.writes).toEqual(writes);
+			expect(await repo.runs()).toEqual(runs);
+			expect(await restarted.run(pairing.id)).toMatchObject({
+				status: "failed",
+				applied: 0,
+			});
+			expect(state.writes).toEqual(writes);
+			if (provider === "plex") {
+				const selection = await restarted.selectPlexServer({
+					accountId: accounts[0]?.id ?? "",
+				});
+				await restarted.connectPlex({
+					selectionId: selection.id,
+					serverId: server.externalId,
+					url: server.url,
+				});
+				expect(await repo.plexProfile(pairing.plexProfileId)).toMatchObject({
+					id: pairing.plexProfileId,
+					presence: "present",
+					accessStatus: "available",
+				});
+				expect(
+					(await repo.plexProfile(pairing.plexProfileId))?.token?.startsWith(
+						"v1:",
+					),
+				).toBe(true);
+			} else {
+				await restarted.importJellyfin({
+					kind: "new",
+					url: server.url,
+					apiKey: "j-token",
+				});
+				expect(
+					await repo.jellyfinProfile(pairing.jellyfinProfileId),
+				).toMatchObject({ id: pairing.jellyfinProfileId, presence: "present" });
+			}
+			expect(await repo.pairing(pairing.id)).toMatchObject({
+				id: pairing.id,
+				automatic: false,
+			});
+			expect(await repo.manualMatches(pairing.id)).toEqual(matches);
+			expect(
+				(provider === "plex"
+					? await repo.plexProfiles()
+					: await repo.jellyfinProfiles()
+				).find((profile) => profile.id === legacyId),
+			).toMatchObject({ token: null, presence: "missing" });
+			expect(await restarted.preview(pairing.id)).toMatchObject({
+				matched: 1,
+				writes: [],
+			});
+			expect(JSON.stringify(await restarted.state())).not.toMatch(
+				/owner-token|child-token|j-token|legacy-grant|legacy-key|v1:/,
+			);
+		});
+
+		it(`leaves another ${provider} server's credentials and automatic pairing unchanged`, async () => {
+			const { db, service, repo, plex, jellyfin, pair } = await setup();
+			await pair();
+			const first =
+				provider === "plex"
+					? (await repo.plexServers())[0]
+					: (await repo.jellyfinServers())[0];
+			if (!first) throw new Error("Missing first server");
+			if (provider === "plex") {
+				plex.servers = async () => [
+					{
+						id: "other-machine",
+						name: "Other Plex",
+						token: new Secret("other-token"),
+						connections: ["http://other-plex:32400"],
+					},
+				];
+				const selection = await service.selectPlexServer({
+					accountId: (await repo.accounts())[0]?.id ?? "",
+				});
+				await service.connectPlex({
+					selectionId: selection.id,
+					serverId: "other-machine",
+					url: "http://other-plex:32400",
+				});
+			} else {
+				const directory = jellyfin.directory;
+				jellyfin.directory = async (access) => ({
+					...(await directory(access)),
+					server: { id: "other-jellyfin", name: "Other Jellyfin" },
+				});
+				await service.importJellyfin({
+					kind: "new",
+					url: "http://other-jellyfin:8096",
+					apiKey: "other-key",
+				});
+			}
+			const other = (
+				provider === "plex"
+					? await repo.plexServers()
+					: await repo.jellyfinServers()
+			).find((server) => server.id !== first.id);
+			if (!other) throw new Error("Missing other server");
+			const otherProfiles = (
+				provider === "plex"
+					? await repo.plexProfiles()
+					: await repo.jellyfinProfiles()
+			).filter((profile) => profile.connectionId === other.id);
+			const otherProfile = otherProfiles[0];
+			if (!otherProfile) throw new Error("Missing other profile");
+			const oppositeId = crypto.randomUUID();
+			if (provider === "plex")
+				await db.insert(schema.jellyfinProfiles).values({
+					id: oppositeId,
+					userId: oppositeId,
+					serverId: "unrelated",
+					name: "Unrelated",
+				});
+			else
+				await repo.savePlexProfile({
+					id: oppositeId,
+					accountId: (await repo.accounts())[0]?.id ?? "",
+					userId: oppositeId,
+					serverId: "unrelated",
+					serverName: "Unrelated",
+					name: "Unrelated",
+					url: "http://unrelated:32400",
+				});
+			const otherPairingId = crypto.randomUUID();
+			await db.insert(schema.syncPairings).values({
+				id: otherPairingId,
+				plexProfileId: provider === "plex" ? otherProfile.id : oppositeId,
+				jellyfinProfileId:
+					provider === "jellyfin" ? otherProfile.id : oppositeId,
+				automatic: true,
+			});
+			const accounts = await repo.accounts();
+			await (provider === "plex"
+				? service.disconnectPlex
+				: service.disconnectJellyfin)(first.id);
+			expect(
+				provider === "plex"
+					? await repo.plexServer(other.id)
+					: await repo.jellyfinServer(other.id),
+			).toEqual(other);
+			expect(
+				(provider === "plex"
+					? await repo.plexProfiles()
+					: await repo.jellyfinProfiles()
+				).filter((profile) => profile.connectionId === other.id),
+			).toEqual(otherProfiles);
+			expect(await repo.pairing(otherPairingId)).toMatchObject({
+				id: otherPairingId,
+				automatic: true,
+			});
+			expect(await repo.accounts()).toEqual(accounts);
+		});
+
+		for (const outcome of ["success", "failure"] as const) {
+			it(`supersedes an in-flight ${provider} refresh ${outcome} after disconnect`, async () => {
+				const { service, repo, plex, jellyfin, pair } = await setup();
+				const pairing = await pair();
+				const server =
+					provider === "plex"
+						? (await repo.plexServers())[0]
+						: (await repo.jellyfinServers())[0];
+				if (!server) throw new Error("Missing server");
+				const gate = Promise.withResolvers<void>();
+				const entered = Promise.withResolvers<void>();
+				if (provider === "plex") {
+					const directory = plex.directory;
+					plex.directory = async (input) => {
+						entered.resolve();
+						await gate.promise;
+						if (outcome === "failure")
+							throw new MediaError("Directory failed.", 502);
+						return directory(input);
+					};
+				} else {
+					const directory = jellyfin.directory;
+					jellyfin.directory = async (input) => {
+						entered.resolve();
+						await gate.promise;
+						if (outcome === "failure")
+							throw new MediaError("Directory failed.", 502);
+						return directory(input);
+					};
+				}
+				const pending =
+					provider === "plex"
+						? service.refreshPlexUsers(server.id)
+						: service.refreshJellyfinUsers(server.id);
+				await entered.promise;
+				try {
+					await (provider === "plex"
+						? service.disconnectPlex
+						: service.disconnectJellyfin)(server.id);
+				} finally {
+					gate.resolve();
+				}
+				expect(await pending).toMatchObject({ kind: "superseded" });
+				expect(
+					provider === "plex"
+						? await repo.plexProfile(pairing.plexProfileId)
+						: await repo.jellyfinProfile(pairing.jellyfinProfileId),
+				).toMatchObject({
+					connectionId: null,
+					token: null,
+					presence: "missing",
+				});
+				expect(
+					provider === "plex"
+						? await repo.plexServers()
+						: await repo.jellyfinServers(),
+				).toEqual([]);
+			});
+		}
+
+		it(`rejects ${provider} disconnect with 409 throughout an active watched run`, async () => {
+			const { service, repo, plex, pair } = await setup();
+			const pairing = await pair();
+			await service.automatic(pairing.id, true);
+			const server =
+				provider === "plex"
+					? (await repo.plexServers())[0]
+					: (await repo.jellyfinServers())[0];
+			if (!server) throw new Error("Missing server");
+			const profiles =
+				provider === "plex"
+					? await repo.plexProfiles()
+					: await repo.jellyfinProfiles();
+			const gate = Promise.withResolvers<void>();
+			const entered = Promise.withResolvers<void>();
+			const read = plex.items;
+			plex.items = async (access) => {
+				entered.resolve();
+				await gate.promise;
+				return read(access);
+			};
+			const pending = service.run(pairing.id);
+			await entered.promise;
+			try {
+				await expect(
+					(provider === "plex"
+						? service.disconnectPlex
+						: service.disconnectJellyfin)(server.id),
+				).rejects.toMatchObject({ status: 409 });
+				expect(
+					provider === "plex"
+						? await repo.plexServer(server.id)
+						: await repo.jellyfinServer(server.id),
+				).toEqual(server);
+				expect(
+					provider === "plex"
+						? await repo.plexProfiles()
+						: await repo.jellyfinProfiles(),
+				).toEqual(profiles);
+				expect(await repo.pairing(pairing.id)).toMatchObject({
+					automatic: true,
+				});
+			} finally {
+				gate.resolve();
+			}
+			expect(await pending).toMatchObject({ status: "completed", applied: 1 });
+			expect(
+				await (provider === "plex"
+					? service.disconnectPlex
+					: service.disconnectJellyfin)(server.id),
+			).toEqual({ id: server.id });
+		});
+	}
+
+	it("expires ready selections and rejects a Plex connect already fetching users", async () => {
+		const { service, repo, plex, pair } = await setup();
+		await pair();
+		const server = (await repo.plexServers())[0];
+		if (!server) throw new Error("Missing server");
+		const ready = await service.selectPlexServer({
+			accountId: server.accountId,
+		});
+		const gate = Promise.withResolvers<void>();
+		const entered = Promise.withResolvers<void>();
+		const directory = plex.directory;
+		plex.directory = async (input) => {
+			entered.resolve();
+			await gate.promise;
+			return directory(input);
+		};
+		const pending = service.connectPlex({
+			selectionId: ready.id,
+			serverId: "machine",
+			url: server.url,
+		});
+		await entered.promise;
+		try {
+			await service.disconnectPlex(server.id);
+		} finally {
+			gate.resolve();
+		}
+		await expect(pending).rejects.toThrow("Server selection expired");
+		await expect(
+			service.connectPlex({
+				selectionId: ready.id,
+				serverId: "machine",
+				url: server.url,
+			}),
+		).rejects.toThrow("Server selection expired");
+		expect(
+			(await repo.plexProfiles()).map((profile) => [
+				profile.connectionId,
+				profile.token,
+				profile.presence,
+			]),
+		).toEqual([
+			[null, null, "missing"],
+			[null, null, "missing"],
+		]);
+		expect(await repo.plexServers()).toEqual([]);
+	});
+
+	it("rejects discovery spanning a Plex disconnect and permits newly started discovery", async () => {
+		const { service, repo, plex, pair } = await setup();
+		await pair();
+		const server = (await repo.plexServers())[0];
+		if (!server) throw new Error("Missing server");
+		const gate = Promise.withResolvers<void>();
+		const entered = Promise.withResolvers<void>();
+		const servers = plex.servers;
+		plex.servers = async (token) => {
+			entered.resolve();
+			await gate.promise;
+			return servers(token);
+		};
+		const pending = service.selectPlexServer({ accountId: server.accountId });
+		await entered.promise;
+		try {
+			await service.disconnectPlex(server.id);
+		} finally {
+			gate.resolve();
+		}
+		await expect(pending).rejects.toThrow("Find your servers again");
+		const selection = await service.selectPlexServer({
+			accountId: server.accountId,
+		});
+		await service.connectPlex({
+			selectionId: selection.id,
+			serverId: "machine",
+			url: server.url,
+		});
+		expect((await service.state()).plexServers).toMatchObject([
+			{ externalId: "machine", name: "Plex" },
+		]);
+	});
+
+	it("rejects a stale Jellyfin replacement after its server is disconnected", async () => {
+		const { service, repo, jellyfin, pair } = await setup();
+		const pairing = await pair();
+		const server = (await repo.jellyfinServers())[0];
+		if (!server) throw new Error("Missing server");
+		const gate = Promise.withResolvers<void>();
+		const entered = Promise.withResolvers<void>();
+		const directory = jellyfin.directory;
+		jellyfin.directory = async (input) => {
+			entered.resolve();
+			await gate.promise;
+			return directory(input);
+		};
+		const pending = service.importJellyfin({
+			kind: "replace",
+			id: server.id,
+			revision: server.revision,
+			url: server.url,
+			apiKey: "new-key",
+		});
+		await entered.promise;
+		try {
+			await service.disconnectJellyfin(server.id);
+		} finally {
+			gate.resolve();
+		}
+		await expect(pending).rejects.toThrow("server not found");
+		expect(await repo.jellyfinProfile(pairing.jellyfinProfileId)).toMatchObject(
+			{ connectionId: null, token: null, presence: "missing" },
+		);
+		expect(await repo.jellyfinServers()).toEqual([]);
+	});
+});
+
+it("protects both disconnect routes, validates IDs, and returns credential-free idempotent responses", async () => {
+	const { db, service, repo, pair } = await setup();
+	await pair();
+	const api = createApi(
+		createAdministratorService(() => db),
+		service,
+	);
+	const origin = "http://localhost";
+	const credentials = { username: "owner", password: "long-test-password" };
+	await api.handle(
+		new Request(`${origin}/api/v1/admin/bootstrap`, {
+			method: "POST",
+			headers: { origin, "content-type": "application/json" },
+			body: JSON.stringify(credentials),
+		}),
+	);
+	const login = await api.handle(
+		new Request(`${origin}/api/v1/admin/sign-in`, {
+			method: "POST",
+			headers: { origin, "content-type": "application/json" },
+			body: JSON.stringify(credentials),
+		}),
+	);
+	expect(login.status).toBe(200);
+	const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+	for (const provider of ["plex", "jellyfin"] as const) {
+		const server =
+			provider === "plex"
+				? (await repo.plexServers())[0]
+				: (await repo.jellyfinServers())[0];
+		if (!server) throw new Error("Missing saved server");
+		const url = `${origin}/api/v1/media/${provider}/${server.id}`;
+		for (const [headers, expectedStatus] of [
+			[{ origin }, 401],
+			[{ cookie }, 403],
+			[{ cookie, origin: "https://foreign.example" }, 403],
+		] as const) {
+			const response = await api.handle(
+				new Request(url, { method: "DELETE", headers }),
+			);
+			expect(response.status).toBe(expectedStatus);
+			expect(await response.json()).toEqual({
+				error:
+					expectedStatus === 401
+						? "Sign in to Continuarr."
+						: "A same-origin request is required.",
+			});
+			expect(
+				provider === "plex"
+					? await repo.plexServer(server.id)
+					: await repo.jellyfinServer(server.id),
+			).toEqual(server);
+		}
+		const invalid = await api.handle(
+			new Request(`${origin}/api/v1/media/${provider}/${"x".repeat(201)}`, {
+				method: "DELETE",
+				headers: { cookie, origin },
+			}),
+		);
+		expect(invalid.status).toBe(400);
+		expect(await invalid.json()).toEqual({
+			error: "Check the submitted fields.",
+		});
+		for (const _attempt of ["first", "repeated"]) {
+			const response = await api.handle(
+				new Request(url, { method: "DELETE", headers: { cookie, origin } }),
+			);
+			expect(response.status).toBe(200);
+			const body = await response.text();
+			expect(JSON.parse(body)).toEqual({ id: server.id });
+			expect(body).not.toMatch(/owner-token|child-token|j-token|v1:/);
+		}
+	}
+});
+
+it("does not expose internal disconnect failure details through HTTP", async () => {
+	const { db, service, repo, pair } = await setup();
+	await pair();
+	const administrator = createAdministratorService(() => db);
+	await administrator.bootstrap("owner", "long-test-password");
+	const api = createApi(administrator, service);
+	const origin = "http://localhost";
+	const login = await api.handle(
+		new Request(`${origin}/api/v1/admin/sign-in`, {
+			method: "POST",
+			headers: { origin, "content-type": "application/json" },
+			body: JSON.stringify({
+				username: "owner",
+				password: "long-test-password",
+			}),
+		}),
+	);
+	const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+	const server = (await repo.plexServers())[0];
+	if (!server) throw new Error("Missing saved server");
+	repo.disconnectPlexServer = async () => {
+		throw new Error(
+			"owner-token child-token-server j-token v1:encrypted-credential",
+		);
+	};
+	const response = await api.handle(
+		new Request(`${origin}/api/v1/media/plex/${server.id}`, {
+			method: "DELETE",
+			headers: { cookie, origin },
+		}),
+	);
+	expect(response.status).toBe(502);
+	expect(await response.json()).toEqual({
+		error:
+			"Unable to contact the media service. Check the connection and try again.",
+	});
+	expect(await repo.plexServer(server.id)).toEqual(server);
+});
