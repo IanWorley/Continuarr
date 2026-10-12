@@ -2,10 +2,15 @@ import type { z } from "zod";
 import { MediaError, serverUrl } from "~/backend/media/model";
 
 export const REQUEST_TIMEOUT_MS = 15_000;
+const TIMEOUT_MESSAGE = "The media server did not respond in time.";
 const FIRST_REDIRECT_STATUS = 300;
 const FIRST_CLIENT_ERROR_STATUS = 400;
 const UNAUTHORIZED_STATUS = 401;
 const FORBIDDEN_STATUS = 403;
+
+function isTimeout(error: unknown): error is DOMException {
+	return error instanceof DOMException && error.name === "TimeoutError";
+}
 
 export function endpoint(base: string, path: string): URL {
 	const normalized = serverUrl(base);
@@ -24,7 +29,8 @@ export async function requestJson<T>(input: {
 	let body: unknown;
 	try {
 		body = await response.json();
-	} catch {
+	} catch (error) {
+		if (isTimeout(error)) throw new MediaError(TIMEOUT_MESSAGE, 502);
 		throw new MediaError("The media server returned invalid JSON.", 502);
 	}
 	const parsed = input.schema.safeParse(body);
@@ -75,8 +81,7 @@ async function request(input: {
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		});
 	} catch (error) {
-		if (error instanceof DOMException && error.name === "TimeoutError")
-			throw new MediaError("The media server did not respond in time.", 502);
+		if (isTimeout(error)) throw new MediaError(TIMEOUT_MESSAGE, 502);
 		throw new MediaError("The media server could not be reached.", 502);
 	}
 	if (!response.ok) {
