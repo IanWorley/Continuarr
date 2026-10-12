@@ -108,7 +108,6 @@ function Home() {
 			</section>
 			{state.data && (
 				<DirectoryPolling
-					key={`${state.data.directoryPolling.enabled}:${state.data.directoryPolling.intervalMinutes}`}
 					settings={state.data.directoryPolling}
 					refresh={refresh}
 				/>
