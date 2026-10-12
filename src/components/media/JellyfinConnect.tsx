@@ -1,13 +1,21 @@
 import { useState } from "react";
 import type { MediaService } from "~/backend/media/service";
 import {
-	buttonClass,
 	ErrorMessage,
-	fieldClass,
+	importStatus,
 	responseData,
-	secondaryClass,
+	ServerRow,
 	useAction,
 } from "~/components/media/shared";
+import {
+	Button,
+	EmptyState,
+	Field,
+	inputClass,
+	Notice,
+	Panel,
+	ProviderLabel,
+} from "~/components/ui";
 import { getApi } from "~/routes/api.$";
 
 type Directory = Awaited<ReturnType<MediaService["jellyfinDirectory"]>>;
@@ -26,23 +34,38 @@ export function JellyfinConnect({
 	const [apiKey, setApiKey] = useState("");
 	const [message, setMessage] = useState("");
 	const selected = servers.find((server) => server.id === selectedId);
+	function select(server: Server | undefined) {
+		setSelectedId(server?.id ?? "");
+		setUrl(server?.url ?? "");
+		setApiKey("");
+		setMessage("");
+		action.clearError();
+	}
 	return (
-		<section
-			aria-labelledby="jellyfin-heading"
-			className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6"
+		<Panel
+			id="jellyfin-heading"
+			title={<ProviderLabel provider="jellyfin" />}
+			description="Connect with a key from Jellyfin Dashboard → API Keys. The key is stored encrypted."
 		>
-			<div className="mb-5 flex items-center gap-3">
-				<span className="size-2 rounded-full bg-violet-400" />
-				<h3 id="jellyfin-heading" className="text-lg font-semibold">
-					Jellyfin
-				</h3>
-			</div>
-			<p className="text-sm leading-6 text-slate-400">
-				Create a server API key in Jellyfin Dashboard → API Keys. One connection
-				imports every user and stores the key encrypted.
-			</p>
+			{servers.length > 0 ? (
+				<ul
+					aria-label="Saved Jellyfin servers"
+					className="divide-y divide-line"
+				>
+					{servers.map((server) => (
+						<JellyfinServerRow
+							key={server.id}
+							server={server}
+							refresh={refresh}
+							onReplaceKey={() => select(server)}
+						/>
+					))}
+				</ul>
+			) : (
+				<EmptyState>No Jellyfin servers saved yet.</EmptyState>
+			)}
 			<form
-				className="mt-4 space-y-4"
+				className="grid gap-4 border-t border-line px-5 py-4"
 				onSubmit={(event) => {
 					event.preventDefault();
 					void action.perform(async () => {
@@ -62,131 +85,94 @@ export function JellyfinConnect({
 					});
 				}}
 			>
-				{servers.length > 0 && (
-					<label className="block text-sm text-slate-300">
-						Connection
-						<select
-							className={fieldClass}
-							value={selectedId}
-							onChange={(event) => {
-								const id = event.target.value;
-								setSelectedId(id);
-								setUrl(servers.find((server) => server.id === id)?.url ?? "");
-								setApiKey("");
-								setMessage("");
-							}}
-						>
-							<option value="">Add another server</option>
-							{servers.map((server) => (
-								<option key={server.id} value={server.id}>
-									{server.name} · {server.url} (replace key)
-								</option>
-							))}
-						</select>
-					</label>
-				)}
-				<label className="block text-sm text-slate-300">
-					Server URL
-					<input
-						className={fieldClass}
-						type="url"
-						value={url}
-						required
-						autoComplete="url"
-						placeholder="http://jellyfin.local:8096"
-						onChange={(event) => setUrl(event.target.value)}
-					/>
-				</label>
-				<label className="block text-sm text-slate-300">
-					API key
-					<input
-						className={fieldClass}
-						type="password"
-						value={apiKey}
-						required
-						autoComplete="off"
-						onChange={(event) => setApiKey(event.target.value)}
-					/>
-				</label>
-				<button type="submit" className={buttonClass} disabled={action.busy}>
-					{action.busy
-						? "Importing…"
-						: selected
-							? "Replace key and import users"
-							: "Connect and import users"}
-				</button>
-				<ErrorMessage message={action.error} />
-				{message && (
-					<p role="status" className="text-sm text-emerald-300">
-						{message}
-					</p>
-				)}
-			</form>
-			{servers.length > 0 && (
-				<div className="mt-4 border-t border-slate-800 pt-4">
-					<h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
-						Saved servers
-					</h4>
-					<div className="space-y-4">
-						{servers.map((server) => (
-							<JellyfinServerCard
-								key={server.id}
-								server={server}
-								refresh={refresh}
-							/>
-						))}
-					</div>
+				<div className="flex items-center justify-between gap-3">
+					<h3 className="text-sm font-medium">
+						{selected ? `Replace key for ${selected.name}` : "Add a server"}
+					</h3>
+					{selected && (
+						<Button variant="ghost" onClick={() => select(undefined)}>
+							Cancel
+						</Button>
+					)}
 				</div>
-			)}
-		</section>
+				<div className="grid gap-4 sm:grid-cols-2">
+					<Field label="Server URL">
+						<input
+							className={inputClass}
+							type="url"
+							value={url}
+							required
+							autoComplete="url"
+							placeholder="http://jellyfin.local:8096"
+							onChange={(event) => setUrl(event.target.value)}
+						/>
+					</Field>
+					<Field label="API key">
+						<input
+							className={inputClass}
+							type="password"
+							value={apiKey}
+							required
+							autoComplete="off"
+							onChange={(event) => setApiKey(event.target.value)}
+						/>
+					</Field>
+				</div>
+				<div>
+					<Button variant="primary" type="submit" disabled={action.busy}>
+						{action.busy
+							? "Importing…"
+							: selected
+								? "Replace key and import users"
+								: "Connect and import users"}
+					</Button>
+				</div>
+				<ErrorMessage message={action.error} />
+				{message && <Notice tone="success">{message}</Notice>}
+			</form>
+		</Panel>
 	);
 }
 
-function JellyfinServerCard({
+function JellyfinServerRow({
 	server,
 	refresh,
+	onReplaceKey,
 }: {
 	server: Server;
 	refresh: () => Promise<void>;
+	onReplaceKey: () => void;
 }) {
 	const action = useAction();
 	return (
-		<article className="border-b border-slate-800 pb-4 last:border-0 last:pb-0">
-			<h5 className="text-sm font-medium text-slate-200">{server.name}</h5>
-			<p className="mt-1 break-all text-sm text-slate-400">{server.url}</p>
-			<p className="mt-2 text-sm text-slate-300">
-				{server.lastError
-					? `Last refresh failed: ${server.lastError}`
-					: server.lastSuccessAt
-						? `Last refreshed ${new Date(server.lastSuccessAt).toLocaleString()}`
-						: "Waiting for first refresh"}
-			</p>
-			<p className="mt-1 text-xs text-slate-500">
-				{server.lastAttemptAt
-					? `Last attempt ${new Date(server.lastAttemptAt).toLocaleString()}`
-					: "No attempt yet"}
-			</p>
-			<div className="mt-4 flex flex-wrap items-end gap-3">
-				<button
-					type="button"
-					className={secondaryClass}
-					disabled={action.busy}
-					onClick={() =>
-						void action.perform(async () => {
-							const result = responseData(
-								await getApi()
-									.v1.media.jellyfin({ id: server.id })
-									.refresh.post(),
-							);
-							if (result.kind === "failed") throw new Error(result.message);
-							await refresh();
-						})
-					}
-				>
-					Refresh now
-				</button>
-			</div>
-			<ErrorMessage message={action.error} />
-		</article>
+		<ServerRow
+			name={server.name}
+			url={server.url}
+			status={importStatus(server)}
+			error={action.error || server.lastError}
+			actions={
+				<>
+					<Button variant="ghost" onClick={onReplaceKey}>
+						Replace key
+					</Button>
+					<Button
+						disabled={action.busy}
+						onClick={() =>
+							void action.perform(async () => {
+								const result = responseData(
+									await getApi()
+										.v1.media.jellyfin({ id: server.id })
+										.refresh.post(),
+								);
+								if (result.kind === "failed") throw new Error(result.message);
+								await refresh();
+							})
+						}
+					>
+						{action.busy ? "Refreshing…" : "Refresh now"}
+					</Button>
+				</>
+			}
+		/>
 	);
 }

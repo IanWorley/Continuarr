@@ -1,14 +1,23 @@
 import { useEffect, useState } from "react";
 import type { MediaService } from "~/backend/media/service";
 import {
-	buttonClass,
 	ErrorMessage,
-	fieldClass,
+	importStatus,
 	type MediaState,
 	responseData,
-	secondaryClass,
+	ServerRow,
 	useAction,
 } from "~/components/media/shared";
+import {
+	Button,
+	buttonClass,
+	EmptyState,
+	Field,
+	inputClass,
+	Notice,
+	Panel,
+	ProviderLabel,
+} from "~/components/ui";
 import { getApi } from "~/routes/api.$";
 
 type PlexSelection = Awaited<ReturnType<MediaService["selectPlexServer"]>>;
@@ -99,76 +108,18 @@ export function PlexConnect({
 	}, [authorization, refresh]);
 
 	return (
-		<section
-			className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6"
-			aria-labelledby="plex-heading"
-		>
-			<div className="mb-5 flex items-center gap-3">
-				<span className="size-2 rounded-full bg-amber-400" />
-				<h3 id="plex-heading" className="text-lg font-semibold">
-					Plex
-				</h3>
-			</div>
-			<div className="space-y-4">
-				<p className="text-sm leading-6 text-slate-400">
-					Sign in as the server owner, then save a server to import its users.
-					No Plex Home PIN is needed.
-				</p>
-				<button
-					type="button"
-					className={secondaryClass}
-					disabled={action.busy || authorization.kind === "waiting"}
-					onClick={() =>
-						void action.perform(async () => {
-							setMessage("");
-							const attempt = responseData(
-								await getApi().v1.media.plex.start.post(),
-							);
-							setAuthorization({ kind: "waiting", attempt });
-						})
-					}
-				>
-					{action.busy ? "Connecting…" : "Sign in to Plex"}
-				</button>
-				{authorization.kind === "waiting" && (
-					<div className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4">
-						<a
-							href={authorization.attempt.authorizationUrl}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="inline-flex rounded-lg bg-amber-300 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-200"
-						>
-							Continue to Plex ↗
-						</a>
-						<p role="status" className="text-sm text-slate-300">
-							Finish signing in in the new tab. This page will update
-							automatically.
-						</p>
-						<button
-							type="button"
-							className="text-sm text-slate-400 underline underline-offset-4"
-							onClick={() => setAuthorization({ kind: "idle" })}
-						>
-							Cancel sign-in
-						</button>
-					</div>
-				)}
-				{authorization.kind === "linked" && (
-					<p role="status" className="text-sm text-emerald-300">
-						Account linked. Find your servers below.
-					</p>
-				)}
-				{authorization.kind === "failed" && (
-					<ErrorMessage message={authorization.message} />
-				)}
-				{activeAccount && (
-					<div className="space-y-3">
-						<p className="text-sm text-slate-300">
-							Signed in as {activeAccount.name}
-						</p>
-						<button
-							type="button"
-							className={secondaryClass}
+		<Panel
+			id="plex-heading"
+			title={<ProviderLabel provider="plex" />}
+			description={
+				activeAccount
+					? `Signed in as ${activeAccount.name}`
+					: "Sign in as the server owner to import its users. No Plex Home PIN is needed."
+			}
+			actions={
+				<div className="flex flex-wrap gap-2">
+					{activeAccount && (
+						<Button
 							disabled={action.busy}
 							onClick={() =>
 								void action.perform(async () => {
@@ -186,45 +137,95 @@ export function PlexConnect({
 							}
 						>
 							{action.busy ? "Finding servers…" : "Find Plex servers"}
-						</button>
-					</div>
-				)}
-				{activeAccount && selection && (
-					<form
-						className="space-y-4 border-t border-slate-800 pt-4"
-						onSubmit={(event) => {
-							event.preventDefault();
+						</Button>
+					)}
+					<Button
+						variant={activeAccount ? "ghost" : "primary"}
+						disabled={action.busy || authorization.kind === "waiting"}
+						onClick={() =>
 							void action.perform(async () => {
-								responseData(
-									await getApi().v1.media.plex.connect.post({
-										selectionId: selection.id,
-										serverId,
-										url: serverUrl,
-									}),
+								setMessage("");
+								const attempt = responseData(
+									await getApi().v1.media.plex.start.post(),
 								);
-								setSelection(null);
-								setMessage(
-									"Plex server saved and users imported. Open Users to pair people.",
-								);
-								await refresh();
-							});
-						}}
+								setAuthorization({ kind: "waiting", attempt });
+							})
+						}
 					>
-						{selection.servers.length === 0 ? (
-							<p className="text-sm text-amber-200">
-								No owned Plex servers were found. Sign in with the account that
-								owns your server.
-							</p>
-						) : (
-							<>
-								<label
-									className="block text-sm text-slate-300"
-									htmlFor="plex-server"
-								>
-									Server
+						{action.busy ? "Connecting…" : "Sign in to Plex"}
+					</Button>
+				</div>
+			}
+		>
+			{servers.length > 0 ? (
+				<ul aria-label="Saved Plex servers" className="divide-y divide-line">
+					{servers.map((server) => (
+						<ServerRow
+							key={server.id}
+							name={server.name}
+							url={server.url}
+							status={importStatus(server)}
+							error={server.lastError}
+						/>
+					))}
+				</ul>
+			) : (
+				<EmptyState>No Plex servers saved yet.</EmptyState>
+			)}
+			{authorization.kind === "waiting" && (
+				<div className="flex flex-wrap items-center gap-3 border-t border-line px-5 py-4">
+					<a
+						href={authorization.attempt.authorizationUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						className={buttonClass("primary")}
+					>
+						Continue to Plex ↗
+					</a>
+					<p role="status" className="text-sm text-muted">
+						Finish signing in in the new tab. This page updates automatically.
+					</p>
+					<Button
+						variant="ghost"
+						className="ml-auto"
+						onClick={() => setAuthorization({ kind: "idle" })}
+					>
+						Cancel sign-in
+					</Button>
+				</div>
+			)}
+			{activeAccount && selection && (
+				<form
+					className="grid gap-4 border-t border-line px-5 py-4"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void action.perform(async () => {
+							responseData(
+								await getApi().v1.media.plex.connect.post({
+									selectionId: selection.id,
+									serverId,
+									url: serverUrl,
+								}),
+							);
+							setSelection(null);
+							setMessage(
+								"Plex server saved and users imported. Open Users to pair people.",
+							);
+							await refresh();
+						});
+					}}
+				>
+					{selection.servers.length === 0 ? (
+						<Notice tone="warning">
+							No owned Plex servers were found. Sign in with the account that
+							owns your server.
+						</Notice>
+					) : (
+						<>
+							<div className="grid gap-4 sm:grid-cols-2">
+								<Field label="Server">
 									<select
-										id="plex-server"
-										className={fieldClass}
+										className={inputClass}
 										required
 										value={serverId}
 										disabled={action.busy}
@@ -240,71 +241,56 @@ export function PlexConnect({
 											</option>
 										))}
 									</select>
-								</label>
-								{selectedServer && (
-									<label
-										className="block text-sm text-slate-300"
-										htmlFor="plex-url"
+								</Field>
+								<Field label="Server address">
+									<select
+										className={inputClass}
+										required
+										value={serverUrl}
+										disabled={action.busy || !selectedServer}
+										onChange={(event) => setServerUrl(event.target.value)}
 									>
-										Server address
-										<select
-											id="plex-url"
-											className={fieldClass}
-											required
-											value={serverUrl}
-											disabled={action.busy}
-											onChange={(event) => setServerUrl(event.target.value)}
-										>
-											<option value="">
-												Choose an address reachable by Continuarr
+										<option value="">
+											Choose an address reachable by Continuarr
+										</option>
+										{selectedServer?.connections.map((url) => (
+											<option key={url} value={url}>
+												{url}
 											</option>
-											{selectedServer.connections.map((url) => (
-												<option key={url} value={url}>
-													{url}
-												</option>
-											))}
-										</select>
-									</label>
-								)}
-								<button
+										))}
+									</select>
+								</Field>
+							</div>
+							<div>
+								<Button
+									variant="primary"
 									type="submit"
-									className={buttonClass}
 									disabled={action.busy || !serverUrl}
 								>
 									{action.busy ? "Connecting…" : "Save server and import users"}
-								</button>
-							</>
-						)}
-					</form>
-				)}
-				<ErrorMessage message={action.error} />
-				{message && (
-					<p role="status" className="text-sm text-emerald-300">
-						{message}
-					</p>
-				)}
-				{servers.length > 0 && (
-					<div className="border-t border-slate-800 pt-4">
-						<h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
-							Saved servers
-						</h4>
-						<ul className="space-y-4">
-							{servers.map((server) => (
-								<li key={server.id} className="text-sm">
-									<p className="font-medium text-slate-200">{server.name}</p>
-									<p className="mt-1 break-all text-slate-400">{server.url}</p>
-									<p className="mt-2 text-slate-300">
-										{server.lastSuccessAt
-											? `Last imported ${new Date(server.lastSuccessAt).toLocaleString()}`
-											: "Waiting for first import"}
-									</p>
-									<ErrorMessage message={server.lastError ?? ""} />
-								</li>
-							))}
-						</ul>
-					</div>
-				)}
-			</div>
-		</section>
+								</Button>
+							</div>
+						</>
+					)}
+				</form>
+			)}
+			{(authorization.kind === "linked" ||
+				authorization.kind === "failed" ||
+				action.error ||
+				message) && (
+				<div className="grid gap-3 border-t border-line px-5 py-4">
+					{authorization.kind === "linked" && (
+						<Notice tone="success">
+							Account linked. Choose Find Plex servers to continue.
+						</Notice>
+					)}
+					{authorization.kind === "failed" && (
+						<ErrorMessage message={authorization.message} />
+					)}
+					<ErrorMessage message={action.error} />
+					{message && <Notice tone="success">{message}</Notice>}
+				</div>
+			)}
+		</Panel>
 	);
 }
