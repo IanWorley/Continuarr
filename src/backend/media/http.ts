@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { MediaError, serverUrl } from "~/backend/media/model";
 
-const REQUEST_TIMEOUT_MS = 15_000;
+export const REQUEST_TIMEOUT_MS = 15_000;
 const FIRST_REDIRECT_STATUS = 300;
 const FIRST_CLIENT_ERROR_STATUS = 400;
 const UNAUTHORIZED_STATUS = 401;

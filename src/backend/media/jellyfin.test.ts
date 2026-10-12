@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, jest } from "bun:test";
+import { REQUEST_TIMEOUT_MS } from "~/backend/media/http";
 import { createJellyfinProvider } from "~/backend/media/jellyfin";
 import { Secret } from "~/backend/secrets/storage";
 
@@ -128,5 +129,31 @@ describe("Jellyfin administrator authentication", () => {
 		).rejects.toMatchObject({
 			message: "The media server did not respond in time.",
 		});
+	});
+
+	it("reports a response body that stalls past the request timeout as a timeout", async () => {
+		jest.useFakeTimers();
+		try {
+			const signIn = authenticate((_url, init) => {
+				const signal = init.signal;
+				if (!signal) throw new Error("The request has no timeout signal.");
+				return new Response(
+					new ReadableStream({
+						start(controller) {
+							signal.addEventListener("abort", () =>
+								controller.error(signal.reason),
+							);
+						},
+					}),
+					{ headers: { "Content-Type": "application/json" } },
+				);
+			});
+			jest.advanceTimersByTime(REQUEST_TIMEOUT_MS);
+			await expect(signIn).rejects.toMatchObject({
+				message: "The media server did not respond in time.",
+			});
+		} finally {
+			jest.useRealTimers();
+		}
 	});
 });
