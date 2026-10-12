@@ -133,6 +133,31 @@ describe("Plex provider", () => {
 		expect(requests).toBe(0);
 	});
 
+	it("sends an undated scrobble when markWatched receives playedAt", async () => {
+		const scrobbles: Array<Record<string, string>> = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/plex/library/metadata/1")
+				return json({
+					MediaContainer: { Metadata: [{ ratingKey: "1", viewCount: 0 }] },
+				});
+			if (url.pathname === "/plex/:/scrobble" && request.method === "PUT") {
+				scrobbles.push(Object.fromEntries(url.searchParams));
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		await provider.markWatched(
+			{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
+			"1",
+			Date.UTC(2026, 8, 1, 20),
+		);
+		expect(scrobbles).toEqual([
+			{ key: "1", identifier: "com.plexapp.plugins.library" },
+		]);
+	});
+
 	it("offers only owned servers and prefers a grant for a protected Home member", async () => {
 		const baseUrl = serve((request) => {
 			const path = new URL(request.url).pathname;
