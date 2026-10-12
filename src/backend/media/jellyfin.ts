@@ -9,6 +9,7 @@ import {
 	type MediaItem,
 	serverUrl,
 } from "~/backend/media/model";
+import { Secret } from "~/backend/secrets/storage";
 
 const PAGE_SIZE = 100;
 const CLIENT_NAME = "Continuarr";
@@ -18,6 +19,14 @@ export const TICKS_PER_MILLISECOND = 10_000;
 const publicInfoSchema = z.object({
 	Id: z.string().min(1),
 	ServerName: z.string().min(1),
+});
+const authenticationSchema = z.object({
+	AccessToken: z.string().min(1),
+	User: z.object({
+		Id: z.string().min(1),
+		Name: z.string().min(1),
+		Policy: z.object({ IsAdministrator: z.boolean() }),
+	}),
 });
 const userSchema = z
 	.object({
@@ -122,6 +131,29 @@ export function createJellyfinProvider(options: {
 	}
 
 	return {
+		async authenticate({ url, username, password }) {
+			const normalizedUrl = serverUrl(url);
+			const session = await requestJson({
+				fetch: fetcher,
+				url: endpoint(normalizedUrl, "Users/AuthenticateByName"),
+				method: "POST",
+				schema: authenticationSchema,
+				headers: jellyfinHeaders(options.clientIdentifier),
+				body: { Username: username, Pw: password.reveal() },
+			});
+			if (!session.User.Policy.IsAdministrator)
+				throw new MediaError("Sign in with a Jellyfin administrator account.");
+			const access = {
+				url: normalizedUrl,
+				token: new Secret(session.AccessToken),
+			};
+			return {
+				server: await server(access),
+				user: { id: session.User.Id, name: session.User.Name },
+				access,
+			};
+		},
+
 		async directory(access) {
 			const serverIdentity = await server(access);
 			const users = await requestJson({

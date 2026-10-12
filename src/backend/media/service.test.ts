@@ -90,6 +90,9 @@ async function setup(now: () => number = Date.now) {
 		},
 	};
 	const jellyfin: JellyfinProvider = {
+		authenticate: async () => {
+			throw new Error("The media service never signs in to Jellyfin.");
+		},
 		directory: async () => ({
 			server: { id: "j-server", name: "Jellyfin" },
 			users: [
