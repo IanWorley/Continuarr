@@ -18,3 +18,4 @@ credential-encryption.key
 .vinxi
 __unconfig*
 todos.json
+.env.self-hosted
