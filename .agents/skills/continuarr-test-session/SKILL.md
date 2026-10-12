@@ -49,7 +49,7 @@ Require health `{"application":"Continuarr","status":"ok"}` and listeners belong
 
 A configured owner on an allegedly fresh run means the wrong database or a reused session. Investigate. Never reset the owner or truncate tables to make setup available.
 
-On the first browser load, Vite optimizes dependencies and reloads the page. The app log then shows `Error: aborted` with `ECONNRESET` and a `Failed to fetch dynamically imported module` message. These are expected startup noise. Treat later errors as real.
+On the first browser load, Vite optimizes dependencies and reloads the page. The app log then shows `Error: aborted` with `ECONNRESET` and a `Failed to fetch dynamically imported module` message. Treat them as optimizer noise only after the reloaded page renders the sign-in screen or app. If it does not render, investigate them as real failures. Treat errors after that first successful render as real.
 
 ## Drive
 
