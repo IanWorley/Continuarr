@@ -11,7 +11,7 @@ import {
 	type PlexServer,
 	serverUrl,
 } from "./model";
-import { planWatchedUnion } from "./plan";
+import { planWatchedUnion, type WatchedWrite } from "./plan";
 import type { MediaRepository } from "./repo";
 
 export const SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -144,16 +144,22 @@ export function createMediaService({
 			plex.items(plexAccess),
 			jellyfin.items(jellyfinAccess),
 		]);
+		const plan = planWatchedUnion({
+			plex: plexItems,
+			jellyfin: jellyfinItems,
+			manualMatches: await repo.manualMatches(id),
+		});
 		return {
 			plexAccess,
 			jellyfinAccess,
 			plex: plexItems,
 			jellyfin: jellyfinItems,
-			plan: planWatchedUnion({
-				plex: plexItems,
-				jellyfin: jellyfinItems,
-				manualMatches: await repo.manualMatches(id),
-			}),
+			plan: {
+				...plan,
+				writes: plan.writes.filter(
+					(write): write is WatchedWrite => write.kind === "watched",
+				),
+			},
 		};
 	}
 	const service = {

@@ -1,11 +1,82 @@
 import type { ManualMatch, MediaItem } from "~/backend/media/model";
+import {
+	NO_POSITION_MS,
+	POSITION_TOLERANCE_MS,
+	TIMESTAMP_TOLERANCE_MS,
+} from "./constants";
 
 type Target = "plex" | "jellyfin";
-type Write = { target: Target; itemId: string; title: string };
+type Destination = { itemId: string; title: string };
+export type WatchedWrite = Destination &
+	(
+		| { kind: "watched"; target: "plex" }
+		| { kind: "watched"; target: "jellyfin"; playedAt?: number }
+	);
+type PositionWrite = Destination & {
+	kind: "position";
+	target: Target;
+	value: number;
+};
+type Write = WatchedWrite | PositionWrite;
 type Candidate = { kind: "one"; index: number } | { kind: "many" };
 type CandidateResult =
 	| { kind: "none" | "many" }
 	| { kind: "one"; index: number };
+
+function decidePair({
+	plex,
+	jellyfin,
+}: {
+	plex: MediaItem;
+	jellyfin: MediaItem;
+}): { writes: Write[]; positionConflicts: 0 | 1 } {
+	const writes: Write[] = [];
+	if (plex.watched && !jellyfin.watched)
+		writes.push({
+			kind: "watched",
+			target: "jellyfin",
+			itemId: jellyfin.id,
+			title: jellyfin.title,
+			...(plex.history.lastPlayedAt !== null
+				? { playedAt: plex.history.lastPlayedAt }
+				: {}),
+		});
+	else if (jellyfin.watched && !plex.watched)
+		writes.push({
+			kind: "watched",
+			target: "plex",
+			itemId: plex.id,
+			title: plex.title,
+		});
+
+	const plexPosition = plex.history.positionMs ?? NO_POSITION_MS;
+	const jellyfinPosition = jellyfin.history.positionMs ?? NO_POSITION_MS;
+	if (Math.abs(plexPosition - jellyfinPosition) <= POSITION_TOLERANCE_MS)
+		return { writes, positionConflicts: 0 };
+
+	const plexPlayedAt = plex.history.lastPlayedAt;
+	const jellyfinPlayedAt = jellyfin.history.lastPlayedAt;
+	if (
+		plexPlayedAt === null ||
+		jellyfinPlayedAt === null ||
+		Math.abs(plexPlayedAt - jellyfinPlayedAt) <= TIMESTAMP_TOLERANCE_MS
+	)
+		return { writes, positionConflicts: 1 };
+
+	const plexIsLater = plexPlayedAt > jellyfinPlayedAt;
+	const destination = plexIsLater ? jellyfin : plex;
+	const position = plexIsLater ? plexPosition : jellyfinPosition;
+	if (position <= NO_POSITION_MS) return { writes, positionConflicts: 0 };
+
+	writes.push({
+		kind: "position",
+		target: plexIsLater ? "jellyfin" : "plex",
+		itemId: destination.id,
+		title: destination.title,
+		value: position,
+	});
+	return { writes, positionConflicts: 0 };
+}
 
 function externalIdKey(
 	item: MediaItem,
@@ -75,7 +146,13 @@ function haveConflictingIds(left: MediaItem, right: MediaItem): boolean {
 function planAutomaticUnion(input: {
 	plex: MediaItem[];
 	jellyfin: MediaItem[];
-}): { writes: Write[]; matched: number; unmatched: number; ambiguous: number } {
+}): {
+	writes: Write[];
+	matched: number;
+	unmatched: number;
+	ambiguous: number;
+	positionConflicts: number;
+} {
 	const plexIndex = indexItems(input.plex);
 	const jellyfinIndex = indexItems(input.jellyfin);
 	const plexCandidates = input.plex.map((item) =>
@@ -87,6 +164,7 @@ function planAutomaticUnion(input: {
 	const matchedPlex = new Set<number>();
 	const matchedJellyfin = new Set<number>();
 	const writes: Write[] = [];
+	let positionConflicts = 0;
 
 	for (const [plexPosition, plex] of input.plex.entries()) {
 		const candidate = plexCandidates[plexPosition];
@@ -106,14 +184,9 @@ function planAutomaticUnion(input: {
 
 		matchedPlex.add(plexPosition);
 		matchedJellyfin.add(jellyfinPosition);
-		if (plex.watched && !jellyfin.watched)
-			writes.push({
-				target: "jellyfin",
-				itemId: jellyfin.id,
-				title: jellyfin.title,
-			});
-		else if (jellyfin.watched && !plex.watched)
-			writes.push({ target: "plex", itemId: plex.id, title: plex.title });
+		const decision = decidePair({ plex, jellyfin });
+		writes.push(...decision.writes);
+		positionConflicts += decision.positionConflicts;
 	}
 
 	let unmatched = 0;
@@ -133,7 +206,13 @@ function planAutomaticUnion(input: {
 			unmatched += 1;
 		else ambiguous += 1;
 	}
-	return { writes, matched: matchedPlex.size, unmatched, ambiguous };
+	return {
+		writes,
+		matched: matchedPlex.size,
+		unmatched,
+		ambiguous,
+		positionConflicts,
+	};
 }
 
 export function planWatchedUnion(input: {
@@ -145,6 +224,7 @@ export function planWatchedUnion(input: {
 	matched: number;
 	unmatched: number;
 	ambiguous: number;
+	positionConflicts: number;
 	staleManualMatches?: number;
 } {
 	const manual = input.manualMatches ?? [];
@@ -167,14 +247,9 @@ export function planWatchedUnion(input: {
 			continue;
 		}
 		plan.matched++;
-		if (plex.watched && !jellyfin.watched)
-			plan.writes.push({
-				target: "jellyfin",
-				itemId: jellyfin.id,
-				title: jellyfin.title,
-			});
-		else if (jellyfin.watched && !plex.watched)
-			plan.writes.push({ target: "plex", itemId: plex.id, title: plex.title });
+		const decision = decidePair({ plex, jellyfin });
+		plan.writes.push(...decision.writes);
+		plan.positionConflicts += decision.positionConflicts;
 	}
 	return { ...plan, staleManualMatches };
 }
