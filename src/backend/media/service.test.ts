@@ -873,7 +873,7 @@ describe("media account and sync service", () => {
 		const pairing = await pair();
 		const preview = await service.preview(pairing.id);
 		expect(preview.writes).toEqual([
-			{ target: "jellyfin", itemId: "j1", title: "Arrival" },
+			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "Arrival" },
 		]);
 		expect(state.writes).toEqual([]);
 		expect(await service.run(pairing.id)).toMatchObject({
@@ -892,6 +892,42 @@ describe("media account and sync service", () => {
 		});
 		expect(state.plex[0].watched).toBe(true);
 		expect(state.writes).toEqual(["jellyfin:j1", "plex:p1"]);
+	});
+	it("keeps position-only changes out of preview and recorded runs", async () => {
+		const { service, state, pair } = await setup();
+		const pairing = await pair();
+		state.plex = [
+			{
+				...movie("p1", false),
+				history: { lastPlayedAt: 160001, positionMs: 30000 },
+			},
+		];
+		state.jellyfin = [
+			{
+				...movie("j1", false),
+				history: { lastPlayedAt: 100000, positionMs: 10000 },
+			},
+		];
+		expect(await service.preview(pairing.id)).toMatchObject({
+			writes: [],
+			matched: 1,
+			unmatched: 0,
+			ambiguous: 0,
+			positionConflicts: 0,
+		});
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			planned: 0,
+			applied: 0,
+		});
+		expect((await service.state()).runs).toMatchObject([
+			{
+				status: "completed",
+				planned: 0,
+				applied: 0,
+			},
+		]);
+		expect(state.writes).toEqual([]);
 	});
 	it("does not write when a complete library cannot be read", async () => {
 		const { service, state, pair } = await setup();
@@ -1007,7 +1043,9 @@ it("protects media routes and runs an authenticated pairing through HTTP", async
 	);
 	expect(preview.status).toBe(200);
 	expect(await preview.json()).toMatchObject({
-		writes: [{ target: "jellyfin", itemId: "j1", title: "Arrival" }],
+		writes: [
+			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "Arrival" },
+		],
 	});
 	const run = await api.handle(
 		new Request(`${origin}/api/v1/media/pairings/${pairing.id}/run`, {
@@ -1157,7 +1195,7 @@ describe("manual library matching", () => {
 		const restarted = createMediaService({ repo, secrets, plex, jellyfin });
 		expect((await restarted.library(pairing.id)).matches).toEqual([match]);
 		expect((await restarted.preview(pairing.id)).writes).toEqual([
-			{ target: "jellyfin", itemId: "j1", title: "Arrival" },
+			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "Arrival" },
 		]);
 		await restarted.run(pairing.id);
 		expect(state.writes).toEqual(["jellyfin:j1"]);
