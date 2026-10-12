@@ -1,5 +1,6 @@
 import { Link, type LinkProps } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { BrandMark, focusRing } from "~/components/ui";
 import { getApi } from "~/routes/api.$";
 
 const HTTP_UNAUTHORIZED = 401;
@@ -12,8 +13,7 @@ const destinations = [
 	{ to: "/users", label: "Users" },
 	{ to: "/matches", label: "Manual matching" },
 ] satisfies NavigationDestination[];
-const linkClass =
-	"rounded-lg px-4 py-3 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300";
+const itemClass = `flex min-h-9 items-center rounded-md pointer-coarse:min-h-11 px-3 text-sm transition ${focusRing}`;
 
 export function AppNavigation() {
 	const menu = useRef<HTMLDetailsElement>(null);
@@ -37,14 +37,13 @@ export function AppNavigation() {
 			key={to}
 			to={to}
 			activeOptions={{ exact: true }}
-			className={linkClass}
+			className={itemClass}
 			activeProps={{
-				className:
-					"bg-cyan-300/10 text-cyan-200 ring-1 ring-inset ring-cyan-300/30",
+				className: "bg-raised font-medium text-ink",
 				"aria-current": "page",
 			}}
 			inactiveProps={{
-				className: "text-slate-300 hover:bg-slate-800 hover:text-white",
+				className: "text-muted hover:bg-raised/60 hover:text-ink",
 			}}
 			onClick={() => {
 				if (menu.current) menu.current.open = false;
@@ -53,48 +52,53 @@ export function AppNavigation() {
 			{label}
 		</Link>
 	));
-	const signOutButton = (
-		<button
-			type="button"
-			disabled={signingOut}
-			onClick={() => void signOut()}
-			className="rounded-lg px-4 py-3 text-left text-sm text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:opacity-50"
+	const footer = (
+		<div className="grid gap-2 border-t border-line pt-3">
+			<button
+				type="button"
+				disabled={signingOut}
+				onClick={() => void signOut()}
+				className={`${itemClass} cursor-pointer text-muted hover:bg-raised/60 hover:text-ink disabled:opacity-50`}
+			>
+				{signingOut ? "Signing out…" : "Sign out"}
+			</button>
+			{error && (
+				<p role="alert" className="px-3 text-xs text-red-300">
+					{error}
+				</p>
+			)}
+		</div>
+	);
+	const brand = (
+		<Link
+			to="/"
+			aria-label="Continuarr home"
+			className={`flex items-center gap-2.5 rounded-md text-[15px] font-semibold tracking-tight ${focusRing}`}
 		>
-			{signingOut ? "Signing out…" : "Sign out"}
-		</button>
+			<BrandMark />
+			Continuarr
+		</Link>
 	);
 	return (
-		<header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/95 backdrop-blur">
+		<>
 			<a
 				href="#main-content"
-				className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-cyan-300 focus:p-3 focus:text-slate-950"
+				className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-ink focus:px-3 focus:py-2 focus:text-sm focus:text-canvas"
 			>
 				Skip to content
 			</a>
-			<div className="relative mx-auto flex max-w-6xl items-center gap-4 px-5 py-3 sm:px-8">
-				<Link
-					to="/"
-					aria-label="Continuarr home"
-					className="flex shrink-0 items-center gap-2 text-lg font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-cyan-300"
-				>
-					<span
-						aria-hidden="true"
-						className="grid size-8 place-items-center rounded-lg bg-cyan-300 text-slate-950"
-					>
-						C
-					</span>
-					Continuarr
-				</Link>
-				<nav
-					aria-label="Main navigation"
-					className="ml-4 hidden items-center gap-2 md:flex"
-				>
+			<aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-line bg-canvas px-3 py-5 md:flex">
+				<div className="px-3">{brand}</div>
+				<nav aria-label="Main navigation" className="mt-8 grid gap-0.5">
 					{links}
 				</nav>
-				<div className="ml-auto hidden md:block">{signOutButton}</div>
+				<div className="mt-auto">{footer}</div>
+			</aside>
+			<header className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-canvas/95 px-5 py-3 backdrop-blur md:hidden">
+				{brand}
 				<details
 					ref={menu}
-					className="group ml-auto md:hidden"
+					className="group"
 					onKeyDown={(event) => {
 						if (event.key === "Escape" && menu.current?.open) {
 							menu.current.open = false;
@@ -104,7 +108,7 @@ export function AppNavigation() {
 				>
 					<summary
 						aria-label="Navigation menu"
-						className="flex size-11 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-cyan-300 [&::-webkit-details-marker]:hidden"
+						className={`flex size-9 cursor-pointer pointer-coarse:size-11 list-none items-center justify-center rounded-md border border-line-strong text-muted hover:text-ink [&::-webkit-details-marker]:hidden ${focusRing}`}
 					>
 						<svg
 							aria-hidden="true"
@@ -112,9 +116,9 @@ export function AppNavigation() {
 							fill="none"
 							stroke="currentColor"
 							strokeWidth="2"
-							className="size-5 group-open:hidden"
+							className="size-4 group-open:hidden"
 						>
-							<path d="M4 6h16M4 12h16M4 18h16" />
+							<path d="M4 7h16M4 12h16M4 17h16" />
 						</svg>
 						<svg
 							aria-hidden="true"
@@ -122,30 +126,20 @@ export function AppNavigation() {
 							fill="none"
 							stroke="currentColor"
 							strokeWidth="2"
-							className="hidden size-5 group-open:block"
+							className="hidden size-4 group-open:block"
 						>
 							<path d="m6 6 12 12M18 6 6 18" />
 						</svg>
 					</summary>
 					<nav
 						aria-label="Mobile navigation"
-						className="absolute inset-x-0 top-full grid gap-2 border-b border-slate-700 bg-slate-950 p-4 shadow-xl"
+						className="absolute inset-x-0 top-full grid gap-0.5 border-b border-line bg-canvas p-3 shadow-2xl shadow-black/40"
 					>
 						{links}
-						<div className="mt-1 grid border-t border-slate-800 pt-2">
-							{signOutButton}
-						</div>
+						<div className="mt-2">{footer}</div>
 					</nav>
 				</details>
-			</div>
-			{error && (
-				<p
-					role="alert"
-					className="mx-auto max-w-6xl px-5 pb-3 text-sm text-red-300"
-				>
-					{error}
-				</p>
-			)}
-		</header>
+			</header>
+		</>
 	);
 }
