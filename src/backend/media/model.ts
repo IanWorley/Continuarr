@@ -86,6 +86,11 @@ export interface PlexProvider {
 	verifyServer(access: MediaAccess, serverId: string): Promise<void>;
 	items(access: MediaAccess): Promise<MediaItem[]>;
 	markWatched(access: MediaAccess, itemId: string): Promise<void>;
+	setPosition(
+		access: MediaAccess,
+		itemId: string,
+		positionMs: number,
+	): Promise<void>;
 }
 export interface JellyfinProvider {
 	authenticate(credentials: {

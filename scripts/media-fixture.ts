@@ -70,6 +70,7 @@ const plexInProgress = "2";
 const jellyfinInProgress = "j4";
 const LAST_PLAYED_AT_MS = Date.UTC(2026, 8, 1, 20);
 const RESUME_POSITION_MS = 754_000;
+const plexPositions = new Map([[plexInProgress, RESUME_POSITION_MS]]);
 const titles = [
 	"Arrival",
 	"The Martian",
@@ -83,6 +84,7 @@ const EPISODE_SEASONS = [1, 1, 2];
 const EPISODE_NUMBERS = [1, 2, 1];
 function plexItem(index: number) {
 	const id = String(index + 1);
+	const viewOffset = plexPositions.get(id);
 	return {
 		ratingKey: id,
 		type: index < MOVIE_COUNT ? "movie" : "episode",
@@ -109,7 +111,7 @@ function plexItem(index: number) {
 		...(plexWatched.has(id) || id === plexInProgress
 			? { lastViewedAt: LAST_PLAYED_AT_MS / MILLISECONDS_PER_SECOND }
 			: {}),
-		...(id === plexInProgress ? { viewOffset: RESUME_POSITION_MS } : {}),
+		...(viewOffset === undefined ? {} : { viewOffset }),
 	};
 }
 function jellyfinItem(index: number) {
@@ -148,6 +150,7 @@ const server = Bun.serve({
 		if (path === "/fixture-state")
 			return Response.json({
 				plex: [...plexWatched],
+				plexPositions: Object.fromEntries(plexPositions),
 				jellyfin: [...jellyfinWatched],
 			});
 		if (
@@ -192,6 +195,13 @@ const server = Bun.serve({
 			});
 		if (path === "/plex/:/scrobble") {
 			plexWatched.add(url.searchParams.get("key") ?? "");
+			return new Response(null, { status: 200 });
+		}
+		if (path === "/plex/:/progress") {
+			plexPositions.set(
+				url.searchParams.get("key") ?? "",
+				Number(url.searchParams.get("time")),
+			);
 			return new Response(null, { status: 200 });
 		}
 		if (path === "/jellyfin/System/Info")

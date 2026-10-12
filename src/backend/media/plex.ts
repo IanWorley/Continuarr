@@ -22,6 +22,7 @@ const PLEX_PLATFORM = "server";
 const PLEX_VERSION = "1.0.0";
 const PAGE_SIZE = 100;
 const LIBRARY_IDENTIFIER = "com.plexapp.plugins.library";
+const REDUNDANT_POSITION_WRITE_TOLERANCE_MS = 5_000;
 
 const pinSchema = z.object({
 	id: z.number().int(),
@@ -520,6 +521,23 @@ export function createPlexProvider(options: {
 			const url = endpoint(access.url, ":/scrobble");
 			url.searchParams.set("key", itemId);
 			url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
+			await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+		},
+
+		async setPosition(access: MediaAccess, itemId: string, positionMs: number) {
+			if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
+				throw new MediaError("Invalid Plex resume position.");
+			const { item, headers } = await readItem(access, itemId);
+			if (
+				Math.abs((item.viewOffset ?? 0) - positionMs) <=
+				REDUNDANT_POSITION_WRITE_TOLERANCE_MS
+			)
+				return;
+			const url = endpoint(access.url, ":/progress");
+			url.searchParams.set("key", itemId);
+			url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
+			url.searchParams.set("time", String(positionMs));
+			url.searchParams.set("state", "stopped");
 			await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
 		},
 	};
