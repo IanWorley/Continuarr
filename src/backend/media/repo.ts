@@ -514,6 +514,7 @@ export function createMediaRepository(
 				await transaction
 					.delete(jellyfinServers)
 					.where(eq(jellyfinServers.id, id));
+				return server;
 			}),
 		backfillJellyfinServers: async (
 			secrets: ReturnType<typeof createSecretStorage>,

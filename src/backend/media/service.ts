@@ -52,6 +52,7 @@ export function createMediaService({
 	const logins = new Map<string, PendingLogin>();
 	const selections = new Map<string, Selection>();
 	let discoveryEpoch = Symbol();
+	let jellyfinEpoch = Symbol();
 	const refreshes = new Map<
 		string,
 		Promise<{
@@ -106,7 +107,8 @@ export function createMediaService({
 					(profile.presence === "unverified" && profile.url && profile.token)),
 		);
 	}
-	async function snapshot(id: string) {
+	/** Rejects pairings whose profiles or servers cannot currently be read. */
+	async function connectedPairing(id: string) {
 		const pair = await pairing(id);
 		const [p, j] = await Promise.all([
 			repo.plexProfile(pair.plexProfileId),
@@ -131,6 +133,10 @@ export function createMediaService({
 		if (p.connectionId && !plexServer?.verified)
 			throw new MediaError("Reconnect the Plex server.");
 		if (!p.token) throw new MediaError("This Plex user has no server grant.");
+		return { p: { ...p, token: p.token }, j, server, plexServer };
+	}
+	async function snapshot(id: string) {
+		const { p, j, server, plexServer } = await connectedPairing(id);
 		const plexAccess = {
 			url: plexServer?.url ?? p.url,
 			token: secrets.decrypt(p.id, p.token),
@@ -240,7 +246,7 @@ export function createMediaService({
 			ensureIdle();
 			return withConnectionWrite(async () => {
 				ensureIdle();
-				await repo.disconnectJellyfinServer(id);
+				if (await repo.disconnectJellyfinServer(id)) jellyfinEpoch = Symbol();
 				return { id };
 			});
 		},
@@ -255,6 +261,7 @@ export function createMediaService({
 						apiKey: string;
 				  },
 		) {
+			const epoch = jellyfinEpoch;
 			const url = serverUrl(input.url);
 			const directory = await jellyfin.directory({
 				url,
@@ -263,6 +270,11 @@ export function createMediaService({
 			return withConnectionWrite(async () => {
 				ensureIdle();
 				if (input.kind === "new") {
+					if (epoch !== jellyfinEpoch)
+						throw new MediaError(
+							"Jellyfin connections changed. Connect the server again.",
+							409,
+						);
 					if (
 						(await repo.jellyfinServers()).some(
 							(server) => server.externalId === directory.server.id,
@@ -838,9 +850,13 @@ export function createMediaService({
 			return result.row;
 		},
 		async automatic(id: string, enabled: boolean) {
-			await pairing(id);
-			await repo.automatic(id, enabled);
-			return { enabled };
+			// Queued with disconnects so a disconnected pairing cannot be re-enabled.
+			return withConnectionWrite(async () => {
+				if (enabled) await connectedPairing(id);
+				else await pairing(id);
+				await repo.automatic(id, enabled);
+				return { enabled };
+			});
 		},
 		async preview(id: string) {
 			ensureIdle();

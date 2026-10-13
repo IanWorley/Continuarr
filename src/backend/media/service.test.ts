@@ -1402,6 +1402,12 @@ describe("safe server disconnect", () => {
 			expect(await repo.runs()).toEqual(runs);
 			expect(await repo.manualMatches(pairing.id)).toEqual(matches);
 			expect(await repo.accounts()).toEqual(accounts);
+			await expect(service.automatic(pairing.id, true)).rejects.toThrow(
+				provider === "plex" ? "no server grant" : "missing, disabled",
+			);
+			expect(await repo.pairing(pairing.id)).toMatchObject({
+				automatic: false,
+			});
 			await repo.backfillPlexServers();
 			await repo.backfillJellyfinServers(secrets);
 			const restarted = createMediaService({ repo, secrets, plex, jellyfin });
@@ -1796,6 +1802,55 @@ describe("safe server disconnect", () => {
 			{ connectionId: null, token: null, presence: "missing" },
 		);
 		expect(await repo.jellyfinServers()).toEqual([]);
+	});
+
+	it("rejects a new Jellyfin import spanning a disconnect and permits a newly started import", async () => {
+		const { service, repo, jellyfin, pair } = await setup();
+		const pairing = await pair();
+		const server = (await repo.jellyfinServers())[0];
+		if (!server) throw new Error("Missing server");
+		const gate = Promise.withResolvers<void>();
+		const entered = Promise.withResolvers<void>();
+		const directory = jellyfin.directory;
+		jellyfin.directory = async (input) => {
+			entered.resolve();
+			await gate.promise;
+			return directory(input);
+		};
+		const pending = service.importJellyfin({
+			kind: "new",
+			url: server.url,
+			apiKey: "stale-key",
+		});
+		await entered.promise;
+		try {
+			await service.disconnectJellyfin(server.id);
+		} finally {
+			gate.resolve();
+		}
+		await expect(pending).rejects.toThrow("Connect the server again");
+		expect(await repo.jellyfinServers()).toEqual([]);
+		jellyfin.directory = directory;
+		await service.importJellyfin({
+			kind: "new",
+			url: server.url,
+			apiKey: "j-token",
+		});
+		expect(await repo.jellyfinProfile(pairing.jellyfinProfileId)).toMatchObject(
+			{ presence: "present" },
+		);
+	});
+
+	it("does not let an automatic sync opt-in racing a disconnect re-enable the pairing", async () => {
+		const { service, repo, pair } = await setup();
+		const pairing = await pair();
+		const server = (await repo.jellyfinServers())[0];
+		if (!server) throw new Error("Missing server");
+		const disconnect = service.disconnectJellyfin(server.id);
+		const enable = service.automatic(pairing.id, true);
+		await disconnect;
+		await expect(enable).rejects.toThrow("missing, disabled");
+		expect(await repo.pairing(pairing.id)).toMatchObject({ automatic: false });
 	});
 });
 
