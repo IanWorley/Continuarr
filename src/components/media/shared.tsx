@@ -8,13 +8,6 @@ const errorSchema = z.object({ value: z.object({ error: z.string() }) });
 
 export type MediaState = Awaited<ReturnType<MediaService["state"]>>;
 
-export const fieldClass =
-	"mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 disabled:opacity-50";
-export const buttonClass =
-	"rounded-lg bg-cyan-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40";
-export const secondaryClass =
-	"rounded-lg border border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40";
-
 export function responseData<T>(response: {
 	data: T | null;
 	error: unknown;

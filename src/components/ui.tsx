@@ -38,6 +38,8 @@ const BUTTON_VARIANT_CLASSES = {
 
 export const focusRing =
 	"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
+export const linkClass = `font-medium text-ink underline decoration-line-strong underline-offset-4 transition hover:decoration-ink ${focusRing}`;
+export const cardClass = "rounded-lg border border-line bg-surface";
 // iOS Safari zooms on focus when input text is under 16px.
 export const inputClass =
 	"block w-full rounded-md border border-line-strong bg-canvas min-h-9 px-3 py-1.5 text-sm text-ink placeholder:text-faint pointer-coarse:min-h-11 pointer-coarse:text-base transition hover:border-faint focus:border-ink focus:outline-none disabled:opacity-50 aria-invalid:border-red-400/70";
@@ -133,10 +135,7 @@ export function Panel({
 	children: ReactNode;
 }) {
 	return (
-		<section
-			aria-labelledby={id}
-			className="rounded-lg border border-line bg-surface"
-		>
+		<section aria-labelledby={id} className={cardClass}>
 			<header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
 				<div className="min-w-0">
 					<h2 id={id} className="text-sm font-semibold">
@@ -149,6 +148,37 @@ export function Panel({
 				{actions}
 			</header>
 			<div className="space-y-4 p-5">{children}</div>
+		</section>
+	);
+}
+
+export function Section({
+	id,
+	title,
+	description,
+	actions,
+	children,
+}: {
+	id: string;
+	title: ReactNode;
+	description?: ReactNode;
+	actions?: ReactNode;
+	children: ReactNode;
+}) {
+	return (
+		<section aria-labelledby={id} className="space-y-4">
+			<header className="flex flex-wrap items-end justify-between gap-3">
+				<div className="min-w-0">
+					<h2 id={id} className="text-base font-semibold">
+						{title}
+					</h2>
+					{description && (
+						<p className="mt-1 max-w-2xl text-sm text-muted">{description}</p>
+					)}
+				</div>
+				{actions}
+			</header>
+			{children}
 		</section>
 	);
 }
