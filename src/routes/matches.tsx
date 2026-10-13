@@ -3,12 +3,21 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { z } from "zod";
 import type { ManualMatch, MediaItem } from "~/backend/media/model";
+import {
+	Button,
+	cardClass,
+	Field,
+	inputClass,
+	linkClass,
+	Notice,
+	Page,
+	PROVIDER_LABELS,
+	type Provider,
+	ProviderLabel,
+	Section,
+} from "~/components/ui";
 import { getApi } from "~/routes/api.$";
 
-const fieldClass =
-	"mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm";
-const buttonClass =
-	"rounded-lg bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40";
 const errorSchema = z.object({ value: z.object({ error: z.string() }) });
 const HTTP_UNAUTHORIZED = 401;
 const PAGE_SIZE = 25;
@@ -37,42 +46,30 @@ function Matches() {
 	});
 	const [pairingId, setPairingId] = useState("");
 	return (
-		<main
-			id="main-content"
-			tabIndex={-1}
-			className="mx-auto min-h-screen max-w-6xl px-5 py-10"
+		<Page
+			title="Manual matching"
+			description="Choose the same movie or episode in both libraries and save the pair. Saving does not change watched status. Your saved matches are used by sync, including scheduled sync when enabled."
 		>
-			<h1 className="text-3xl font-semibold">Manual matching</h1>
-			<p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-				Choose the same movie or episode in both libraries and save the pair.
-				Saving does not change watched status. Your saved matches are used by
-				sync, including scheduled sync when enabled.
-			</p>
 			{state.isPending && (
-				<p className="mt-6" role="status">
+				<p role="status" className="text-sm text-muted">
 					Loading people…
 				</p>
 			)}
-			{state.error && (
-				<p role="alert" className="mt-6 text-red-300">
-					{state.error.message}
-				</p>
-			)}
+			{state.error && <Notice tone="danger">{state.error.message}</Notice>}
 			{state.data && (
 				<>
 					{!state.data.pairings.length ? (
-						<p className="mt-6">
+						<p className="text-sm text-muted">
 							Connect Plex and Jellyfin and pair a person on the{" "}
-							<Link to="/users" className="text-cyan-300 underline">
+							<Link to="/users" className={linkClass}>
 								users page
 							</Link>{" "}
 							first.
 						</p>
 					) : (
-						<label className="mt-6 block max-w-xl text-sm">
-							Person pairing
+						<Field label="Person pairing" className="max-w-xl">
 							<select
-								className={fieldClass}
+								className={inputClass}
 								value={pairingId}
 								onChange={(event) => setPairingId(event.target.value)}
 							>
@@ -92,14 +89,14 @@ function Matches() {
 									);
 								})}
 							</select>
-						</label>
+						</Field>
 					)}
 					{pairingId && (
 						<PairingMatches key={pairingId} pairingId={pairingId} />
 					)}
 				</>
 			)}
-		</main>
+		</Page>
 	);
 }
 function PairingMatches({ pairingId }: { pairingId: string }) {
@@ -147,117 +144,120 @@ function PairingMatches({ pairingId }: { pairingId: string }) {
 	const p = library.data?.plex.find((item) => item.id === plexId);
 	const j = library.data?.jellyfin.find((item) => item.id === jellyfinId);
 	return (
-		<section className="mt-8 space-y-5">
-			<div className="flex items-center justify-between gap-4">
-				<h2 className="text-xl font-semibold">Choose a pair</h2>
-				<button
-					type="button"
-					className="text-sm text-cyan-300 disabled:opacity-40"
-					disabled={library.isFetching || save.isPending}
-					onClick={() => {
-						setPlexId("");
-						setJellyfinId("");
-						save.reset();
-						void library.refetch();
-					}}
-				>
-					Reload libraries
-				</button>
-			</div>
-			{library.isFetching && <p role="status">Reading both libraries…</p>}
-			{library.error && (
-				<p role="alert" className="text-red-300">
-					{library.error.message}
-				</p>
-			)}
-			{library.data && (
-				<>
-					<div className="grid gap-5 md:grid-cols-2">
-						<LibraryPicker
-							provider="Plex"
-							items={library.data.plex}
-							reserved={
-								new Set(library.data.matches.map((match) => match.plexItemId))
-							}
-							selected={plexId}
-							onSelect={(id) => {
-								setPlexId(id);
-								save.reset();
-							}}
-							disabled={
-								save.isPending || remove.isPending || library.isFetching
-							}
-						/>
-						<LibraryPicker
-							provider="Jellyfin"
-							items={library.data.jellyfin}
-							reserved={
-								new Set(
-									library.data.matches.map((match) => match.jellyfinItemId),
-								)
-							}
-							selected={jellyfinId}
-							onSelect={(id) => {
-								setJellyfinId(id);
-								save.reset();
-							}}
-							disabled={
-								save.isPending || remove.isPending || library.isFetching
-							}
-						/>
-					</div>
-					{p && j && (
-						<div className="rounded-lg border border-slate-700 p-4 text-sm">
-							<p>
-								Selected pair: {p.title || "Untitled"} / {j.title || "Untitled"}
-							</p>
-							<p className="mt-2 text-slate-400">
-								Confirm these are the same {p.kind}. Metadata and filenames are
-								shown for your review. No automatic match is suggested.
-							</p>
-							{p.kind !== j.kind && (
-								<p role="alert" className="mt-2 text-red-300">
-									Select two movies or two episodes.
-								</p>
-							)}
-						</div>
-					)}
-					<button
-						type="button"
-						className={buttonClass}
-						disabled={
-							!p ||
-							!j ||
-							p.kind !== j.kind ||
-							save.isPending ||
-							remove.isPending ||
-							library.isFetching ||
-							library.isError
-						}
-						onClick={() => save.mutate()}
+		<>
+			<Section
+				id="choose-pair-heading"
+				title="Choose a pair"
+				actions={
+					<Button
+						variant="ghost"
+						disabled={library.isFetching || save.isPending}
+						onClick={() => {
+							setPlexId("");
+							setJellyfinId("");
+							save.reset();
+							void library.refetch();
+						}}
 					>
-						{save.isPending ? "Saving…" : "Save manual match"}
-					</button>
-					{save.error && (
-						<p role="alert" className="text-red-300">
-							{save.error.message}
-						</p>
-					)}
-					{save.isSuccess && (
-						<p role="status" className="text-cyan-200">
-							Manual match saved. Watched status has not changed.
-						</p>
-					)}
-					{remove.error && (
-						<p role="alert" className="text-red-300">
-							{remove.error.message}
-						</p>
-					)}
-					<h2 className="pt-5 text-xl font-semibold">
-						Saved matches ({library.data.matches.length})
-					</h2>
+						Reload libraries
+					</Button>
+				}
+			>
+				{library.isFetching && (
+					<p role="status" className="text-sm text-muted">
+						Reading both libraries…
+					</p>
+				)}
+				{library.error && (
+					<Notice tone="danger">{library.error.message}</Notice>
+				)}
+				{library.data && (
+					<>
+						<div className="grid gap-4 md:grid-cols-2">
+							<LibraryPicker
+								provider="plex"
+								items={library.data.plex}
+								reserved={
+									new Set(library.data.matches.map((match) => match.plexItemId))
+								}
+								selected={plexId}
+								onSelect={(id) => {
+									setPlexId(id);
+									save.reset();
+								}}
+								disabled={
+									save.isPending || remove.isPending || library.isFetching
+								}
+							/>
+							<LibraryPicker
+								provider="jellyfin"
+								items={library.data.jellyfin}
+								reserved={
+									new Set(
+										library.data.matches.map((match) => match.jellyfinItemId),
+									)
+								}
+								selected={jellyfinId}
+								onSelect={(id) => {
+									setJellyfinId(id);
+									save.reset();
+								}}
+								disabled={
+									save.isPending || remove.isPending || library.isFetching
+								}
+							/>
+						</div>
+						{p && j && (
+							<div className="space-y-2 rounded-md border border-line bg-raised p-4 text-sm">
+								<p>
+									Selected pair: {p.title || "Untitled"} /{" "}
+									{j.title || "Untitled"}
+								</p>
+								<p className="text-muted">
+									Confirm these are the same {p.kind}. Metadata and filenames
+									are shown for your review. No automatic match is suggested.
+								</p>
+								{p.kind !== j.kind && (
+									<Notice tone="danger">
+										Select two movies or two episodes.
+									</Notice>
+								)}
+							</div>
+						)}
+						<Button
+							variant="primary"
+							disabled={
+								!p ||
+								!j ||
+								p.kind !== j.kind ||
+								save.isPending ||
+								remove.isPending ||
+								library.isFetching ||
+								library.isError
+							}
+							onClick={() => save.mutate()}
+						>
+							{save.isPending ? "Saving…" : "Save manual match"}
+						</Button>
+						{save.error && <Notice tone="danger">{save.error.message}</Notice>}
+						{save.isSuccess && (
+							<Notice tone="success">
+								Manual match saved. Watched status has not changed.
+							</Notice>
+						)}
+						{remove.error && (
+							<Notice tone="danger">{remove.error.message}</Notice>
+						)}
+					</>
+				)}
+			</Section>
+			{library.data && (
+				<Section
+					id="saved-matches-heading"
+					title={`Saved matches (${library.data.matches.length})`}
+				>
 					{!library.data.matches.length && (
-						<p className="text-sm text-slate-400">
+						<p className="text-sm text-muted">
 							No manual matches saved for this pairing.
 						</p>
 					)}
@@ -271,54 +271,58 @@ function PairingMatches({ pairingId }: { pairingId: string }) {
 						return (
 							<div
 								key={match.plexItemId}
-								className="rounded-lg border border-slate-800 p-4"
+								className={`${cardClass} space-y-4 p-5`}
 							>
 								<div className="grid gap-4 md:grid-cols-2">
 									<div>
-										<p className="mb-2 text-xs text-cyan-300">Plex</p>
+										<p className="mb-2 text-xs font-medium text-muted">
+											<ProviderLabel provider="plex" />
+										</p>
 										{plex ? (
 											<ItemDetails item={plex} />
 										) : (
-											<p>Unavailable item ({match.plexItemId})</p>
+											<p className="text-sm">
+												Unavailable item ({match.plexItemId})
+											</p>
 										)}
 									</div>
 									<div>
-										<p className="mb-2 text-xs text-cyan-300">Jellyfin</p>
+										<p className="mb-2 text-xs font-medium text-muted">
+											<ProviderLabel provider="jellyfin" />
+										</p>
 										{jellyfin ? (
 											<ItemDetails item={jellyfin} />
 										) : (
-											<p>Unavailable item ({match.jellyfinItemId})</p>
+											<p className="text-sm">
+												Unavailable item ({match.jellyfinItemId})
+											</p>
 										)}
 									</div>
 								</div>
 								{pendingRemoval?.plexItemId === match.plexItemId ? (
-									<div className="mt-4 space-y-3 text-sm">
+									<div className="space-y-3 rounded-md border border-line bg-raised p-4 text-sm">
 										<p>
 											Remove this saved match? Watched status will stay as it
 											is. Future sync may match these items using metadata.
 										</p>
-										<div className="flex gap-4">
-											<button
-												type="button"
-												className={buttonClass}
+										<div className="flex flex-wrap gap-3">
+											<Button
+												variant="danger"
 												disabled={remove.isPending || save.isPending}
 												onClick={() => remove.mutate(match)}
 											>
 												Confirm removal
-											</button>
-											<button
-												type="button"
+											</Button>
+											<Button
 												disabled={remove.isPending}
 												onClick={() => setPendingRemoval(null)}
 											>
 												Cancel
-											</button>
+											</Button>
 										</div>
 									</div>
 								) : (
-									<button
-										type="button"
-										className="mt-4 text-sm text-cyan-300"
+									<Button
 										disabled={remove.isPending || save.isPending}
 										onClick={() => {
 											setPendingRemoval(match);
@@ -326,27 +330,27 @@ function PairingMatches({ pairingId }: { pairingId: string }) {
 										}}
 									>
 										Remove match
-									</button>
+									</Button>
 								)}
 								{(!plex || !jellyfin || plex.kind !== jellyfin.kind) && (
-									<p className="mt-3 text-sm text-amber-300">
+									<Notice tone="warning">
 										This match is unavailable and will be skipped during sync.
-									</p>
+									</Notice>
 								)}
 							</div>
 						);
 					})}
-					<p className="text-sm text-slate-400">
+					<p className="text-sm text-muted">
 						To sync watched status, return to{" "}
-						<Link to="/users" className="text-cyan-300 underline">
+						<Link to="/users" className={linkClass}>
 							Users
 						</Link>{" "}
 						and preview the changes. Sync marks an item watched when either side
 						is watched.
 					</p>
-				</>
+				</Section>
 			)}
-		</section>
+		</>
 	);
 }
 function showKey(item: MediaItem) {
@@ -360,7 +364,7 @@ function LibraryPicker({
 	onSelect,
 	disabled,
 }: {
-	provider: string;
+	provider: Provider;
 	items: MediaItem[];
 	reserved: Set<string>;
 	selected: string;
@@ -416,137 +420,132 @@ function LibraryPicker({
 		if (listRef.current) listRef.current.scrollTop = 0;
 	};
 	return (
-		<fieldset
-			disabled={disabled}
-			className="min-w-0 rounded-xl border border-slate-800 bg-slate-900/40 p-4"
-		>
-			<legend className="px-2 text-lg font-semibold">{provider}</legend>
-			<label className="block text-sm">
-				Content
-				<select
-					className={fieldClass}
-					value={kind}
-					onChange={(event) => {
-						setKind(event.target.value === "movie" ? "movie" : "episode");
-						resetPage();
-						onSelect("");
-					}}
-				>
-					<option value="episode">Episodes</option>
-					<option value="movie">Movies</option>
-				</select>
-			</label>
-			{kind === "episode" && (
-				<div className="mt-3 grid grid-cols-2 gap-3">
-					<label className="text-sm">
-						Show
-						<select
-							className={fieldClass}
-							value={show}
-							onChange={(event) => {
-								setShow(event.target.value);
-								setSeason("");
-								resetPage();
-								onSelect("");
-							}}
-						>
-							<option value="">All shows</option>
-							{[...shows]
-								.filter(([id]) => id)
-								.map(([id, title]) => (
-									<option key={id} value={id}>
-										{title}
+		<fieldset disabled={disabled} className={`${cardClass} min-w-0`}>
+			<legend className="float-left w-full border-b border-line px-5 py-4 text-sm font-semibold">
+				<ProviderLabel provider={provider} />
+			</legend>
+			<div className="clear-both space-y-3 p-5">
+				<Field label="Content">
+					<select
+						className={inputClass}
+						value={kind}
+						onChange={(event) => {
+							setKind(event.target.value === "movie" ? "movie" : "episode");
+							resetPage();
+							onSelect("");
+						}}
+					>
+						<option value="episode">Episodes</option>
+						<option value="movie">Movies</option>
+					</select>
+				</Field>
+				{kind === "episode" && (
+					<div className="grid grid-cols-2 gap-3">
+						<Field label="Show">
+							<select
+								className={inputClass}
+								value={show}
+								onChange={(event) => {
+									setShow(event.target.value);
+									setSeason("");
+									resetPage();
+									onSelect("");
+								}}
+							>
+								<option value="">All shows</option>
+								{[...shows]
+									.filter(([id]) => id)
+									.map(([id, title]) => (
+										<option key={id} value={id}>
+											{title}
+										</option>
+									))}
+							</select>
+						</Field>
+						<Field label="Season">
+							<select
+								className={inputClass}
+								value={season}
+								onChange={(event) => {
+									setSeason(event.target.value);
+									resetPage();
+									onSelect("");
+								}}
+							>
+								<option value="">All seasons</option>
+								{seasons.map((number) => (
+									<option key={number} value={number}>
+										Season {number}
 									</option>
 								))}
-						</select>
-					</label>
-					<label className="text-sm">
-						Season
-						<select
-							className={fieldClass}
-							value={season}
-							onChange={(event) => {
-								setSeason(event.target.value);
-								resetPage();
-								onSelect("");
-							}}
-						>
-							<option value="">All seasons</option>
-							{seasons.map((number) => (
-								<option key={number} value={number}>
-									Season {number}
-								</option>
-							))}
-						</select>
-					</label>
-				</div>
-			)}
-			<label className="mt-3 block text-sm">
-				Search title or path
-				<input
-					className={fieldClass}
-					value={search}
-					onChange={(event) => {
-						setSearch(event.target.value);
-						resetPage();
-						onSelect("");
-					}}
-				/>
-			</label>
-			<div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-				<p aria-live="polite" className="text-slate-400">
-					Showing {visible.length ? start + 1 : 0}–{start + pageItems.length} of{" "}
-					{visible.length}
-				</p>
-				<div className="flex gap-3">
-					<button
-						type="button"
-						className="text-cyan-300 disabled:opacity-40"
-						aria-label={`Previous ${provider} results page`}
-						disabled={currentPage === 0}
-						onClick={() => changePage(currentPage - 1)}
-					>
-						Previous
-					</button>
-					<button
-						type="button"
-						className="text-cyan-300 disabled:opacity-40"
-						aria-label={`Next ${provider} results page`}
-						disabled={currentPage === lastPage}
-						onClick={() => changePage(currentPage + 1)}
-					>
-						Next
-					</button>
-				</div>
-			</div>
-			<div ref={listRef} className="mt-4 max-h-96 space-y-2 overflow-y-auto">
-				{!visible.length && (
-					<p className="text-sm text-slate-400">No items found.</p>
+							</select>
+						</Field>
+					</div>
 				)}
-				{pageItems.map((item) => (
-					<label
-						key={item.id}
-						className={`block rounded-lg border p-3 ${selected === item.id ? "border-cyan-300 bg-cyan-300/5" : "border-slate-800"}`}
-					>
-						<div className="flex items-start gap-3">
-							<input
-								type="radio"
-								name={`${provider}-item`}
-								aria-label={`${item.title || "Untitled"} (${item.id})`}
-								checked={selected === item.id}
-								disabled={reserved.has(item.id)}
-								onChange={() => onSelect(item.id)}
-								className="mt-1"
-							/>
-							<div className="min-w-0">
-								<ItemDetails item={item} />
-								{reserved.has(item.id) && (
-									<p className="mt-2 text-xs text-cyan-300">Manually matched</p>
-								)}
+				<Field label="Search title or path">
+					<input
+						className={inputClass}
+						value={search}
+						onChange={(event) => {
+							setSearch(event.target.value);
+							resetPage();
+							onSelect("");
+						}}
+					/>
+				</Field>
+				<div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+					<p aria-live="polite" className="text-muted">
+						Showing {visible.length ? start + 1 : 0}–{start + pageItems.length}{" "}
+						of {visible.length}
+					</p>
+					<div className="flex gap-1">
+						<Button
+							variant="ghost"
+							aria-label={`Previous ${PROVIDER_LABELS[provider]} results page`}
+							disabled={currentPage === 0}
+							onClick={() => changePage(currentPage - 1)}
+						>
+							Previous
+						</Button>
+						<Button
+							variant="ghost"
+							aria-label={`Next ${PROVIDER_LABELS[provider]} results page`}
+							disabled={currentPage === lastPage}
+							onClick={() => changePage(currentPage + 1)}
+						>
+							Next
+						</Button>
+					</div>
+				</div>
+				<div ref={listRef} className="max-h-96 space-y-2 overflow-y-auto">
+					{!visible.length && (
+						<p className="text-sm text-muted">No items found.</p>
+					)}
+					{pageItems.map((item) => (
+						<label
+							key={item.id}
+							className={`block rounded-md border p-3 transition ${selected === item.id ? "border-ink bg-raised" : "border-line hover:border-line-strong"}`}
+						>
+							<div className="flex items-start gap-3">
+								<input
+									type="radio"
+									name={`${provider}-item`}
+									aria-label={`${item.title || "Untitled"} (${item.id})`}
+									checked={selected === item.id}
+									disabled={reserved.has(item.id)}
+									onChange={() => onSelect(item.id)}
+									className="mt-0.5 accent-ink"
+								/>
+								<div className="min-w-0">
+									<ItemDetails item={item} />
+									{reserved.has(item.id) && (
+										<p className="mt-2 text-xs text-faint">Manually matched</p>
+									)}
+								</div>
 							</div>
-						</div>
-					</label>
-				))}
+						</label>
+					))}
+				</div>
 			</div>
 		</fieldset>
 	);
@@ -556,30 +555,27 @@ function ItemDetails({ item }: { item: MediaItem }) {
 		<div className="min-w-0 text-sm">
 			<p className="font-medium">{item.title || "Untitled"}</p>
 			{item.kind === "episode" && (
-				<p className="mt-1 text-slate-400">
+				<p className="mt-1 text-muted">
 					{item.details?.showTitle ?? "Unknown show"} · Season{" "}
 					{item.details?.season ?? "unknown"} · Episode{" "}
 					{item.details?.episode ?? "unknown"}
 				</p>
 			)}
-			<p className="mt-1 text-slate-300">
+			<p className="mt-1 text-muted">
 				{item.watched ? "Watched" : "Unwatched"}
 			</p>
 			{item.details?.paths?.length ? (
 				item.details.paths.map((path) => (
-					<p
-						key={path}
-						className="mt-2 break-all font-mono text-xs text-slate-400"
-					>
+					<p key={path} className="mt-2 break-all font-mono text-xs text-faint">
 						{path}
 					</p>
 				))
 			) : (
-				<p className="mt-2 text-xs text-slate-400">
+				<p className="mt-2 text-xs text-faint">
 					File path not provided by server
 				</p>
 			)}
-			<p className="mt-2 text-xs text-slate-500">
+			<p className="mt-2 text-xs text-faint">
 				{item.ids.length
 					? item.ids.map((id) => `${id.provider}: ${id.value}`).join(" · ")
 					: "No metadata IDs provided"}
