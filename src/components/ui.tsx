@@ -7,7 +7,7 @@ import brandMarkUrl from "~/assets/brand-mark.svg?url";
 
 export type Provider = "plex" | "jellyfin";
 export type Tone = "neutral" | "success" | "warning" | "danger";
-type ButtonVariant = "primary" | "secondary" | "ghost";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 export const PROVIDER_LABELS = {
 	plex: "Plex",
@@ -34,6 +34,8 @@ const BUTTON_VARIANT_CLASSES = {
 	secondary:
 		"border border-line-strong bg-surface text-ink hover:border-faint hover:bg-raised",
 	ghost: "text-muted hover:bg-raised hover:text-ink",
+	danger:
+		"border border-red-400/40 bg-red-400/10 text-red-200 hover:border-red-400/60 hover:bg-red-400/20",
 } satisfies Record<ButtonVariant, string>;
 
 export const focusRing =
