@@ -1,18 +1,31 @@
 import { useState } from "react";
 import type { MediaService } from "~/backend/media/service";
 import {
-	buttonClass,
 	ErrorMessage,
 	type MediaState,
 	responseData,
-	secondaryClass,
 	useAction,
 } from "~/components/media/shared";
+import {
+	Button,
+	cardClass,
+	Notice,
+	Section,
+	StatusBadge,
+	Toggle,
+	type Tone,
+} from "~/components/ui";
 import { getApi } from "~/routes/api.$";
 
 const PREVIEW_VISIBLE_LIMIT = 100;
 const RECENT_RUN_LIMIT = 5;
 type Preview = Awaited<ReturnType<MediaService["preview"]>>;
+type RunStatus = MediaState["runs"][number]["status"];
+const RUN_STATUS_BADGES = {
+	running: { tone: "neutral", label: "In progress" },
+	completed: { tone: "success", label: "Completed" },
+	failed: { tone: "danger", label: "Needs attention" },
+} satisfies Record<RunStatus, { tone: Tone; label: string }>;
 
 export function Pairings({
 	state,
@@ -22,31 +35,25 @@ export function Pairings({
 	refresh: () => Promise<void>;
 }) {
 	return (
-		<section aria-labelledby="pairings-heading">
-			<h2 id="pairings-heading" className="text-xl font-semibold">
-				Pairings and sync
-			</h2>
-			<p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-				Pair the same person across both servers. If a movie or episode is
-				watched on either server, sync marks it watched on the other. Nothing is
-				marked unwatched.
-			</p>
+		<Section
+			id="pairings-heading"
+			title="Pairings and sync"
+			description="Pair the same person across both servers. If a movie or episode is watched on either server, sync marks it watched on the other. Nothing is marked unwatched."
+		>
 			{state.running && (
-				<p role="status" className="mt-4 text-sm text-cyan-200">
+				<Notice tone="neutral">
 					A sync is running. Results will update automatically.
-				</p>
+				</Notice>
 			)}
-			<div className="mt-5 space-y-5">
-				{state.pairings.map((pair) => (
-					<PairingCard
-						key={pair.id}
-						pair={pair}
-						state={state}
-						refresh={refresh}
-					/>
-				))}
-			</div>
-		</section>
+			{state.pairings.map((pair) => (
+				<PairingCard
+					key={pair.id}
+					pair={pair}
+					state={state}
+					refresh={refresh}
+				/>
+			))}
+		</Section>
 	);
 }
 
@@ -77,68 +84,59 @@ function PairingCard({
 		.filter((run) => run.pairingId === pair.id)
 		.slice(0, RECENT_RUN_LIMIT);
 	return (
-		<article className="rounded-2xl border border-slate-700/80 bg-slate-900/60 p-5 sm:p-6">
+		<article className={`${cardClass} space-y-4 p-5`}>
 			<div className="flex flex-wrap items-start justify-between gap-4">
-				<div>
-					<h3 className="text-lg font-semibold">
+				<div className="min-w-0">
+					<h3 className="font-semibold">
 						{plex?.name ?? "Plex profile"}
-						<span
-							aria-hidden="true"
-							className="mx-3 font-normal text-slate-500"
-						>
+						<span aria-hidden="true" className="mx-2 font-normal text-faint">
 							↔
 						</span>
 						<span className="sr-only"> paired with </span>
 						{jellyfin?.name ?? "Jellyfin profile"}
 					</h3>
-					<p className="mt-1 break-words text-xs text-slate-500">
+					<p className="mt-0.5 break-words text-xs text-faint">
 						Plex · {plex?.serverName} <span className="mx-2">/</span> Jellyfin ·{" "}
 						{jellyfin?.url}
 					</p>
 				</div>
-				<label className="flex cursor-pointer items-center gap-2 text-sm text-slate-300">
-					<input
-						type="checkbox"
-						className="size-4 accent-cyan-300"
-						checked={pair.automatic}
-						disabled={action.busy}
-						onChange={(event) => {
-							const enabled = event.target.checked;
-							void action.perform(async () => {
-								responseData(
-									await getApi()
-										.v1.media.pairings({ id: pair.id })
-										.automatic.post({ enabled }),
-								);
-								await refresh();
-							});
-						}}
-					/>
-					Sync automatically every hour
-				</label>
+				<Toggle
+					label="Sync automatically every hour"
+					checked={pair.automatic}
+					disabled={action.busy}
+					onChange={(event) => {
+						const enabled = event.target.checked;
+						void action.perform(async () => {
+							responseData(
+								await getApi()
+									.v1.media.pairings({ id: pair.id })
+									.automatic.post({ enabled }),
+							);
+							await refresh();
+						});
+					}}
+				/>
 			</div>
 			{unavailable && (
-				<p className="mt-3 text-sm text-amber-200">
+				<Notice tone="warning">
 					Sync is unavailable because one of these users is missing or no longer
 					grants access. Refresh the server connections to check again.
-				</p>
+				</Notice>
 			)}
 			{pair.automatic && (
-				<p className="mt-3 text-xs text-cyan-200">
+				<p className="text-xs text-faint">
 					Automatic sync is on while Continuarr is running. The first sync may
 					start shortly.
 				</p>
 			)}
-			<p className="mt-5 text-sm leading-6 text-slate-400">
+			<p className="text-sm text-muted">
 				Preview compares both libraries without making changes. Sync checks them
 				again before updating watched status. Saved manual matches take
 				priority. Other items need a unique matching movie or episode ID or they
 				are skipped.
 			</p>
-			<div className="mt-4 flex flex-wrap gap-3">
-				<button
-					type="button"
-					className={secondaryClass}
+			<div className="flex flex-wrap gap-3">
+				<Button
 					disabled={action.busy || state.running || unavailable}
 					onClick={() =>
 						void action.perform(async () => {
@@ -154,10 +152,9 @@ function PairingCard({
 					}
 				>
 					Preview changes
-				</button>
-				<button
-					type="button"
-					className={buttonClass}
+				</Button>
+				<Button
+					variant="primary"
 					disabled={action.busy || state.running || unavailable}
 					onClick={() =>
 						void action.perform(async () => {
@@ -172,31 +169,25 @@ function PairingCard({
 					}
 				>
 					Sync watched status now
-				</button>
+				</Button>
 			</div>
-			<div className="mt-4 space-y-3">
-				<ErrorMessage message={action.error} />
-				{action.busy && (
-					<p role="status" className="text-sm text-cyan-200">
-						Working… Large libraries may take a few minutes.
-					</p>
-				)}
-				{result && (
-					<p role="status" className="text-sm text-slate-200">
-						{result}
-					</p>
-				)}
-			</div>
+			<ErrorMessage message={action.error} />
+			{action.busy && (
+				<Notice tone="neutral">
+					Working… Large libraries may take a few minutes.
+				</Notice>
+			)}
+			{result && <Notice tone="neutral">{result}</Notice>}
 			{preview && (
 				<section
 					aria-label="Preview results"
-					className="mt-5 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60"
+					className="overflow-hidden rounded-md border border-line bg-canvas"
 				>
-					<div className="border-b border-slate-800 p-4">
-						<p className="font-medium text-cyan-200">
+					<div className="border-b border-line px-4 py-3">
+						<p className="text-sm font-medium">
 							{preview.writes.length} watched updates
 						</p>
-						<p className="mt-1 text-xs leading-5 text-slate-400">
+						<p className="mt-0.5 text-xs text-faint">
 							{preview.matched} matched pairs · {preview.unmatched} unmatched
 							items · {preview.ambiguous} ambiguous items skipped
 							{Boolean(preview.staleManualMatches) && (
@@ -209,11 +200,11 @@ function PairingCard({
 						</p>
 					</div>
 					{preview.writes.length === 0 ? (
-						<p className="p-4 text-sm text-slate-400">
+						<p className="px-4 py-3 text-sm text-muted">
 							No watched updates are needed for the items that match.
 						</p>
 					) : (
-						<ul className="max-h-80 divide-y divide-slate-800 overflow-y-auto">
+						<ul className="max-h-80 divide-y divide-line overflow-y-auto">
 							{preview.writes.slice(0, PREVIEW_VISIBLE_LIMIT).map((write) => (
 								<li
 									key={`${write.target}:${write.itemId}`}
@@ -222,7 +213,7 @@ function PairingCard({
 									<span className="min-w-0 break-words">
 										{write.title || "Untitled item"}
 									</span>
-									<span className="shrink-0 text-slate-400">
+									<span className="shrink-0 text-muted">
 										Mark watched in{" "}
 										{write.target === "plex" ? "Plex" : "Jellyfin"}
 									</span>
@@ -231,7 +222,7 @@ function PairingCard({
 						</ul>
 					)}
 					{preview.writes.length > PREVIEW_VISIBLE_LIMIT && (
-						<p className="border-t border-slate-800 p-4 text-xs text-slate-400">
+						<p className="border-t border-line px-4 py-3 text-xs text-faint">
 							Showing the first {PREVIEW_VISIBLE_LIMIT} of{" "}
 							{preview.writes.length} updates.
 						</p>
@@ -241,40 +232,26 @@ function PairingCard({
 			{recentRuns.length > 0 && (
 				<section
 					aria-label="Recent sync runs"
-					className="mt-6 border-t border-slate-800 pt-4"
+					className="border-t border-line pt-4"
 				>
-					<h4 className="text-xs font-medium uppercase tracking-wider text-slate-500">
+					<h4 className="text-xs font-medium uppercase tracking-wider text-faint">
 						Recent runs
 					</h4>
 					<ul className="mt-3 space-y-3">
 						{recentRuns.map((run) => (
 							<li key={run.id}>
-								<div className="flex flex-wrap justify-between gap-2 text-xs">
-									<span
-										className={
-											run.status === "failed"
-												? "text-red-300"
-												: run.status === "running"
-													? "text-cyan-200"
-													: "text-emerald-300"
-										}
-									>
-										{run.status === "failed"
-											? "Needs attention"
-											: run.status === "running"
-												? "In progress"
-												: "Completed"}
-									</span>
+								<div className="flex flex-wrap justify-between gap-2">
+									<StatusBadge tone={RUN_STATUS_BADGES[run.status].tone}>
+										{RUN_STATUS_BADGES[run.status].label}
+									</StatusBadge>
 									<time
 										dateTime={new Date(run.startedAt).toISOString()}
-										className="text-slate-500"
+										className="text-xs text-faint"
 									>
 										{new Date(run.startedAt).toLocaleString()}
 									</time>
 								</div>
-								<p className="mt-1 text-sm leading-6 text-slate-400">
-									{run.summary}
-								</p>
+								<p className="mt-1 text-sm text-muted">{run.summary}</p>
 							</li>
 						))}
 					</ul>
