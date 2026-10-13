@@ -1,25 +1,32 @@
 import { useState } from "react";
 import type { MediaService } from "~/backend/media/service";
 import {
-	buttonClass,
 	ErrorMessage,
 	type MediaState,
 	responseData,
-	secondaryClass,
 	useAction,
 } from "~/components/media/shared";
+import {
+	Button,
+	cardClass,
+	linkClass,
+	Notice,
+	Section,
+	StatusBadge,
+	Toggle,
+	type Tone,
+} from "~/components/ui";
 import { getApi } from "~/routes/api.$";
 
 const PREVIEW_VISIBLE_LIMIT = 100;
 const RECENT_RUN_LIMIT = 5;
 type Preview = Awaited<ReturnType<MediaService["preview"]>>;
 type SyncRun = MediaState["runs"][number];
-
-const RUN_PRESENTATION = {
-	completed: { label: "Completed", className: "text-emerald-300" },
-	running: { label: "In progress", className: "text-cyan-200" },
-	failed: { label: "Needs attention", className: "text-red-300" },
-} satisfies Record<SyncRun["status"], { label: string; className: string }>;
+const RUN_STATUS_BADGES = {
+	running: { tone: "neutral", label: "In progress" },
+	completed: { tone: "success", label: "Completed" },
+	failed: { tone: "danger", label: "Needs attention" },
+} satisfies Record<SyncRun["status"], { tone: Tone; label: string }>;
 
 const SKIP_REASONS = [
 	{
@@ -58,31 +65,25 @@ export function Pairings({
 	refresh: () => Promise<void>;
 }) {
 	return (
-		<section aria-labelledby="pairings-heading">
-			<h2 id="pairings-heading" className="text-xl font-semibold">
-				Pairings and sync
-			</h2>
-			<p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-				Pair the same person across both servers. If a movie or episode is
-				watched on either server, sync marks it watched on the other. Nothing is
-				marked unwatched.
-			</p>
+		<Section
+			id="pairings-heading"
+			title="Pairings and sync"
+			description="Pair the same person across both servers. If a movie or episode is watched on either server, sync marks it watched on the other. Nothing is marked unwatched."
+		>
 			{state.running && (
-				<p role="status" className="mt-4 text-sm text-cyan-200">
+				<Notice tone="neutral">
 					A sync is running. Results will update automatically.
-				</p>
+				</Notice>
 			)}
-			<div className="mt-5 space-y-5">
-				{state.pairings.map((pair) => (
-					<PairingCard
-						key={pair.id}
-						pair={pair}
-						state={state}
-						refresh={refresh}
-					/>
-				))}
-			</div>
-		</section>
+			{state.pairings.map((pair) => (
+				<PairingCard
+					key={pair.id}
+					pair={pair}
+					state={state}
+					refresh={refresh}
+				/>
+			))}
+		</Section>
 	);
 }
 
@@ -109,54 +110,47 @@ function PairingCard({
 		plex.accessStatus === "unavailable" ||
 		!jellyfin?.canSync;
 	return (
-		<article className="rounded-2xl border border-slate-700/80 bg-slate-900/60 p-5 sm:p-6">
+		<article className={`${cardClass} space-y-4 p-5`}>
 			<div className="flex flex-wrap items-start justify-between gap-4">
-				<div>
-					<h3 className="text-lg font-semibold">
+				<div className="min-w-0">
+					<h3 className="font-semibold">
 						{plex?.name ?? "Plex profile"}
-						<span
-							aria-hidden="true"
-							className="mx-3 font-normal text-slate-500"
-						>
+						<span aria-hidden="true" className="mx-2 font-normal text-faint">
 							↔
 						</span>
 						<span className="sr-only"> paired with </span>
 						{jellyfin?.name ?? "Jellyfin profile"}
 					</h3>
-					<p className="mt-1 break-words text-xs text-slate-500">
+					<p className="mt-0.5 break-words text-xs text-faint">
 						Plex · {plex?.serverName} <span className="mx-2">/</span> Jellyfin ·{" "}
 						{jellyfin?.url}
 					</p>
 				</div>
-				<label className="flex cursor-pointer items-center gap-2 text-sm text-slate-300">
-					<input
-						type="checkbox"
-						className="size-4 accent-cyan-300"
-						checked={pair.automatic}
-						disabled={action.busy}
-						onChange={(event) => {
-							const enabled = event.target.checked;
-							void action.perform(async () => {
-								responseData(
-									await getApi()
-										.v1.media.pairings({ id: pair.id })
-										.automatic.post({ enabled }),
-								);
-								await refresh();
-							});
-						}}
-					/>
-					Sync automatically every hour
-				</label>
+				<Toggle
+					label="Sync automatically every hour"
+					checked={pair.automatic}
+					disabled={action.busy}
+					onChange={(event) => {
+						const enabled = event.target.checked;
+						void action.perform(async () => {
+							responseData(
+								await getApi()
+									.v1.media.pairings({ id: pair.id })
+									.automatic.post({ enabled }),
+							);
+							await refresh();
+						});
+					}}
+				/>
 			</div>
 			{unavailable && (
-				<p className="mt-3 text-sm text-amber-200">
+				<Notice tone="warning">
 					Sync is unavailable because one of these users is missing or no longer
 					grants access. Refresh the server connections to check again.
-				</p>
+				</Notice>
 			)}
 			{pair.automatic && (
-				<p className="mt-3 text-xs text-cyan-200">
+				<p className="text-xs text-faint">
 					Automatic sync is on while Continuarr is running. The first sync may
 					start shortly.
 				</p>
@@ -166,16 +160,14 @@ function PairingCard({
 				runs={state.runs}
 				accessAvailable={!unavailable}
 			/>
-			<p className="mt-5 text-sm leading-6 text-slate-400">
+			<p className="text-sm text-muted">
 				Preview compares both libraries without making changes. Sync checks them
 				again before updating watched status. Saved manual matches take
 				priority. Other items need a unique matching movie or episode ID or they
 				are skipped.
 			</p>
-			<div className="mt-4 flex flex-wrap gap-3">
-				<button
-					type="button"
-					className={secondaryClass}
+			<div className="flex flex-wrap gap-3">
+				<Button
 					disabled={action.busy || state.running || unavailable}
 					onClick={() =>
 						void action.perform(async () => {
@@ -190,10 +182,9 @@ function PairingCard({
 					}
 				>
 					Preview changes
-				</button>
-				<button
-					type="button"
-					className={buttonClass}
+				</Button>
+				<Button
+					variant="primary"
 					disabled={action.busy || state.running || unavailable}
 					onClick={() =>
 						void action.perform(async () => {
@@ -206,16 +197,14 @@ function PairingCard({
 					}
 				>
 					Sync watched status now
-				</button>
+				</Button>
 			</div>
-			<div className="mt-4 space-y-3">
-				<ErrorMessage message={action.error} />
-				{action.busy && (
-					<p role="status" className="text-sm text-cyan-200">
-						Working… Large libraries may take a few minutes.
-					</p>
-				)}
-			</div>
+			<ErrorMessage message={action.error} />
+			{action.busy && (
+				<Notice tone="neutral">
+					Working… Large libraries may take a few minutes.
+				</Notice>
+			)}
 			{preview && <PreviewResults preview={preview} />}
 		</article>
 	);
@@ -236,9 +225,9 @@ export function SnapshotHistory({
 	return (
 		<section
 			aria-label="Snapshot sync history"
-			className="mt-5 rounded-xl border border-slate-800 bg-slate-950/60 p-4"
+			className="rounded-md border border-line bg-canvas p-4"
 		>
-			<h4 className="text-sm font-medium text-slate-200">
+			<h4 className="text-sm font-medium">
 				{latest ? "Latest available snapshot" : "No recent snapshot available"}
 			</h4>
 			{latest ? (
@@ -248,8 +237,8 @@ export function SnapshotHistory({
 						accessAvailable={accessAvailable}
 						announce
 					/>
-					<details className="mt-3 text-xs leading-5 text-slate-400">
-						<summary className="cursor-pointer text-slate-300">
+					<details className="mt-3 text-xs text-muted">
+						<summary className="cursor-pointer transition hover:text-ink">
 							Why items may be skipped
 						</summary>
 						<p className="mt-2">
@@ -261,9 +250,7 @@ export function SnapshotHistory({
 						<ul className="mt-2 space-y-2">
 							{SKIP_REASONS.map((reason) => (
 								<li key={reason.count}>
-									<span className="font-medium text-slate-300">
-										{reason.label}.{" "}
-									</span>
+									<span className="font-medium text-ink">{reason.label}. </span>
 									{reason.explanation}
 								</li>
 							))}
@@ -271,10 +258,10 @@ export function SnapshotHistory({
 					</details>
 				</>
 			) : (
-				<div className="mt-2 space-y-2 text-sm leading-6 text-slate-400">
+				<div className="mt-2 space-y-2 text-sm text-muted">
 					<p>No snapshot run is available in the recent history.</p>
 					{pair.lastAttemptAt > 0 && (
-						<p className="text-xs">
+						<p className="text-xs text-faint">
 							Last attempted{" "}
 							<time dateTime={new Date(pair.lastAttemptAt).toISOString()}>
 								{new Date(pair.lastAttemptAt).toLocaleString()}
@@ -289,8 +276,8 @@ export function SnapshotHistory({
 				</div>
 			)}
 			{earlier.length > 0 && (
-				<details className="mt-4 border-t border-slate-800 pt-3">
-					<summary className="cursor-pointer text-xs text-slate-300">
+				<details className="mt-4 border-t border-line pt-3">
+					<summary className="cursor-pointer text-xs text-muted transition hover:text-ink">
 						Earlier available runs
 					</summary>
 					<ul className="mt-3 space-y-4">
@@ -302,7 +289,7 @@ export function SnapshotHistory({
 					</ul>
 				</details>
 			)}
-			<p className="mt-3 text-xs text-slate-500">
+			<p className="mt-3 text-xs text-faint">
 				Only recent available runs are shown.
 			</p>
 		</section>
@@ -318,7 +305,7 @@ function SnapshotRun({
 	accessAvailable: boolean;
 	announce?: boolean;
 }) {
-	const presentation = RUN_PRESENTATION[run.status];
+	const badge = RUN_STATUS_BADGES[run.status];
 	const finished = run.status !== "running" && run.finishedAt !== null;
 	const timestamp =
 		run.status === "running"
@@ -326,27 +313,25 @@ function SnapshotRun({
 			: (run.finishedAt ?? run.startedAt);
 	return (
 		<div role={announce ? "status" : undefined} className="mt-2 space-y-2">
-			<div className="flex flex-wrap justify-between gap-2 text-xs">
-				<span className={presentation.className}>{presentation.label}</span>
-				<span className="text-slate-400">
+			<div className="flex flex-wrap justify-between gap-2">
+				<StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+				<span className="text-xs text-faint">
 					{finished ? "Finished" : "Started"}{" "}
 					<time dateTime={new Date(timestamp).toISOString()}>
 						{new Date(timestamp).toLocaleString()}
 					</time>
 				</span>
 			</div>
-			<p className="text-sm text-slate-200">
+			<p className="text-sm">
 				{run.status === "running"
 					? `${run.applied} watched updates applied; ${run.planned} planned so far`
 					: `${run.applied} of ${run.planned} planned watched updates applied`}
 			</p>
-			<p className="break-words text-sm leading-6 text-slate-400">
-				{run.summary}
-			</p>
+			<p className="break-words text-sm text-muted">{run.summary}</p>
 			{run.status === "failed" && (
-				<p className="text-sm leading-6 text-amber-200">
+				<p className="text-sm text-amber-100">
 					{accessAvailable ? "Check the " : "Restore access through the "}
-					<a href="/" className="underline hover:text-amber-100">
+					<a href="/" className={linkClass}>
 						server connections
 					</a>
 					, then retry sync. A retry reads current watched status before
@@ -361,22 +346,22 @@ export function PreviewResults({ preview }: { preview: Preview }) {
 	return (
 		<section
 			aria-label="Current preview"
-			className="mt-5 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60"
+			className="overflow-hidden rounded-md border border-line bg-canvas"
 		>
-			<div className="border-b border-slate-800 p-4">
-				<h4 className="font-medium text-cyan-200">Current preview</h4>
-				<p className="mt-2 text-sm text-slate-200">
+			<div className="border-b border-line px-4 py-3">
+				<h4 className="text-sm font-medium">Current preview</h4>
+				<p className="mt-1 text-sm">
 					{preview.writes.length} proposed watched updates
 				</p>
-				<p className="mt-1 text-xs leading-5 text-slate-400">
+				<p className="mt-0.5 text-xs text-faint">
 					Preview only. No changes have been applied. Sync reads both libraries
 					again.
 				</p>
-				<dl className="mt-4 grid gap-4 text-xs leading-5 sm:grid-cols-2">
+				<dl className="mt-4 grid gap-4 text-xs sm:grid-cols-2">
 					<div>
-						<dt className="font-medium text-slate-300">Matched pairs</dt>
-						<dd className="text-slate-400">
-							<p className="text-slate-200">{preview.matched} pairs</p>
+						<dt className="font-medium text-ink">Matched pairs</dt>
+						<dd className="text-muted">
+							<p className="text-ink">{preview.matched} pairs</p>
 							<p>
 								Items paired by a saved manual match or a unique matching movie
 								or episode ID.
@@ -385,9 +370,9 @@ export function PreviewResults({ preview }: { preview: Preview }) {
 					</div>
 					{SKIP_REASONS.map((reason) => (
 						<div key={reason.count}>
-							<dt className="font-medium text-slate-300">{reason.label}</dt>
-							<dd className="text-slate-400">
-								<p className="text-slate-200">
+							<dt className="font-medium text-ink">{reason.label}</dt>
+							<dd className="text-muted">
+								<p className="text-ink">
 									{preview[reason.count] ?? 0} {reason.unit}
 								</p>
 								<p>{reason.explanation}</p>
@@ -395,21 +380,21 @@ export function PreviewResults({ preview }: { preview: Preview }) {
 						</div>
 					))}
 				</dl>
-				<p className="mt-3 text-xs leading-5 text-slate-500">
+				<p className="mt-3 text-xs text-faint">
 					These counts describe this fresh comparison. Categories can overlap
 					and are not a total of skipped items. Review saved matches in{" "}
-					<a href="/matches" className="text-cyan-300 underline">
+					<a href="/matches" className={linkClass}>
 						Manual matching
 					</a>
 					.
 				</p>
 			</div>
 			{preview.writes.length === 0 ? (
-				<p className="p-4 text-sm text-slate-400">
+				<p className="px-4 py-3 text-sm text-muted">
 					No watched updates are needed for the items that match.
 				</p>
 			) : (
-				<ul className="max-h-80 divide-y divide-slate-800 overflow-y-auto">
+				<ul className="max-h-80 divide-y divide-line overflow-y-auto">
 					{preview.writes.slice(0, PREVIEW_VISIBLE_LIMIT).map((write) => (
 						<li
 							key={`${write.target}:${write.itemId}`}
@@ -418,7 +403,7 @@ export function PreviewResults({ preview }: { preview: Preview }) {
 							<span className="min-w-0 break-words">
 								{write.title || "Untitled item"}
 							</span>
-							<span className="shrink-0 text-slate-400">
+							<span className="shrink-0 text-muted">
 								Mark watched in {write.target === "plex" ? "Plex" : "Jellyfin"}
 							</span>
 						</li>
@@ -426,7 +411,7 @@ export function PreviewResults({ preview }: { preview: Preview }) {
 				</ul>
 			)}
 			{preview.writes.length > PREVIEW_VISIBLE_LIMIT && (
-				<p className="border-t border-slate-800 p-4 text-xs text-slate-400">
+				<p className="border-t border-line px-4 py-3 text-xs text-faint">
 					Showing the first {PREVIEW_VISIBLE_LIMIT} of {preview.writes.length}{" "}
 					updates.
 				</p>
