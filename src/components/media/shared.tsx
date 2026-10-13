@@ -93,9 +93,9 @@ export function SavedServer({
 		<li className="space-y-3 py-3 last:pb-0">
 			<div className="grid gap-1 text-sm">
 				<h4 className="font-medium">{server.name}</h4>
-				<p className="break-all text-faint">{server.url}</p>
+				<p className="break-all text-muted">{server.url}</p>
 				<StatusBadge tone={tone}>{status}</StatusBadge>
-				{detail && <p className="text-xs text-faint">{detail}</p>}
+				{detail && <p className="text-xs text-muted">{detail}</p>}
 			</div>
 			{children}
 		</li>
