@@ -27,6 +27,10 @@ Open <http://localhost:3000>. On a new installation, create the installation-own
 
 The API is available at <http://localhost:3000/api/v1/health>.
 
+## Self-host with Docker
+
+Use the separate [self-hosting guide](docs/self-hosting.md) to build and run the production image with PostgreSQL 18. It covers first setup, HTTPS proxies, upgrades, and paired database and credential-key backups. `compose.yaml` remains the local development database service.
+
 ## Connect your media accounts
 
 1. Sign in to Continuarr and choose **Sign in to Plex**. Authorize Continuarr in the Plex tab, then return to the dashboard. Continuarr checks for approval until the login expires.

@@ -1,0 +1,35 @@
+services:
+  app:
+    image: ${CONTINUARR_IMAGE:-continuarr:local}
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://continuarr:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.self-hosted}@postgres:5432/continuarr
+      DATA_DIRECTORY: /data
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN in .env.self-hosted}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    volumes:
+      - app-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+  postgres:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: continuarr
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.self-hosted}
+      POSTGRES_DB: continuarr
+    volumes:
+      - postgres18-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U continuarr -d continuarr"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  postgres18-data:
+  app-data:
