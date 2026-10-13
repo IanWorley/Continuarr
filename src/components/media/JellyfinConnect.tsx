@@ -1,13 +1,20 @@
 import { useState } from "react";
 import type { MediaService } from "~/backend/media/service";
 import {
-	buttonClass,
 	ErrorMessage,
-	fieldClass,
 	responseData,
-	secondaryClass,
+	SavedServer,
+	SavedServerList,
 	useAction,
 } from "~/components/media/shared";
+import {
+	Button,
+	Field,
+	inputClass,
+	Notice,
+	Panel,
+	ProviderLabel,
+} from "~/components/ui";
 import { getApi } from "~/routes/api.$";
 
 type Directory = Awaited<ReturnType<MediaService["jellyfinDirectory"]>>;
@@ -27,22 +34,13 @@ export function JellyfinConnect({
 	const [message, setMessage] = useState("");
 	const selected = servers.find((server) => server.id === selectedId);
 	return (
-		<section
-			aria-labelledby="jellyfin-heading"
-			className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6"
+		<Panel
+			id="jellyfin-heading"
+			title={<ProviderLabel provider="jellyfin" />}
+			description="Create a server API key in Jellyfin Dashboard → API Keys. One connection imports every user and stores the key encrypted."
 		>
-			<div className="mb-5 flex items-center gap-3">
-				<span className="size-2 rounded-full bg-violet-400" />
-				<h3 id="jellyfin-heading" className="text-lg font-semibold">
-					Jellyfin
-				</h3>
-			</div>
-			<p className="text-sm leading-6 text-slate-400">
-				Create a server API key in Jellyfin Dashboard → API Keys. One connection
-				imports every user and stores the key encrypted.
-			</p>
 			<form
-				className="mt-4 space-y-4"
+				className="space-y-4"
 				onSubmit={(event) => {
 					event.preventDefault();
 					void action.perform(async () => {
@@ -63,10 +61,9 @@ export function JellyfinConnect({
 				}}
 			>
 				{servers.length > 0 && (
-					<label className="block text-sm text-slate-300">
-						Connection
+					<Field label="Connection">
 						<select
-							className={fieldClass}
+							className={inputClass}
 							value={selectedId}
 							onChange={(event) => {
 								const id = event.target.value;
@@ -83,12 +80,11 @@ export function JellyfinConnect({
 								</option>
 							))}
 						</select>
-					</label>
+					</Field>
 				)}
-				<label className="block text-sm text-slate-300">
-					Server URL
+				<Field label="Server URL">
 					<input
-						className={fieldClass}
+						className={inputClass}
 						type="url"
 						value={url}
 						required
@@ -96,53 +92,39 @@ export function JellyfinConnect({
 						placeholder="http://jellyfin.local:8096"
 						onChange={(event) => setUrl(event.target.value)}
 					/>
-				</label>
-				<label className="block text-sm text-slate-300">
-					API key
+				</Field>
+				<Field label="API key">
 					<input
-						className={fieldClass}
+						className={inputClass}
 						type="password"
 						value={apiKey}
 						required
 						autoComplete="off"
 						onChange={(event) => setApiKey(event.target.value)}
 					/>
-				</label>
-				<button type="submit" className={buttonClass} disabled={action.busy}>
+				</Field>
+				<Button type="submit" variant="primary" disabled={action.busy}>
 					{action.busy
 						? "Importing…"
 						: selected
 							? "Replace key and import users"
 							: "Connect and import users"}
-				</button>
+				</Button>
 				<ErrorMessage message={action.error} />
-				{message && (
-					<p role="status" className="text-sm text-emerald-300">
-						{message}
-					</p>
-				)}
+				{message && <Notice tone="success">{message}</Notice>}
 			</form>
 			{servers.length > 0 && (
-				<div className="mt-4 border-t border-slate-800 pt-4">
-					<h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
-						Saved servers
-					</h4>
-					<div className="space-y-4">
-						{servers.map((server) => (
-							<JellyfinServerCard
-								key={server.id}
-								server={server}
-								refresh={refresh}
-							/>
-						))}
-					</div>
-				</div>
+				<SavedServerList>
+					{servers.map((server) => (
+						<JellyfinServer key={server.id} server={server} refresh={refresh} />
+					))}
+				</SavedServerList>
 			)}
-		</section>
+		</Panel>
 	);
 }
 
-function JellyfinServerCard({
+function JellyfinServer({
 	server,
 	refresh,
 }: {
@@ -151,42 +133,39 @@ function JellyfinServerCard({
 }) {
 	const action = useAction();
 	return (
-		<article className="border-b border-slate-800 pb-4 last:border-0 last:pb-0">
-			<h5 className="text-sm font-medium text-slate-200">{server.name}</h5>
-			<p className="mt-1 break-all text-sm text-slate-400">{server.url}</p>
-			<p className="mt-2 text-sm text-slate-300">
-				{server.lastError
-					? `Last refresh failed: ${server.lastError}`
+		<SavedServer
+			server={server}
+			status={
+				server.lastError
+					? "Last refresh failed"
 					: server.lastSuccessAt
 						? `Last refreshed ${new Date(server.lastSuccessAt).toLocaleString()}`
-						: "Waiting for first refresh"}
-			</p>
-			<p className="mt-1 text-xs text-slate-500">
-				{server.lastAttemptAt
+						: "Waiting for first refresh"
+			}
+			detail={
+				server.lastAttemptAt
 					? `Last attempt ${new Date(server.lastAttemptAt).toLocaleString()}`
-					: "No attempt yet"}
-			</p>
-			<div className="mt-4 flex flex-wrap items-end gap-3">
-				<button
-					type="button"
-					className={secondaryClass}
-					disabled={action.busy}
-					onClick={() =>
-						void action.perform(async () => {
-							const result = responseData(
-								await getApi()
-									.v1.media.jellyfin({ id: server.id })
-									.refresh.post(),
-							);
-							if (result.kind === "failed") throw new Error(result.message);
-							await refresh();
-						})
-					}
-				>
-					Refresh now
-				</button>
-			</div>
+					: "No attempt yet"
+			}
+		>
+			<ErrorMessage message={server.lastError ?? ""} />
+			<Button
+				disabled={action.busy}
+				onClick={() =>
+					void action.perform(async () => {
+						const result = responseData(
+							await getApi()
+								.v1.media.jellyfin({ id: server.id })
+								.refresh.post(),
+						);
+						if (result.kind === "failed") throw new Error(result.message);
+						await refresh();
+					})
+				}
+			>
+				Refresh now
+			</Button>
 			<ErrorMessage message={action.error} />
-		</article>
+		</SavedServer>
 	);
 }
