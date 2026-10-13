@@ -209,10 +209,10 @@ export function StatusBadge({
 	children: ReactNode;
 }) {
 	return (
-		<span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted">
+		<span className="inline-flex items-center gap-1.5 text-xs text-muted">
 			<span
 				aria-hidden="true"
-				className={`size-1.5 rounded-full ${TONE_DOT_CLASSES[tone]}`}
+				className={`size-1.5 shrink-0 rounded-full ${TONE_DOT_CLASSES[tone]}`}
 			/>
 			{children}
 		</span>
