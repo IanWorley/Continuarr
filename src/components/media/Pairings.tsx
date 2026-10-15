@@ -9,6 +9,7 @@ import {
 import {
 	Button,
 	cardClass,
+	linkClass,
 	Notice,
 	Section,
 	StatusBadge,
@@ -20,12 +21,41 @@ import { getApi } from "~/routes/api.$";
 const PREVIEW_VISIBLE_LIMIT = 100;
 const RECENT_RUN_LIMIT = 5;
 type Preview = Awaited<ReturnType<MediaService["preview"]>>;
-type RunStatus = MediaState["runs"][number]["status"];
+type SyncRun = MediaState["runs"][number];
 const RUN_STATUS_BADGES = {
 	running: { tone: "neutral", label: "In progress" },
 	completed: { tone: "success", label: "Completed" },
 	failed: { tone: "danger", label: "Needs attention" },
-} satisfies Record<RunStatus, { tone: Tone; label: string }>;
+} satisfies Record<SyncRun["status"], { tone: Tone; label: string }>;
+
+const SKIP_REASONS = [
+	{
+		count: "unmatched",
+		label: "Unmatched items",
+		unit: "items",
+		explanation:
+			"No usable matching counterpart was found. Check provider IDs or add a manual match in Manual matching.",
+	},
+	{
+		count: "ambiguous",
+		label: "Ambiguous or conflicting metadata",
+		unit: "items",
+		explanation:
+			"Multiple candidates or conflicting identifiers prevent a safe automatic match. Review provider IDs or choose a manual match in Manual matching.",
+	},
+	{
+		count: "staleManualMatches",
+		label: "Unavailable manual matches",
+		unit: "saved matches",
+		explanation:
+			"Saved matches refer to missing or incompatible items. Review saved matches in Manual matching. Available items from these matches may also appear in the unmatched count.",
+	},
+] satisfies {
+	count: keyof Pick<Preview, "unmatched" | "ambiguous" | "staleManualMatches">;
+	label: string;
+	unit: string;
+	explanation: string;
+}[];
 
 export function Pairings({
 	state,
@@ -68,7 +98,6 @@ function PairingCard({
 }) {
 	const action = useAction();
 	const [preview, setPreview] = useState<Preview | null>(null);
-	const [result, setResult] = useState("");
 	const plex = state.plexProfiles.find(
 		(profile) => profile.id === pair.plexProfileId,
 	);
@@ -80,9 +109,6 @@ function PairingCard({
 		plex.presence === "missing" ||
 		plex.accessStatus === "unavailable" ||
 		!jellyfin?.canSync;
-	const recentRuns = state.runs
-		.filter((run) => run.pairingId === pair.id)
-		.slice(0, RECENT_RUN_LIMIT);
 	return (
 		<article className={`${cardClass} space-y-4 p-5`}>
 			<div className="flex flex-wrap items-start justify-between gap-4">
@@ -129,6 +155,11 @@ function PairingCard({
 					start shortly.
 				</p>
 			)}
+			<SnapshotHistory
+				pair={pair}
+				runs={state.runs}
+				accessAvailable={!unavailable}
+			/>
 			<p className="text-sm text-muted">
 				Preview compares both libraries without making changes. Sync checks them
 				again before updating watched status. Saved manual matches take
@@ -140,7 +171,6 @@ function PairingCard({
 					disabled={action.busy || state.running || unavailable}
 					onClick={() =>
 						void action.perform(async () => {
-							setResult("");
 							setPreview(
 								responseData(
 									await getApi()
@@ -158,11 +188,9 @@ function PairingCard({
 					disabled={action.busy || state.running || unavailable}
 					onClick={() =>
 						void action.perform(async () => {
-							setResult("");
-							const run = responseData(
+							responseData(
 								await getApi().v1.media.pairings({ id: pair.id }).run.post(),
 							);
-							setResult(run.summary);
 							setPreview(null);
 							await refresh();
 						})
@@ -177,86 +205,217 @@ function PairingCard({
 					Working… Large libraries may take a few minutes.
 				</Notice>
 			)}
-			{result && <Notice tone="neutral">{result}</Notice>}
-			{preview && (
-				<section
-					aria-label="Preview results"
-					className="overflow-hidden rounded-md border border-line bg-canvas"
-				>
-					<div className="border-b border-line px-4 py-3">
-						<p className="text-sm font-medium">
-							{preview.writes.length} watched updates
+			{preview && <PreviewResults preview={preview} />}
+		</article>
+	);
+}
+
+export function SnapshotHistory({
+	pair,
+	runs,
+	accessAvailable,
+}: {
+	pair: Pick<MediaState["pairings"][number], "id" | "lastAttemptAt">;
+	runs: MediaState["runs"];
+	accessAvailable: boolean;
+}) {
+	const [latest, ...earlier] = runs
+		.filter((run) => run.pairingId === pair.id)
+		.slice(0, RECENT_RUN_LIMIT);
+	return (
+		<section
+			aria-label="Snapshot sync history"
+			className="rounded-md border border-line bg-canvas p-4"
+		>
+			<h4 className="text-sm font-medium">
+				{latest ? "Latest available snapshot" : "No recent snapshot available"}
+			</h4>
+			{latest ? (
+				<>
+					<SnapshotRun
+						run={latest}
+						accessAvailable={accessAvailable}
+						announce
+					/>
+					<details className="mt-3 text-xs text-muted">
+						<summary className="cursor-pointer transition hover:text-ink">
+							Why items may be skipped
+						</summary>
+						<p className="mt-2">
+							Any recorded skip counts appear in the run summary. Individual
+							skipped-item records are not available here. Preview reads the
+							current libraries again. These explanations describe categories,
+							not the items skipped in this run.
 						</p>
-						<p className="mt-0.5 text-xs text-faint">
-							{preview.matched} matched pairs · {preview.unmatched} unmatched
-							items · {preview.ambiguous} ambiguous items skipped
-							{Boolean(preview.staleManualMatches) && (
-								<>
-									{" "}
-									· {preview.staleManualMatches} unavailable manual matches
-									skipped
-								</>
-							)}
-						</p>
-					</div>
-					{preview.writes.length === 0 ? (
-						<p className="px-4 py-3 text-sm text-muted">
-							No watched updates are needed for the items that match.
-						</p>
-					) : (
-						<ul className="max-h-80 divide-y divide-line overflow-y-auto">
-							{preview.writes.slice(0, PREVIEW_VISIBLE_LIMIT).map((write) => (
-								<li
-									key={`${write.target}:${write.itemId}`}
-									className="flex flex-col justify-between gap-1 px-4 py-3 text-sm sm:flex-row sm:gap-4"
-								>
-									<span className="min-w-0 break-words">
-										{write.title || "Untitled item"}
-									</span>
-									<span className="shrink-0 text-muted">
-										Mark watched in{" "}
-										{write.target === "plex" ? "Plex" : "Jellyfin"}
-									</span>
+						<ul className="mt-2 space-y-2">
+							{SKIP_REASONS.map((reason) => (
+								<li key={reason.count}>
+									<span className="font-medium text-ink">{reason.label}. </span>
+									{reason.explanation}
 								</li>
 							))}
 						</ul>
-					)}
-					{preview.writes.length > PREVIEW_VISIBLE_LIMIT && (
-						<p className="border-t border-line px-4 py-3 text-xs text-faint">
-							Showing the first {PREVIEW_VISIBLE_LIMIT} of{" "}
-							{preview.writes.length} updates.
+					</details>
+				</>
+			) : (
+				<div className="mt-2 space-y-2 text-sm text-muted">
+					<p>No snapshot run is available in the recent history.</p>
+					{pair.lastAttemptAt > 0 && (
+						<p className="text-xs text-faint">
+							Last attempted{" "}
+							<time dateTime={new Date(pair.lastAttemptAt).toISOString()}>
+								{new Date(pair.lastAttemptAt).toLocaleString()}
+							</time>
 						</p>
 					)}
-				</section>
+					<p>
+						{accessAvailable
+							? "Preview checks the current libraries without saving a run. Sync saves its result here."
+							: "Refresh the server connections to restore access before previewing or syncing."}
+					</p>
+				</div>
 			)}
-			{recentRuns.length > 0 && (
-				<section
-					aria-label="Recent sync runs"
-					className="border-t border-line pt-4"
-				>
-					<h4 className="text-xs font-medium uppercase tracking-wider text-faint">
-						Recent runs
-					</h4>
-					<ul className="mt-3 space-y-3">
-						{recentRuns.map((run) => (
+			{earlier.length > 0 && (
+				<details className="mt-4 border-t border-line pt-3">
+					<summary className="cursor-pointer text-xs text-muted transition hover:text-ink">
+						Earlier available runs
+					</summary>
+					<ul className="mt-3 space-y-4">
+						{earlier.map((run) => (
 							<li key={run.id}>
-								<div className="flex flex-wrap justify-between gap-2">
-									<StatusBadge tone={RUN_STATUS_BADGES[run.status].tone}>
-										{RUN_STATUS_BADGES[run.status].label}
-									</StatusBadge>
-									<time
-										dateTime={new Date(run.startedAt).toISOString()}
-										className="text-xs text-faint"
-									>
-										{new Date(run.startedAt).toLocaleString()}
-									</time>
-								</div>
-								<p className="mt-1 text-sm text-muted">{run.summary}</p>
+								<SnapshotRun run={run} accessAvailable={accessAvailable} />
 							</li>
 						))}
 					</ul>
-				</section>
+				</details>
 			)}
-		</article>
+			<p className="mt-3 text-xs text-faint">
+				Only recent available runs are shown.
+			</p>
+		</section>
+	);
+}
+
+function SnapshotRun({
+	run,
+	accessAvailable,
+	announce = false,
+}: {
+	run: SyncRun;
+	accessAvailable: boolean;
+	announce?: boolean;
+}) {
+	const badge = RUN_STATUS_BADGES[run.status];
+	const finished = run.status !== "running" && run.finishedAt !== null;
+	const timestamp =
+		run.status === "running"
+			? run.startedAt
+			: (run.finishedAt ?? run.startedAt);
+	return (
+		<div role={announce ? "status" : undefined} className="mt-2 space-y-2">
+			<div className="flex flex-wrap justify-between gap-2">
+				<StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+				<span className="text-xs text-faint">
+					{finished ? "Finished" : "Started"}{" "}
+					<time dateTime={new Date(timestamp).toISOString()}>
+						{new Date(timestamp).toLocaleString()}
+					</time>
+				</span>
+			</div>
+			<p className="text-sm">
+				{run.status === "running"
+					? `${run.applied} watched updates applied; ${run.planned} planned so far`
+					: `${run.applied} of ${run.planned} planned watched updates applied`}
+			</p>
+			<p className="break-words text-sm text-muted">{run.summary}</p>
+			{run.status === "failed" && (
+				<p className="text-sm text-amber-100">
+					{accessAvailable ? "Check the " : "Restore access through the "}
+					<a href="/" className={linkClass}>
+						server connections
+					</a>
+					, then retry sync. A retry reads current watched status before
+					applying updates.
+				</p>
+			)}
+		</div>
+	);
+}
+
+export function PreviewResults({ preview }: { preview: Preview }) {
+	return (
+		<section
+			aria-label="Current preview"
+			className="overflow-hidden rounded-md border border-line bg-canvas"
+		>
+			<div className="border-b border-line px-4 py-3">
+				<h4 className="text-sm font-medium">Current preview</h4>
+				<p className="mt-1 text-sm">
+					{preview.writes.length} proposed watched updates
+				</p>
+				<p className="mt-0.5 text-xs text-faint">
+					Preview only. No changes have been applied. Sync reads both libraries
+					again.
+				</p>
+				<dl className="mt-4 grid gap-4 text-xs sm:grid-cols-2">
+					<div>
+						<dt className="font-medium text-ink">Matched pairs</dt>
+						<dd className="text-muted">
+							<p className="text-ink">{preview.matched} pairs</p>
+							<p>
+								Items paired by a saved manual match or a unique matching movie
+								or episode ID.
+							</p>
+						</dd>
+					</div>
+					{SKIP_REASONS.map((reason) => (
+						<div key={reason.count}>
+							<dt className="font-medium text-ink">{reason.label}</dt>
+							<dd className="text-muted">
+								<p className="text-ink">
+									{preview[reason.count] ?? 0} {reason.unit}
+								</p>
+								<p>{reason.explanation}</p>
+							</dd>
+						</div>
+					))}
+				</dl>
+				<p className="mt-3 text-xs text-faint">
+					These counts describe this fresh comparison. Categories can overlap
+					and are not a total of skipped items. Review saved matches in{" "}
+					<a href="/matches" className={linkClass}>
+						Manual matching
+					</a>
+					.
+				</p>
+			</div>
+			{preview.writes.length === 0 ? (
+				<p className="px-4 py-3 text-sm text-muted">
+					No watched updates are needed for the items that match.
+				</p>
+			) : (
+				<ul className="max-h-80 divide-y divide-line overflow-y-auto">
+					{preview.writes.slice(0, PREVIEW_VISIBLE_LIMIT).map((write) => (
+						<li
+							key={`${write.target}:${write.itemId}`}
+							className="flex flex-col justify-between gap-1 px-4 py-3 text-sm sm:flex-row sm:gap-4"
+						>
+							<span className="min-w-0 break-words">
+								{write.title || "Untitled item"}
+							</span>
+							<span className="shrink-0 text-muted">
+								Mark watched in {write.target === "plex" ? "Plex" : "Jellyfin"}
+							</span>
+						</li>
+					))}
+				</ul>
+			)}
+			{preview.writes.length > PREVIEW_VISIBLE_LIMIT && (
+				<p className="border-t border-line px-4 py-3 text-xs text-faint">
+					Showing the first {PREVIEW_VISIBLE_LIMIT} of {preview.writes.length}{" "}
+					updates.
+				</p>
+			)}
+		</section>
 	);
 }
