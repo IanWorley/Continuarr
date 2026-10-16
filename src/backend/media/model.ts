@@ -89,7 +89,7 @@ export type PlexPin = {
 	expiresIn: number;
 	authorizationUrl: string;
 };
-/** `stale` means the item's position moved since the scan, so nothing was written. */
+/** `stale` skips the requested position change; a watched mark may already have landed. */
 export type WriteResult = "applied" | "stale";
 /**
  * Two resume positions match when both are absent, or both are present and

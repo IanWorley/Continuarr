@@ -6,7 +6,7 @@ import { createApi } from "~/backend/api";
 import { createSecretStorage, Secret } from "~/backend/secrets/storage";
 import * as schema from "~/db/schema";
 import { setupTestDatabase } from "~/db/test-database";
-import { NO_POSITION_MS, POSITION_TOLERANCE_MS } from "./constants";
+import { NO_POSITION_MS } from "./constants";
 import type { ProviderIds } from "./episode";
 import {
 	isStale,
@@ -15,6 +15,7 @@ import {
 	MediaError,
 	type MediaItem,
 	type PlexProvider,
+	samePosition,
 	type WatchedWriteOptions,
 	type WriteResult,
 } from "./model";
@@ -23,6 +24,10 @@ import { createMediaRepository } from "./repo";
 import { createMediaService } from "./service";
 
 const createTestDatabase = setupTestDatabase();
+const RESTORE_POSITION_CASES = [
+	{ label: "short", positionMs: 3_000 },
+	{ label: "long", positionMs: 30_000 },
+] as const;
 const movie = (id: string, watched: boolean): MediaItem => ({
 	id,
 	kind: "movie",
@@ -99,8 +104,7 @@ async function setup(now: () => number = Date.now) {
 			replaces: number | null,
 		): Promise<WriteResult> => {
 			const current = currentPosition(side, id);
-			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
-				return "applied";
+			if (samePosition(current, positionMs)) return "applied";
 			if (isStale(current, replaces, positionMs)) return "stale";
 			state.writes.push(`${side}:${id} resume ${positionMs}`);
 			writePosition(side, id, positionMs);
@@ -1418,51 +1422,53 @@ describe("media account and sync service", () => {
 			history: { positionMs: ADVANCED_POSITION_MS },
 		});
 	});
-	for (const marked of ["jellyfin", "plex"] as const) {
-		it(`resumes a ${marked} restore that failed after the mark changed its timestamps`, async () => {
-			const { service, state, pair } = await setup();
-			const pairing = await pair();
-			const watchedSide = marked === "plex" ? "jellyfin" : "plex";
-			state[watchedSide] = [
-				playedMovie(`${watchedSide[0]}1`, "1", "Arrival", true, {
-					lastPlayedAt: 200000,
-					positionMs: 30000,
-				}),
-			];
-			state[marked] = [
-				playedMovie(`${marked[0]}1`, "1", "Arrival", false, {
-					lastPlayedAt: 100000,
-					positionMs: 10000,
-				}),
-			];
-			state.failRestore = marked;
-			expect(await service.run(pairing.id)).toMatchObject({
-				status: "failed",
-				planned: 1,
-				applied: 0,
-				summary:
-					"0 of 1 updates completed. Restore failed. A retry reads both libraries again first.",
+	for (const restoreCase of RESTORE_POSITION_CASES)
+		for (const marked of ["jellyfin", "plex"] as const) {
+			it(`resumes a ${restoreCase.label} ${marked} restore that failed after the mark changed its timestamps`, async () => {
+				const { service, state, pair } = await setup();
+				const pairing = await pair();
+				const watchedSide = marked === "plex" ? "jellyfin" : "plex";
+				state[watchedSide] = [
+					playedMovie(`${watchedSide[0]}1`, "1", "Arrival", true, {
+						lastPlayedAt: 200000,
+						positionMs: restoreCase.positionMs,
+					}),
+				];
+				state[marked] = [
+					playedMovie(`${marked[0]}1`, "1", "Arrival", false, {
+						lastPlayedAt: 100000,
+						positionMs: 10000,
+					}),
+				];
+				state.failRestore = marked;
+				expect(await service.run(pairing.id)).toMatchObject({
+					status: "failed",
+					planned: 1,
+					applied: 0,
+					summary:
+						"0 of 1 updates completed. Restore failed. A retry reads both libraries again first.",
+				});
+				expect(state[marked][0]).toMatchObject({
+					watched: true,
+					history: { positionMs: null },
+				});
+				expect(
+					planWatchedUnion({ plex: state.plex, jellyfin: state.jellyfin })
+						.writes,
+				).toEqual([]);
+				state.failRestore = null;
+				expect(await service.run(pairing.id)).toMatchObject({
+					status: "completed",
+					planned: 1,
+					applied: 1,
+				});
+				expect(state[marked][0]).toMatchObject({
+					watched: true,
+					history: { positionMs: restoreCase.positionMs },
+				});
+				expect(await service.run(pairing.id)).toMatchObject({ planned: 0 });
 			});
-			expect(state[marked][0]).toMatchObject({
-				watched: true,
-				history: { positionMs: null },
-			});
-			expect(
-				planWatchedUnion({ plex: state.plex, jellyfin: state.jellyfin }).writes,
-			).toEqual([]);
-			state.failRestore = null;
-			expect(await service.run(pairing.id)).toMatchObject({
-				status: "completed",
-				planned: 1,
-				applied: 1,
-			});
-			expect(state[marked][0]).toMatchObject({
-				watched: true,
-				history: { positionMs: 30000 },
-			});
-			expect(await service.run(pairing.id)).toMatchObject({ planned: 0 });
-		});
-	}
+		}
 	it("keeps a Plex-marked conflict stable after the scrobble moves its date", async () => {
 		const { service, state, pair } = await setup();
 		const pairing = await pair();
