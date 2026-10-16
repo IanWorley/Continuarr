@@ -26,6 +26,29 @@ const movie = (id: string, watched: boolean): MediaItem => ({
 	watched,
 	history: { lastPlayedAt: null, positionMs: null },
 });
+const playedMovie = (
+	id: string,
+	tmdb: string,
+	title: string,
+	watched: boolean,
+	history: MediaItem["history"],
+): MediaItem => ({
+	...movie(id, watched),
+	title,
+	ids: [{ provider: "tmdb", value: tmdb }],
+	history,
+});
+function withPosition(
+	items: MediaItem[],
+	id: string,
+	positionMs: number,
+): MediaItem[] {
+	return items.map((item) =>
+		item.id === id
+			? { ...item, history: { ...item.history, positionMs } }
+			: item,
+	);
+}
 async function setup(now: () => number = Date.now) {
 	const { db, client } = await createTestDatabase();
 	const repo = createMediaRepository(() => db);
@@ -89,7 +112,10 @@ async function setup(now: () => number = Date.now) {
 				item.id === id ? { ...item, watched: true } : item,
 			);
 		},
-		setPosition: async () => {},
+		setPosition: async (_access, id, positionMs) => {
+			state.writes.push(`plex:${id} resume ${positionMs}`);
+			state.plex = withPosition(state.plex, id, positionMs);
+		},
 	};
 	const jellyfin: JellyfinProvider = {
 		authenticate: async () => {
@@ -114,15 +140,22 @@ async function setup(now: () => number = Date.now) {
 			if (state.failRead) throw new MediaError("Library read failed.", 502);
 			return state.jellyfin;
 		},
-		markWatched: async (access, id) => {
+		markWatched: async (access, id, playedAt) => {
 			expect(access.token.reveal()).toBe("j-token");
 			if (state.failWrite) throw new MediaError("Write failed.", 502);
-			state.writes.push(`jellyfin:${id}`);
+			state.writes.push(
+				playedAt === undefined
+					? `jellyfin:${id}`
+					: `jellyfin:${id} played ${playedAt}`,
+			);
 			state.jellyfin = state.jellyfin.map((item) =>
 				item.id === id ? { ...item, watched: true } : item,
 			);
 		},
-		setPosition: async () => {},
+		setPosition: async (_access, id, positionMs) => {
+			state.writes.push(`jellyfin:${id} resume ${positionMs}`);
+			state.jellyfin = withPosition(state.jellyfin, id, positionMs);
+		},
 	};
 	const service = createMediaService({ repo, secrets, plex, jellyfin, now });
 	async function pair() {
@@ -1066,7 +1099,7 @@ describe("media account and sync service", () => {
 			status: "completed",
 			applied: 2,
 			summary:
-				"2 updates completed. 2 matched pairs; 1 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. 0 unavailable show matches skipped. Of the skipped episodes, 1 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
+				"2 updates completed (2 watched, 0 positions). 2 matched pairs; 1 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. 0 unavailable show matches skipped. 0 position conflicts skipped. Of the skipped episodes, 1 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
 		});
 		expect(await service.run(pairing.id)).toMatchObject({
 			status: "completed",
@@ -1075,41 +1108,117 @@ describe("media account and sync service", () => {
 		});
 		expect(state.writes).toEqual(["jellyfin:j1", "plex:p2"]);
 	});
-	it("keeps position-only changes out of preview and recorded runs", async () => {
+	it("copies the later resume position in both directions and skips a conflict", async () => {
 		const { service, state, pair } = await setup();
 		const pairing = await pair();
 		state.plex = [
-			{
-				...movie("p1", false),
-				history: { lastPlayedAt: 160001, positionMs: 30000 },
-			},
+			playedMovie("p1", "1", "Arrival", false, {
+				lastPlayedAt: 200000,
+				positionMs: 30000,
+			}),
+			playedMovie("p2", "2", "Heat", false, {
+				lastPlayedAt: 100000,
+				positionMs: null,
+			}),
+			playedMovie("p3", "3", "Alien", true, {
+				lastPlayedAt: 300000,
+				positionMs: null,
+			}),
 		];
 		state.jellyfin = [
-			{
-				...movie("j1", false),
-				history: { lastPlayedAt: 100000, positionMs: 10000 },
-			},
+			playedMovie("j1", "1", "Arrival", false, {
+				lastPlayedAt: 100000,
+				positionMs: 10000,
+			}),
+			playedMovie("j2", "2", "Heat", false, {
+				lastPlayedAt: 400000,
+				positionMs: 50000,
+			}),
+			playedMovie("j3", "3", "Alien", false, {
+				lastPlayedAt: 300000,
+				positionMs: 20000,
+			}),
 		];
-		expect(await service.preview(pairing.id)).toMatchObject({
-			writes: [],
-			matched: 1,
-			unmatched: 0,
-			ambiguous: 0,
-			positionConflicts: 0,
+		const preview = await service.preview(pairing.id);
+		expect(preview.writes).toEqual([
+			{
+				kind: "position",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "Arrival",
+				value: 30000,
+			},
+			{
+				kind: "position",
+				target: "plex",
+				itemId: "p2",
+				title: "Heat",
+				value: 50000,
+			},
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j3",
+				title: "Alien",
+				playedAt: 300000,
+			},
+		]);
+		expect(preview.positionConflicts).toBe(1);
+		expect(state.writes).toEqual([]);
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			planned: 3,
+			applied: 3,
+			summary:
+				"3 updates completed (1 watched, 2 positions). 3 matched pairs; 0 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. 0 unavailable show matches skipped. 1 position conflicts skipped. Of the skipped episodes, 0 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
 		});
+		expect(state.writes).toEqual([
+			"jellyfin:j1 resume 30000",
+			"plex:p2 resume 50000",
+			"jellyfin:j3 played 300000",
+		]);
 		expect(await service.run(pairing.id)).toMatchObject({
 			status: "completed",
 			planned: 0,
 			applied: 0,
 		});
-		expect((await service.state()).runs).toMatchObject([
-			{
-				status: "completed",
-				planned: 0,
-				applied: 0,
-			},
+	});
+	it("fails between the watched and position writes, then a retry applies only the position", async () => {
+		const { service, jellyfin, state, pair } = await setup();
+		const pairing = await pair();
+		state.plex = [
+			playedMovie("p1", "1", "Arrival", true, {
+				lastPlayedAt: 200000,
+				positionMs: 30000,
+			}),
+		];
+		state.jellyfin = [
+			playedMovie("j1", "1", "Arrival", false, {
+				lastPlayedAt: 100000,
+				positionMs: 10000,
+			}),
+		];
+		const setPosition = jellyfin.setPosition;
+		jellyfin.setPosition = async () => {
+			throw new MediaError("Position write failed.", 502);
+		};
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "failed",
+			planned: 2,
+			applied: 1,
+			summary:
+				"1 of 2 updates completed. Position write failed. A retry reads both libraries again first.",
+		});
+		jellyfin.setPosition = setPosition;
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			planned: 1,
+			applied: 1,
+		});
+		expect(state.writes).toEqual([
+			"jellyfin:j1 played 200000",
+			"jellyfin:j1 resume 30000",
 		]);
-		expect(state.writes).toEqual([]);
 	});
 	it("does not write when a complete library cannot be read", async () => {
 		const { service, state, pair } = await setup();

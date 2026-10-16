@@ -80,7 +80,7 @@ describe("snapshot sync history", () => {
 		expect(html).toContain(
 			'Finished <time dateTime="2026-10-12T12:01:00.000Z"',
 		);
-		expect(html).toContain("3 of 3 planned watched updates applied");
+		expect(html).toContain("3 of 3 planned updates applied");
 		expect(html).toContain(
 			"3 updates completed. 3 matched pairs; 2 unmatched items; 1 ambiguous items skipped. 1 unavailable manual matches skipped.",
 		);
@@ -104,7 +104,7 @@ describe("snapshot sync history", () => {
 						planned: 5,
 						applied: 2,
 						summary:
-							"2 of 5 updates completed. The media server rejected these credentials. A retry reads current watched status first.",
+							"2 of 5 updates completed. The media server rejected these credentials. A retry reads both libraries again first.",
 					}),
 				]}
 				accessAvailable
@@ -112,12 +112,12 @@ describe("snapshot sync history", () => {
 		);
 
 		expect(html).toContain("Needs attention");
-		expect(html).toContain("2 of 5 planned watched updates applied");
+		expect(html).toContain("2 of 5 planned updates applied");
 		expect(html).toContain("The media server rejected these credentials.");
 		expect(html).toContain('href="/"');
 		expect(html).toContain("server connections</a>, then retry sync.");
 		expect(html).toContain(
-			"A retry reads current watched status before applying updates.",
+			"A retry reads both libraries again before applying updates.",
 		);
 	});
 
@@ -223,7 +223,7 @@ describe("snapshot sync history", () => {
 						finishedAt: null,
 						applied: 0,
 						planned: 0,
-						summary: "Applying watched status.",
+						summary: "Applying updates.",
 					}),
 				]}
 				accessAvailable
@@ -231,11 +231,11 @@ describe("snapshot sync history", () => {
 		);
 
 		expect(html).toContain("In progress");
-		expect(html).toContain("0 watched updates applied; 0 planned so far");
-		expect(html).toContain("Applying watched status.");
+		expect(html).toContain("0 updates applied; 0 planned so far");
+		expect(html).toContain("Applying updates.");
 		expect(html).toContain('Started <time dateTime="2026-10-12T12:00:00.000Z"');
 		expect(html).not.toContain("Reading both libraries");
-		expect(html).not.toContain("No watched updates are needed");
+		expect(html).not.toContain("No updates are needed");
 	});
 
 	test("labels the start time when a terminal run has no finish time", () => {
@@ -261,7 +261,7 @@ describe("snapshot sync history", () => {
 		);
 
 		expect(html).toContain("Completed");
-		expect(html).toContain("3 of 3 planned watched updates applied");
+		expect(html).toContain("3 of 3 planned updates applied");
 		expect(html).toContain(
 			"Sync is unavailable because one of these users is missing or no longer grants access.",
 		);
@@ -313,7 +313,7 @@ describe("current preview", () => {
 		);
 
 		expect(html).toContain("Current preview");
-		expect(html).toContain("0 proposed watched updates");
+		expect(html).toContain("0 proposed updates (0 watched, 0 positions)");
 		expect(html).toContain(
 			"Preview only. No changes have been applied. Sync reads both libraries again.",
 		);
@@ -339,8 +339,8 @@ describe("current preview", () => {
 		expect(html).toContain(
 			"Categories can overlap and are not a total of skipped items.",
 		);
-		expect(html).not.toContain("17");
-		expect(html).not.toContain("position");
+		expect(html).toContain("Resume position conflicts");
+		expect(html).toContain("17 pairs");
 		expect(html).toContain('href="/matches"');
 		expect(html).toContain("Manual matching");
 	});
@@ -360,9 +360,7 @@ describe("current preview", () => {
 			"0 episodes",
 		]);
 		expect(html).toContain("0 saved matches");
-		expect(html).toContain(
-			"No watched updates are needed for the items that match.",
-		);
+		expect(html).toContain("No updates are needed for the items that match.");
 	});
 
 	test("keeps watched proposals and the bounded update list", () => {
@@ -379,10 +377,49 @@ describe("current preview", () => {
 			/>,
 		);
 
-		expect(html).toContain("101 proposed watched updates");
-		expect(html).toContain("Mark watched in Jellyfin");
+		expect(html).toContain("101 proposed updates (101 watched, 0 positions)");
+		expect(html).toContain("Mark watched on Jellyfin");
 		expect(html).toContain("Movie 99");
 		expect(html).not.toContain("Movie 100");
 		expect(html).toContain("Showing the first 100 of 101 updates.");
+	});
+
+	test("labels position and dated watched proposals by kind", () => {
+		const html = renderToStaticMarkup(
+			<PreviewResults
+				preview={preview({
+					writes: [
+						{
+							kind: "position",
+							target: "plex",
+							itemId: "p1",
+							title: "Arrival",
+							value: 2537000,
+						},
+						{
+							kind: "position",
+							target: "jellyfin",
+							itemId: "j2",
+							title: "Heat",
+							value: 6017000,
+						},
+						{
+							kind: "watched",
+							target: "jellyfin",
+							itemId: "j3",
+							title: "Alien",
+							playedAt: Date.parse("2024-03-02T12:00:00.000Z"),
+						},
+					],
+				})}
+			/>,
+		);
+
+		expect(html).toContain("3 proposed updates (1 watched, 2 positions)");
+		expect(html).toContain("Resume at 42:17 on Plex");
+		expect(html).toContain("Resume at 1:40:17 on Jellyfin");
+		expect(html).toContain(
+			'Mark watched on Jellyfin (<time dateTime="2024-03-02T12:00:00.000Z">',
+		);
 	});
 });

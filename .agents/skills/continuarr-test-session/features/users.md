@@ -1,12 +1,12 @@
 # User pairing and watched sync
 
-Pair the same person across providers and merge watched flags. Directory imports and watched sync have separate schedules.
+Pair the same person across providers and merge watched flags and resume positions. Directory imports and watched sync have separate schedules.
 
 ## Sub-features
 
 - `users.pair`: create a manual one-to-one pairing.
 - `users.preview`: compare libraries without writes.
-- `users.sync`: merge watched flags and repeat without duplicate changes.
+- `users.sync`: merge watched flags and resume positions, then repeat without duplicate changes.
 - `users.legacy`: retain existing migrated pairing access before a successful import.
 
 ## How to get to it (user POV)

@@ -17,7 +17,7 @@ import {
 
 type Target = "plex" | "jellyfin";
 type Destination = { itemId: string; title: string };
-export type WatchedWrite = Destination &
+type WatchedWrite = Destination &
 	(
 		| { kind: "watched"; target: "plex" }
 		| { kind: "watched"; target: "jellyfin"; playedAt?: number }
@@ -27,7 +27,7 @@ type PositionWrite = Destination & {
 	target: Target;
 	value: number;
 };
-type Write = WatchedWrite | PositionWrite;
+export type Write = WatchedWrite | PositionWrite;
 type Candidate = { kind: "one"; index: number } | { kind: "many" };
 type CandidateResult =
 	| { kind: "none" | "many" }

@@ -13,7 +13,7 @@ import {
 	serverUrl,
 	showsInLibrary,
 } from "./model";
-import { planWatchedUnion, type WatchedWrite } from "./plan";
+import { planWatchedUnion, type Write } from "./plan";
 import type { MediaRepository } from "./repo";
 
 export const SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -170,12 +170,7 @@ export function createMediaService({
 			jellyfinAccess,
 			plex: plexItems,
 			jellyfin: jellyfinItems,
-			plan: {
-				...plan,
-				writes: plan.writes.filter(
-					(write): write is WatchedWrite => write.kind === "watched",
-				),
-			},
+			plan,
 		};
 	}
 	const service = {
@@ -976,17 +971,45 @@ export function createMediaService({
 			planned = result.plan.writes.length;
 			await repo.updateRun(runId, {
 				planned,
-				summary: "Applying watched status.",
+				summary: "Applying updates.",
 			});
+			const appliedByKind: Record<Write["kind"], number> = {
+				watched: 0,
+				position: 0,
+			};
 			for (const write of result.plan.writes) {
-				if (write.target === "plex")
-					await plex.markWatched(result.plexAccess, write.itemId);
-				else await jellyfin.markWatched(result.jellyfinAccess, write.itemId);
+				switch (write.kind) {
+					case "watched":
+						if (write.target === "plex")
+							await plex.markWatched(result.plexAccess, write.itemId);
+						else
+							await jellyfin.markWatched(
+								result.jellyfinAccess,
+								write.itemId,
+								write.playedAt,
+							);
+						break;
+					case "position":
+						if (write.target === "plex")
+							await plex.setPosition(
+								result.plexAccess,
+								write.itemId,
+								write.value,
+							);
+						else
+							await jellyfin.setPosition(
+								result.jellyfinAccess,
+								write.itemId,
+								write.value,
+							);
+						break;
+				}
 				applied++;
+				appliedByKind[write.kind]++;
 				await repo.updateRun(runId, { applied });
 			}
 			const { plan } = result;
-			const summary = `${applied} updates completed. ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. ${plan.staleShowMatches} unavailable show matches skipped. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
+			const summary = `${applied} updates completed (${appliedByKind.watched} watched, ${appliedByKind.position} positions). ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. ${plan.staleShowMatches} unavailable show matches skipped. ${plan.positionConflicts} position conflicts skipped. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
 			await repo.updateRun(runId, {
 				status: "completed",
 				finishedAt: now(),
@@ -1005,7 +1028,7 @@ export function createMediaService({
 				error instanceof MediaError
 					? error.message
 					: "Unable to complete sync. Check the connections and try again.";
-			const summary = `${applied} of ${planned} updates completed. ${detail} A retry reads current watched status first.`;
+			const summary = `${applied} of ${planned} updates completed. ${detail} A retry reads both libraries again first.`;
 			await repo.updateRun(runId, {
 				status: "failed",
 				finishedAt: now(),
