@@ -281,14 +281,18 @@ export function createJellyfinProvider(options: {
 			itemId: string,
 			playedAt?: number,
 		) {
+			const datePlayed =
+				playedAt === undefined ? undefined : new Date(playedAt);
+			if (datePlayed && Number.isNaN(datePlayed.getTime()))
+				throw new MediaError("Invalid Jellyfin played date.");
 			const { userData, headers } = await readItem(access, itemId);
 			if (userData.Played) return;
 			const url = endpoint(
 				access.url,
 				`Users/${encodeURIComponent(access.userId)}/PlayedItems/${encodeURIComponent(itemId)}`,
 			);
-			if (playedAt !== undefined)
-				url.searchParams.set("datePlayed", new Date(playedAt).toISOString());
+			if (datePlayed)
+				url.searchParams.set("datePlayed", datePlayed.toISOString());
 			await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
 		},
 

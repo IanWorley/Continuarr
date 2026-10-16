@@ -580,7 +580,8 @@ describe("Jellyfin provider", () => {
 		}
 	});
 
-	it("rejects an invalid position before any request", async () => {
+	it("rejects an invalid position or played date before any request", async () => {
+		const LATEST_DATE_MS = 8_640_000_000_000_000;
 		let requests = 0;
 		const baseUrl = serve(() => {
 			requests++;
@@ -598,6 +599,14 @@ describe("Jellyfin provider", () => {
 			await expect(
 				provider.setPosition(access, "item-1", positionMs),
 			).rejects.toThrow("Invalid Jellyfin resume position.");
+		for (const playedAt of [
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			LATEST_DATE_MS + 1,
+		])
+			await expect(
+				provider.markWatched(access, "item-1", playedAt),
+			).rejects.toThrow("Invalid Jellyfin played date.");
 		expect(requests).toBe(0);
 	});
 
