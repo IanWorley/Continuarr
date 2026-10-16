@@ -275,13 +275,9 @@ export function createMediaService({
 							"Jellyfin connections changed. Connect the server again.",
 							409,
 						);
-					if (
-						(await repo.jellyfinServers()).some(
-							(server) => server.externalId === directory.server.id,
-						)
-					)
+					if ((await repo.jellyfinServers()).length > 0)
 						throw new MediaError(
-							"This Jellyfin server is already connected. Replace its key instead.",
+							"A Jellyfin server is already connected. Replace its key, or disconnect it to connect a different server.",
 							409,
 						);
 					const id = randomUUID();
@@ -788,6 +784,15 @@ export function createMediaService({
 				)
 					throw new MediaError(
 						"Server selection expired. Select the Plex server again.",
+						409,
+					);
+				if (
+					(await repo.plexServers()).some(
+						(saved) => saved.verified && saved.externalId !== server.id,
+					)
+				)
+					throw new MediaError(
+						"A Plex server is already connected. Disconnect it to connect a different server.",
 						409,
 					);
 				return repo.connectPlexServer({

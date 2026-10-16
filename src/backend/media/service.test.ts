@@ -402,6 +402,61 @@ describe("media account and sync service", () => {
 		release?.();
 		await expect(stale).rejects.toThrow("connection changed");
 	});
+	it("rejects a different Plex server while one is connected", async () => {
+		const { service, repo, plex, pair } = await setup();
+		await pair();
+		plex.servers = async () => [
+			{
+				id: "other-machine",
+				name: "Other Plex",
+				token: new Secret("other-token"),
+				connections: ["http://other-plex:32400"],
+			},
+		];
+		const selection = await service.selectPlexServer({
+			accountId: (await repo.accounts())[0]?.id ?? "",
+		});
+		await expect(
+			service.connectPlex({
+				selectionId: selection.id,
+				serverId: "other-machine",
+				url: "http://other-plex:32400",
+			}),
+		).rejects.toMatchObject({
+			status: 409,
+			message:
+				"A Plex server is already connected. Disconnect it to connect a different server.",
+		});
+		expect(
+			(await repo.plexServers()).map(({ externalId, verified }) => ({
+				externalId,
+				verified,
+			})),
+		).toEqual([{ externalId: "machine", verified: true }]);
+	});
+	it("rejects a second Jellyfin server while one is connected", async () => {
+		const { service, repo, jellyfin, pair } = await setup();
+		await pair();
+		const directory = jellyfin.directory;
+		jellyfin.directory = async (access) => ({
+			...(await directory(access)),
+			server: { id: "other-jellyfin", name: "Other Jellyfin" },
+		});
+		await expect(
+			service.importJellyfin({
+				kind: "new",
+				url: "http://other-jellyfin:8096",
+				apiKey: "other-key",
+			}),
+		).rejects.toMatchObject({
+			status: 409,
+			message:
+				"A Jellyfin server is already connected. Replace its key, or disconnect it to connect a different server.",
+		});
+		expect(
+			(await repo.jellyfinServers()).map(({ externalId }) => externalId),
+		).toEqual(["j-server"]);
+	});
 	it("imports every user and retains the full details", async () => {
 		const { service, jellyfin, repo } = await setup();
 		jellyfin.directory = async (): Promise<JellyfinDirectory> => ({
@@ -1478,42 +1533,46 @@ describe("safe server disconnect", () => {
 			);
 		});
 
-		it(`leaves another ${provider} server's credentials and automatic pairing unchanged`, async () => {
-			const { db, service, repo, plex, jellyfin, pair } = await setup();
+		it(`leaves a second ${provider} server saved by an earlier version unchanged`, async () => {
+			const { db, service, repo, secrets, jellyfin, pair } = await setup();
 			await pair();
 			const first =
 				provider === "plex"
 					? (await repo.plexServers())[0]
 					: (await repo.jellyfinServers())[0];
 			if (!first) throw new Error("Missing first server");
+			// The service now refuses a second server, so save it the way earlier versions did.
 			if (provider === "plex") {
-				plex.servers = async () => [
-					{
-						id: "other-machine",
-						name: "Other Plex",
-						token: new Secret("other-token"),
-						connections: ["http://other-plex:32400"],
-					},
-				];
-				const selection = await service.selectPlexServer({
-					accountId: (await repo.accounts())[0]?.id ?? "",
-				});
-				await service.connectPlex({
-					selectionId: selection.id,
+				const account = (await repo.accounts())[0];
+				if (!account) throw new Error("Missing Plex account");
+				await repo.connectPlexServer({
+					accountId: account.id,
+					expectedToken: account.token,
+					expectedRevision: null,
 					serverId: "other-machine",
+					name: "Other Plex",
 					url: "http://other-plex:32400",
+					users: [{ id: "owner", name: "Owner", access: { kind: "owner" } }],
+					secrets,
+					now: Date.now(),
 				});
 			} else {
-				const directory = jellyfin.directory;
-				jellyfin.directory = async (access) => ({
-					...(await directory(access)),
-					server: { id: "other-jellyfin", name: "Other Jellyfin" },
-				});
-				await service.importJellyfin({
-					kind: "new",
+				const id = crypto.randomUUID();
+				const { users } = await jellyfin.directory({
 					url: "http://other-jellyfin:8096",
-					apiKey: "other-key",
+					token: new Secret("other-key"),
 				});
+				await repo.addJellyfinServer(
+					{
+						id,
+						externalId: "other-jellyfin",
+						name: "Other Jellyfin",
+						url: "http://other-jellyfin:8096",
+						token: secrets.encrypt(id, new Secret("other-key")),
+					},
+					users,
+					Date.now(),
+				);
 			}
 			const other = (
 				provider === "plex"
