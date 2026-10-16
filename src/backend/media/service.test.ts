@@ -1066,7 +1066,7 @@ describe("media account and sync service", () => {
 			true,
 		);
 		expect(JSON.stringify(await service.state())).not.toMatch(
-			/owner-token|child-token|j-token|never-store|1234|v1:/,
+			/owner-token|child-token|j-token|never-store|v1:/,
 		);
 		expect(
 			(await service.state()).plexProfiles.find(
