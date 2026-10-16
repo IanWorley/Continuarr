@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 
 import { afterEach, describe, expect, it } from "bun:test";
+import { z } from "zod";
 import { createJellyfinProvider } from "~/backend/media/jellyfin";
 import { createPlexProvider } from "~/backend/media/plex";
 import { Secret } from "~/backend/secrets/storage";
@@ -470,6 +471,134 @@ describe("Jellyfin provider", () => {
 		await provider.markWatched(access, "item-1", PLAYED_AT_MS);
 		await provider.markWatched(access, "item-2");
 		expect(queries).toEqual([{ datePlayed: "2026-09-01T20:00:00.000Z" }, {}]);
+	});
+
+	it("writes UserData with only the position replaced and skips the identical repeat", async () => {
+		const INITIAL_POSITION_TICKS = 1_000_000_000;
+		const userData = {
+			Played: true,
+			LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+			PlayCount: 1,
+			IsFavorite: false,
+			Key: "key-item-1",
+			ItemId: "item-1",
+			PlaybackPositionTicks: INITIAL_POSITION_TICKS,
+		};
+		const writes: unknown[] = [];
+		const baseUrl = serve(async (request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/jf/Users/user-1/Items/item-1")
+				return json({ Id: "item-1", UserData: userData });
+			if (
+				url.pathname === "/jf/Users/user-1/Items/item-1/UserData" &&
+				request.method === "POST"
+			) {
+				const body: unknown = await request.json();
+				writes.push(body);
+				userData.PlaybackPositionTicks = z
+					.object({ PlaybackPositionTicks: z.number() })
+					.parse(body).PlaybackPositionTicks;
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		const access = {
+			url: `${baseUrl}/jf`,
+			userId: "user-1",
+			token: new Secret("user-token"),
+		};
+		await provider.setPosition(access, "item-1", RESUME_POSITION_MS);
+		await provider.setPosition(access, "item-1", RESUME_POSITION_MS);
+		expect(writes).toEqual([
+			{
+				Played: true,
+				LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+				PlayCount: 1,
+				IsFavorite: false,
+				Key: "key-item-1",
+				ItemId: "item-1",
+				PlaybackPositionTicks: 7_540_000_000,
+			},
+		]);
+	});
+
+	it("skips a write within 5 seconds of the current position", async () => {
+		const cases: Array<[number, number, number]> = [
+			[7_490_000_000, RESUME_POSITION_MS, 0],
+			[7_590_000_000, RESUME_POSITION_MS, 0],
+			[7_489_990_000, RESUME_POSITION_MS, 1],
+			[7_590_010_000, RESUME_POSITION_MS, 1],
+			[0, 5_000, 0],
+			[0, 5_001, 1],
+		];
+		for (const [currentTicks, target, expectedWrites] of cases) {
+			let writes = 0;
+			const baseUrl = serve((request) => {
+				const url = new URL(request.url);
+				if (url.pathname === "/jf/Users/user-1/Items/item-1")
+					return json({
+						Id: "item-1",
+						UserData: {
+							Played: true,
+							LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+							PlayCount: 1,
+							IsFavorite: false,
+							Key: "key-item-1",
+							ItemId: "item-1",
+							PlaybackPositionTicks: currentTicks,
+						},
+					});
+				if (
+					url.pathname === "/jf/Users/user-1/Items/item-1/UserData" &&
+					request.method === "POST"
+				) {
+					writes++;
+					return new Response(null, { status: 200 });
+				}
+				return json({}, 404);
+			});
+			const provider = createJellyfinProvider({
+				clientIdentifier: JELLYFIN_IDENTIFIER,
+			});
+			await provider.setPosition(
+				{
+					url: `${baseUrl}/jf`,
+					userId: "user-1",
+					token: new Secret("user-token"),
+				},
+				"item-1",
+				target,
+			);
+			expect({ currentTicks, target, writes }).toEqual({
+				currentTicks,
+				target,
+				writes: expectedWrites,
+			});
+		}
+	});
+
+	it("rejects an invalid position before any request", async () => {
+		let requests = 0;
+		const baseUrl = serve(() => {
+			requests++;
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		const access = {
+			url: `${baseUrl}/jf`,
+			userId: "user-1",
+			token: new Secret("user-token"),
+		};
+		for (const positionMs of [0, -1, 1.5])
+			await expect(
+				provider.setPosition(access, "item-1", positionMs),
+			).rejects.toThrow("Invalid Jellyfin resume position.");
+		expect(requests).toBe(0);
 	});
 
 	it("keeps the API key on requests, reads every page, and marks once", async () => {

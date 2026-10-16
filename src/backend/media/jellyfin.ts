@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { POSITION_TOLERANCE_MS } from "~/backend/media/constants";
 import { endpoint, requestEmpty, requestJson } from "~/backend/media/http";
 import {
 	type JellyfinAccess,
@@ -65,10 +66,20 @@ const pageSchema = z.object({
 	Items: z.array(itemSchema),
 	TotalRecordCount: z.number().int().nonnegative(),
 });
+const userDataSchema = z
+	.object({
+		Played: z.boolean(),
+		PlaybackPositionTicks: z.number().int().nonnegative().nullish(),
+	})
+	.catchall(z.json());
 const targetSchema = z.object({
 	Id: z.string().min(1),
-	UserData: z.object({ Played: z.boolean() }),
+	UserData: userDataSchema,
 });
+
+function toPositionMs(ticks: number | null | undefined): number {
+	return Math.floor((ticks ?? 0) / TICKS_PER_MILLISECOND);
+}
 
 function jellyfinHeaders(clientIdentifier: string, token?: string): Headers {
 	return new Headers({
@@ -96,9 +107,7 @@ function toMediaItem(item: z.infer<typeof itemSchema>): MediaItem {
 			: {}),
 	};
 	const { LastPlayedDate, PlaybackPositionTicks } = item.UserData;
-	const positionMs = Math.floor(
-		(PlaybackPositionTicks ?? 0) / TICKS_PER_MILLISECOND,
-	);
+	const positionMs = toPositionMs(PlaybackPositionTicks);
 	return {
 		id: item.Id,
 		kind: item.Type === "Movie" ? "movie" : "episode",
@@ -281,6 +290,34 @@ export function createJellyfinProvider(options: {
 			if (playedAt !== undefined)
 				url.searchParams.set("datePlayed", new Date(playedAt).toISOString());
 			await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
+		},
+
+		async setPosition(
+			access: JellyfinAccess,
+			itemId: string,
+			positionMs: number,
+		) {
+			if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
+				throw new MediaError("Invalid Jellyfin resume position.");
+			const { userData, headers } = await readItem(access, itemId);
+			if (
+				Math.abs(toPositionMs(userData.PlaybackPositionTicks) - positionMs) <=
+				POSITION_TOLERANCE_MS
+			)
+				return;
+			await requestEmpty({
+				fetch: fetcher,
+				url: endpoint(
+					access.url,
+					`Users/${encodeURIComponent(access.userId)}/Items/${encodeURIComponent(itemId)}/UserData`,
+				),
+				method: "POST",
+				headers,
+				body: {
+					...userData,
+					PlaybackPositionTicks: positionMs * TICKS_PER_MILLISECOND,
+				},
+			});
 		},
 	};
 }

@@ -110,6 +110,11 @@ export interface JellyfinProvider {
 		itemId: string,
 		playedAt?: number,
 	): Promise<void>;
+	setPosition(
+		access: JellyfinAccess,
+		itemId: string,
+		positionMs: number,
+	): Promise<void>;
 }
 export class MediaError extends Error {
 	constructor(

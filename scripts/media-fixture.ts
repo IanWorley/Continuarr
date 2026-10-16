@@ -73,6 +73,7 @@ const LAST_PLAYED_AT_MS = Date.UTC(2026, 8, 1, 20);
 const ALEX_LAST_ACTIVE_AT = new Date(Date.UTC(2026, 8, 2, 18)).toISOString();
 const RESUME_POSITION_MS = 754_000;
 const plexPositions = new Map([[plexInProgress, RESUME_POSITION_MS]]);
+const jellyfinPositions = new Map([[jellyfinInProgress, RESUME_POSITION_MS]]);
 const jellyfinPlayedDates = new Map<string, string>();
 const titles = [
 	"Arrival",
@@ -119,6 +120,7 @@ function plexItem(index: number) {
 }
 function jellyfinItem(index: number) {
 	const id = `j${index + 1}`;
+	const positionMs = jellyfinPositions.get(id);
 	const lastPlayedDate =
 		jellyfinPlayedDates.get(id) ??
 		(jellyfinWatched.has(id) || id === jellyfinInProgress
@@ -143,9 +145,9 @@ function jellyfinItem(index: number) {
 			...(lastPlayedDate === undefined
 				? {}
 				: { LastPlayedDate: lastPlayedDate }),
-			...(id === jellyfinInProgress
-				? { PlaybackPositionTicks: RESUME_POSITION_MS * TICKS_PER_MILLISECOND }
-				: {}),
+			...(positionMs === undefined
+				? {}
+				: { PlaybackPositionTicks: positionMs * TICKS_PER_MILLISECOND }),
 		},
 	};
 }
@@ -160,6 +162,7 @@ const server = Bun.serve({
 				plex: [...plexWatched],
 				plexPositions: Object.fromEntries(plexPositions),
 				jellyfin: [...jellyfinWatched],
+				jellyfinPositions: Object.fromEntries(jellyfinPositions),
 				jellyfinPlayedDates: Object.fromEntries(jellyfinPlayedDates),
 			});
 		if (
@@ -246,6 +249,20 @@ const server = Bun.serve({
 				Items: titles.map((_, index) => jellyfinItem(index)),
 				TotalRecordCount: titles.length,
 			});
+		if (
+			path.startsWith("/jellyfin/Users/alex-id/Items/") &&
+			path.endsWith("/UserData") &&
+			request.method === "POST"
+		) {
+			const body = z
+				.object({ PlaybackPositionTicks: z.number().int().nonnegative() })
+				.parse(await request.json());
+			jellyfinPositions.set(
+				path.split("/").at(-2) ?? "",
+				body.PlaybackPositionTicks / TICKS_PER_MILLISECOND,
+			);
+			return new Response(null, { status: 200 });
+		}
 		if (path.startsWith("/jellyfin/Users/alex-id/Items/"))
 			return Response.json(
 				jellyfinItem(Number(path.split("/").at(-1)?.slice(1)) - 1),

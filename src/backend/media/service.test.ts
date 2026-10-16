@@ -121,6 +121,7 @@ async function setup(now: () => number = Date.now) {
 				item.id === id ? { ...item, watched: true } : item,
 			);
 		},
+		setPosition: async () => {},
 	};
 	const service = createMediaService({ repo, secrets, plex, jellyfin, now });
 	async function pair() {
