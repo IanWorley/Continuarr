@@ -60,7 +60,7 @@ Everything else stays manual. Specials (season 0), absolute numbering, multi-epi
 
 Preview and each run summary break skipped episodes down by reason. An episode whose show has no series ID can match only by an episode ID. An episode whose show has a series ID but no counterpart with the same numbers is reported as missing an episode ID. Refresh the show's metadata on that server or add a manual match.
 
-Resume positions follow the server that played the item most recently. For each matched pair, Continuarr compares the last-played times and copies the position from the later server to the other one. If either time is missing, or the two times are within one minute, neither position changes and preview reports a position conflict. Continuarr ignores position differences of 5 seconds or less. It never writes a zero position and never clears one.
+Resume positions follow the server that played the item most recently. For each matched pair, Continuarr compares the last-played times and copies the position from the later server to the other one. If either time is missing, or the two times are within one minute, Continuarr copies neither position and preview reports a position conflict. Continuarr ignores position differences of 5 seconds or less. It never writes a zero position. Jellyfin clears an item's resume position when it marks the item played, so a watched write to Jellyfin can clear a conflicting Jellyfin position.
 
 ### Match content manually
 
@@ -76,7 +76,7 @@ Each show can have one counterpart per person pairing. Saving a show match does 
 
 For a matched item, watched on either service means watched on both. When sync marks an item watched in Jellyfin, Jellyfin receives the Plex last-viewed date as the played date. Plex has no API for a dated watched write, so Plex records the sync time. Continuarr does not copy play counts or ratings. The providers' mark-watched APIs may record the sync as a new play. Marking an item unwatched on one service does not clear the other service and the next sync can mark it watched again.
 
-Automatic sync runs at most once an hour, so a copied position can lag live playback by up to an hour. A player that is still playing the item can overwrite a position that sync wrote.
+Automatic sync runs at most once an hour, so a copied position can lag live playback by up to an hour. A player that is still playing the item can overwrite a position that sync wrote. Sync reads both libraries before it writes, so playback during a run can be replaced by the position read at the start of that run.
 
 Both library scans must finish before any writes begin. A failed write stops the run and preserves its progress in the run history. Run sync again after fixing the connection; the next attempt reads current state and skips updates that are already applied. An interrupted run is reported as failed after restart. The dashboard shows the latest 50 run records.
 

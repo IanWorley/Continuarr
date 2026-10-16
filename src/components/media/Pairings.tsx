@@ -88,7 +88,7 @@ const SKIP_REASONS = [
 		label: "Resume position conflicts",
 		unit: "pairs",
 		explanation:
-			"Both servers report a different resume position, but neither was clearly played last. A last-played time is missing, or both were played within a minute of each other. Neither position changes.",
+			"Both servers report a different resume position, but neither was clearly played last. A last-played time is missing, or both were played within a minute of each other. Continuarr copies neither position.",
 	},
 ] satisfies {
 	count: keyof Pick<
