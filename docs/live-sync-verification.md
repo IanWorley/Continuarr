@@ -6,10 +6,13 @@ Use this checklist to verify watched-state sync against real servers before trea
 
 1. Use a Plex Media Server and a Jellyfin server that you are willing to modify. Every scenario changes watched status, so never run this against personal libraries.
 2. Add at least three movies and one show with two or more episodes to both servers. Each test item needs the same IMDb, TMDb, or TVDb ID on both servers, no conflicting IDs, and no other item sharing that ID. Continuarr does not match by title and skips ambiguous items.
-3. On Plex, add a Home user and a user with an accepted server grant. Create at least one Jellyfin user. Give the Plex grant user and the Jellyfin user access to the test libraries.
-4. Write down each test item's watched state on both servers so you can restore it later. Then mark every test item unwatched on both servers. A directional scenario proves nothing if its destination already shows the item as watched.
-5. Record the Plex Media Server version, the Jellyfin version, and the app revision from `git rev-parse HEAD`.
-6. Follow [Run locally](../README.md#run-locally) with an empty database, then create the installation-owner account.
+3. For the matching scenarios, pick two more shows that are on both servers. Use the metadata the servers already report. Do not edit IDs or switch metadata agents to create a case. Their episodes are test items too.
+   - The **series show** reports the same IMDb, TMDb, or TVDb series ID on both servers, with no conflicting series ID. On at least one server, its episodes report no episode-level ID. In **Manual matching**, those episodes read "No metadata IDs provided". It needs at least two regular episodes in season 1. Note whether it also has a special in season 0, a multi-episode file such as `S01E03-E04`, or an episode with no season number.
+   - The **unlinked show** is a different show whose series IDs are missing on one server or disagree between the servers. On at least one server, its episodes report no episode-level ID, so no episode ID can match or conflict. It needs at least three regular episodes in season 1 on both servers. The series show cannot stand in for it, because its episodes already pair by series ID.
+4. On Plex, add a Home user and a user with an accepted server grant. Create at least one Jellyfin user. Give the Plex grant user and the Jellyfin user access to the test libraries.
+5. Write down each test item's watched state on both servers so you can restore it later. Then mark every test item unwatched on both servers. A directional scenario proves nothing if its destination already shows the item as watched.
+6. Record the Plex Media Server version, the Jellyfin version, and the app revision from `git rev-parse HEAD`.
+7. Follow [Run locally](../README.md#run-locally) with an empty database, then create the installation-owner account.
 
 ## Scenarios
 
@@ -25,9 +28,23 @@ The test items are movies A, B, and C and episodes A and B. Wait for each run to
 8. **Hourly sync.** Select **Sync automatically every hour** on the pairing. Mark movie C watched on Plex. Leave Continuarr running for more than an hour. A new run appears without a manual sync, and movie C is watched in Jellyfin. Clear **Sync automatically every hour** afterwards.
 9. **Redirects are rejected.** Set up an address that redirects every path to the Jellyfin server. A redirect on the root path alone is not enough because Continuarr requests `System/Info` under the URL you enter. Connect Jellyfin with that address. Expect "The media server redirected this request. Enter the server's final URL." No new server is saved.
 
+## Matching scenarios
+
+These scenarios prove that episodes pair without episode-level IDs. Run them after scenario 9 with the same person pairing. They use **Preview changes** only, which reads both libraries and writes nothing. Do not choose **Sync now**, and keep **Sync automatically every hour** cleared. Write down the preview's **Matched pairs** and skip-reason counts at each step.
+
+If the series show lacks a numbering edge case, record that case as a limitation with the reason and continue. For example, record "no multi-episode file in the test library". If no show fits the series show description, record scenarios 10 and 11 as blocked. If no show fits the unlinked show description, record scenarios 12 to 16 as blocked. Do not loosen a show's description to run a scenario.
+
+10. **Series ID and number pair episodes.** Mark series show S01E01 watched in Jellyfin and S01E02 watched on Plex. Choose **Preview changes**. It lists S01E01 with "Mark watched on Plex" and S01E02 with "Mark watched on Jellyfin". Neither episode needed a manual match.
+11. **Specials, absolute numbers, and multi-episode files stay unmatched.** For each of these that the series show has, mark it watched on one server: the season 0 special, every episode in the multi-episode file, and the episode with no season number. Preview. None of them is listed as a planned write. **Episodes that cannot match by number** counts each of them on every server that has them. Plex lists each episode of a multi-episode file as its own item, and Jellyfin lists the file as one item. Record each case the series show does not have as a limitation.
+12. **Unlinked episodes stay unmatched.** Mark unlinked show S01E01 watched on Plex. Preview. S01E01 is not listed as a planned write, and the unlinked show's episodes count under **Unmatched items**. Keep these counts as the baseline for scenarios 13 to 16.
+13. **A show match pairs regular episodes.** Choose **Manual matching**, choose the pairing, and open the **Shows** tab. Select the unlinked show on each side and choose **Save show match**. Expect "Show match saved. Watched status has not changed." Watched status on both servers is unchanged. On the **Episodes** tab, choose the unlinked show in the **Show** filter on each side. Each regular episode with a counterpart reads "Automatic via show match:" followed by the counterpart with the same season and episode number. Specials, multi-episode files, and episodes with no counterpart read "Needs an episode match". Preview. It lists S01E01 with "Mark watched on Jellyfin". Compared with scenario 12, **Matched pairs** rises by the number of new show-match pairs, and **Unmatched items** falls by twice that number plus one for each special, multi-episode item, and episode with no season number in the show. Those items move to **Episodes that cannot match by number**.
+14. **An episode match overrides the show match.** On the **Episodes** tab, select unlinked show S01E02 on Plex and S01E03 on Jellyfin, then choose **Save manual match**. Expect "Manual match saved. Watched status has not changed." Both items read "Manually matched". Plex S01E03 and Jellyfin S01E02 now read "Needs an episode match". Preview. Compared with scenario 13, **Matched pairs** falls by one and **Unmatched items** rises by two.
+15. **Removing the episode match restores the show pairs.** Choose **Remove match** on the saved episode match, then **Confirm removal**. Every episode that read "Automatic via show match:" in scenario 13 reads it again. Preview. The counts equal scenario 13.
+16. **Removing the show match unpairs the episodes.** On the **Shows** tab, choose **Remove show match**. The confirmation reads "Remove this saved show match? Watched status will stay as it is. Episodes return to metadata matching." Choose **Confirm removal**. No episode of the unlinked show reads "Automatic via show match:". Preview. S01E01 is no longer listed, and the counts equal scenario 12. Unlinked show S01E01 is still watched on Plex only.
+
 ## Record the results
 
-Comment on the verification issue with the server versions, the app revision, and each scenario's before and after watched state, run summary, and pass or fail result. Leave out server URLs, tokens, usernames, and server IDs. Open a follow-up issue for any provider behavior that differs from this checklist.
+Comment on the verification issue with the server versions, the app revision, and each scenario's before and after watched state, run summary, and pass or fail result. For scenarios 10 to 16, record the preview counts in place of run summaries, and list each recorded limitation and blocked scenario. Leave out server URLs, tokens, usernames, and server IDs. Open a follow-up issue for any provider behavior that differs from this checklist.
 
 ## Restore the servers
 
