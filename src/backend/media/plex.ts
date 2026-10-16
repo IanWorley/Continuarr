@@ -218,7 +218,6 @@ function toMediaItem(
 		paths: filePaths(metadata),
 		...(episode
 			? {
-					showId: metadata.grandparentRatingKey,
 					showTitle: metadata.grandparentTitle,
 					season: metadata.parentIndex,
 					episode: metadata.index,
@@ -592,6 +591,7 @@ export function createPlexProvider(options: {
 				const showKey = metadata.grandparentRatingKey;
 				return toMediaItem(metadata, {
 					series: {
+						localId: showKey ?? null,
 						providerIds:
 							(showKey === undefined ? undefined : showIds.get(showKey)) ?? {},
 					},

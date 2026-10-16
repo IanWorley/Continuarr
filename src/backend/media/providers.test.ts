@@ -810,7 +810,7 @@ it("keeps direct episode identifiers and rejects series paths as episode identif
 			watched: false,
 			history: { lastPlayedAt: null, positionMs: null },
 			episode: {
-				series: { providerIds: {} },
+				series: { localId: null, providerIds: {} },
 				numbering: { kind: "unnumbered" },
 			},
 		},
@@ -822,7 +822,7 @@ it("keeps direct episode identifiers and rejects series paths as episode identif
 			watched: false,
 			history: { lastPlayedAt: null, positionMs: null },
 			episode: {
-				series: { providerIds: {} },
+				series: { localId: null, providerIds: {} },
 				numbering: { kind: "unnumbered" },
 			},
 		},
@@ -866,13 +866,12 @@ describe("library display details", () => {
 		}).items({ url, token: new Secret("token") });
 		expect(items[0].details).toEqual({
 			paths: ["/tv/pilot-a.mkv", "/tv/pilot-b.mkv"],
-			showId: "7",
 			showTitle: "Example",
 			season: 0,
 			episode: 1,
 		});
 		expect(episodeIdentity(items[0])).toEqual({
-			series: { providerIds: {} },
+			series: { localId: "7", providerIds: {} },
 			numbering: { kind: "special", episodes: { first: 1, count: 1 } },
 		});
 	});
@@ -915,11 +914,12 @@ describe("library display details", () => {
 		}).items({ url, userId: "person", token: new Secret("token") });
 		expect(items[0].details).toEqual({
 			paths: ["/shows/pilot.mkv"],
-			showId: "series-7",
 			showTitle: "Example",
 			season: 0,
 			episode: 1,
 		});
+		expect(episodeIdentity(items[0])?.series.localId).toBe("series-7");
+		expect(episodeIdentity(items[1])?.series.localId).toBeNull();
 		expect(items[1].details?.paths).toBeUndefined();
 		expect(items[1].details?.season).toBeUndefined();
 		expect(items[1].ids).toEqual([]);
@@ -989,7 +989,10 @@ describe("series identity", () => {
 		}).items({ url, token: new Secret("token") });
 		expect(showReads).toEqual(["7", "8"]);
 		expect(episodeIdentity(items[PAGE_SIZE])).toEqual({
-			series: { providerIds: { tvdb: "81189", imdb: "tt0903747" } },
+			series: {
+				localId: "7",
+				providerIds: { tvdb: "81189", imdb: "tt0903747" },
+			},
 			numbering: {
 				kind: "season",
 				season: 1,
@@ -997,7 +1000,7 @@ describe("series identity", () => {
 			},
 		});
 		const multiEpisode: ReturnType<typeof episodeIdentity> = {
-			series: { providerIds: {} },
+			series: { localId: "8", providerIds: {} },
 			numbering: {
 				kind: "season",
 				season: 2,
@@ -1063,7 +1066,10 @@ describe("series identity", () => {
 		}).items({ url, userId: "person", token: new Secret("token") });
 		expect(seriesReads).toEqual(["s1:ProviderIds", "s2:ProviderIds"]);
 		expect(episodeIdentity(items[0])).toEqual({
-			series: { providerIds: { tvdb: "81189", imdb: "tt0903747" } },
+			series: {
+				localId: "s1",
+				providerIds: { tvdb: "81189", imdb: "tt0903747" },
+			},
 			numbering: {
 				kind: "season",
 				season: 1,
@@ -1072,7 +1078,7 @@ describe("series identity", () => {
 		});
 		expect(items.slice(-3).map(episodeIdentity)).toEqual([
 			{
-				series: { providerIds: {} },
+				series: { localId: "s2", providerIds: {} },
 				numbering: {
 					kind: "season",
 					season: 2,
@@ -1080,11 +1086,11 @@ describe("series identity", () => {
 				},
 			},
 			{
-				series: { providerIds: {} },
+				series: { localId: "s2", providerIds: {} },
 				numbering: { kind: "special", episodes: { first: 1, count: 1 } },
 			},
 			{
-				series: { providerIds: {} },
+				series: { localId: "s2", providerIds: {} },
 				numbering: { kind: "absolute", episodes: { first: 147, count: 1 } },
 			},
 		]);

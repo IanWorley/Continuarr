@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { EpisodeNumbering, ProviderIds } from "~/backend/media/episode";
-import type { EpisodeItem, MediaItem } from "~/backend/media/model";
+import {
+	type EpisodeItem,
+	type MediaItem,
+	showsInLibrary,
+} from "~/backend/media/model";
 import { planWatchedUnion } from "~/backend/media/plan";
 
 const NO_HISTORY: MediaItem["history"] = {
@@ -11,9 +15,10 @@ const NO_SKIP_REASONS = {
 	missingSeriesIds: 0,
 	missingEpisodeIds: 0,
 	unsupportedNumbering: 0,
+	staleShowMatches: 0,
 };
 const UNKNOWN_SHOW: EpisodeItem["episode"] = {
-	series: { providerIds: {} },
+	series: { localId: null, providerIds: {} },
 	numbering: { kind: "unnumbered" },
 };
 const BREAKING_BAD: ProviderIds = { tvdb: "81189", imdb: "tt0903747" };
@@ -54,12 +59,16 @@ function inShow(
 	numbering: EpisodeNumbering,
 	options: {
 		series?: ProviderIds;
+		localId?: string;
 		ids?: MediaItem["ids"];
 		watched?: boolean;
 	} = {},
 ): MediaItem {
 	return episode(id, options.watched ?? false, options.ids ?? [], {
-		series: { providerIds: options.series ?? BREAKING_BAD },
+		series: {
+			localId: options.localId ?? null,
+			providerIds: options.series ?? BREAKING_BAD,
+		},
 		numbering,
 	});
 }
@@ -82,6 +91,7 @@ describe("planWatchedUnion", () => {
 			ambiguous: 0,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [{ plexItemId: "p1", jellyfinItemId: "j1", source: "exactIds" }],
 		});
 	});
 
@@ -108,6 +118,7 @@ describe("planWatchedUnion", () => {
 				ambiguous: 0,
 				positionConflicts: 0,
 				...NO_SKIP_REASONS,
+				pairs: [{ plexItemId: "p1", jellyfinItemId: "j1", source: "exactIds" }],
 			});
 		}
 	});
@@ -125,6 +136,7 @@ describe("planWatchedUnion", () => {
 			ambiguous: 0,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [],
 			missingSeriesIds: 1,
 		});
 	});
@@ -145,6 +157,7 @@ describe("planWatchedUnion", () => {
 			ambiguous: 3,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [],
 		});
 	});
 
@@ -171,6 +184,7 @@ describe("planWatchedUnion", () => {
 			ambiguous: 2,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [],
 		});
 	});
 
@@ -187,6 +201,7 @@ describe("planWatchedUnion", () => {
 			ambiguous: 0,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [],
 		});
 	});
 });
@@ -213,6 +228,10 @@ describe("series and episode number matching", () => {
 			ambiguous: 0,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [
+				{ plexItemId: "p1", jellyfinItemId: "j1", source: "seriesNumber" },
+				{ plexItemId: "p2", jellyfinItemId: "j2", source: "seriesNumber" },
+			],
 		});
 	});
 
@@ -229,6 +248,7 @@ describe("series and episode number matching", () => {
 			ambiguous: 0,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [],
 			missingEpisodeIds: 2,
 		});
 	});
@@ -254,6 +274,7 @@ describe("series and episode number matching", () => {
 			ambiguous: 2,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [],
 			unsupportedNumbering: 2,
 		});
 	});
@@ -338,6 +359,7 @@ describe("series and episode number matching", () => {
 			ambiguous: 0,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [{ plexItemId: "p1", jellyfinItemId: "j1", source: "exactIds" }],
 			missingEpisodeIds: 2,
 		});
 	});
@@ -372,6 +394,9 @@ describe("series and episode number matching", () => {
 		const summarize = (plan: ReturnType<typeof planWatchedUnion>) => ({
 			...plan,
 			writes: plan.writes.map((write) => write.itemId).sort(),
+			pairs: [...plan.pairs].sort((a, b) =>
+				a.plexItemId.localeCompare(b.plexItemId),
+			),
 		});
 		const expected = {
 			writes: ["j1", "p2"],
@@ -380,8 +405,12 @@ describe("series and episode number matching", () => {
 			ambiguous: 4,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [
+				{ plexItemId: "p1", jellyfinItemId: "j1", source: "seriesNumber" },
+				{ plexItemId: "p2", jellyfinItemId: "j2", source: "seriesNumber" },
+			],
 			unsupportedNumbering: 1,
-		};
+		} satisfies ReturnType<typeof summarize>;
 		const plan = planWatchedUnion({ plex, jellyfin });
 		expect(2 * plan.matched + plan.unmatched + plan.ambiguous).toBe(
 			plex.length + jellyfin.length,
@@ -437,6 +466,7 @@ describe("manual watched-union matches", () => {
 			ambiguous: 0,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [{ plexItemId: "p1", jellyfinItemId: "j2", source: "manual" }],
 			staleManualMatches: 0,
 		});
 	});
@@ -457,6 +487,7 @@ describe("manual watched-union matches", () => {
 			ambiguous: 0,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [],
 			missingSeriesIds: 1,
 			staleManualMatches: 1,
 		});
@@ -707,7 +738,202 @@ describe("watch-history policy", () => {
 			ambiguous: 0,
 			positionConflicts: 0,
 			...NO_SKIP_REASONS,
+			pairs: [{ plexItemId: "p1", jellyfinItemId: "j1", source: "manual" }],
 			staleManualMatches: 0,
 		});
+	});
+});
+
+describe("saved show numbering", () => {
+	const showMatch = {
+		pairingId: "person",
+		plexShowId: "p-show",
+		jellyfinShowId: "j-show",
+	};
+	const showMatches = [showMatch];
+	const plex = (number = 1) =>
+		inShow("p1", regular(1, number), {
+			localId: "p-show",
+			series: {},
+			watched: true,
+		});
+	const jellyfin = (number = 1) =>
+		inShow("j1", regular(1, number), { localId: "j-show", series: {} });
+
+	it("pairs regular episodes without series IDs using the saved show identity", () => {
+		const plan = planWatchedUnion({
+			plex: [plex()],
+			jellyfin: [jellyfin()],
+			showMatches,
+		});
+		expect(plan.writes).toEqual([
+			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+		]);
+		expect(plan.matched).toBe(1);
+		expect(plan.pairs).toEqual([
+			{ plexItemId: "p1", jellyfinItemId: "j1", source: "showMatch" },
+		]);
+	});
+
+	it("reserves episode manual matches before the show numbering stage", () => {
+		const plan = planWatchedUnion({
+			plex: [plex()],
+			jellyfin: [
+				jellyfin(),
+				inShow("j2", regular(1, 2), { localId: "j-show", series: {} }),
+			],
+			showMatches,
+			manualMatches: [
+				{ pairingId: "person", plexItemId: "p1", jellyfinItemId: "j2" },
+			],
+		});
+		expect(plan.pairs).toEqual([
+			{ plexItemId: "p1", jellyfinItemId: "j2", source: "manual" },
+		]);
+		expect(plan.writes).toEqual([
+			{ kind: "watched", target: "jellyfin", itemId: "j2", title: "j2" },
+		]);
+	});
+
+	it("counts stale show matches and lets survivors use provider series matching", () => {
+		const plan = planWatchedUnion({
+			plex: [inShow("p1", regular(1, 1), { localId: "p-show", watched: true })],
+			jellyfin: [inShow("j1", regular(1, 1), { localId: "replacement" })],
+			showMatches,
+		});
+		expect(plan.staleShowMatches).toBe(1);
+		expect(plan.pairs).toEqual([
+			{ plexItemId: "p1", jellyfinItemId: "j1", source: "seriesNumber" },
+		]);
+		expect(plan.writes).toEqual([
+			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+		]);
+	});
+
+	it("does not number-match a third show with the same provider series IDs", () => {
+		const plan = planWatchedUnion({
+			plex: [inShow("p1", regular(1, 1), { localId: "p-show" })],
+			jellyfin: [
+				inShow("j1", regular(1, 2), { localId: "j-show" }),
+				inShow("third", regular(1, 1), { localId: "third-show" }),
+			],
+			showMatches,
+		});
+		expect(plan.pairs).toEqual([]);
+		expect(plan.matched).toBe(0);
+		expect(plan.unmatched).toBe(3);
+	});
+
+	const unsupported: { label: string; numbering: EpisodeNumbering }[] = [
+		{
+			label: "specials",
+			numbering: { kind: "special", episodes: { first: 1, count: 1 } },
+		},
+		{ label: "multi-episode files", numbering: regular(1, 1, 2) },
+	];
+	for (const { label, numbering } of unsupported) {
+		it(`keeps ${label} in matched shows ambiguous`, () => {
+			const plan = planWatchedUnion({
+				plex: [inShow("p1", numbering, { localId: "p-show", series: {} })],
+				jellyfin: [inShow("j1", numbering, { localId: "j-show", series: {} })],
+				showMatches,
+			});
+			expect(plan.pairs).toEqual([]);
+			expect(plan.ambiguous).toBe(2);
+			expect(plan.unsupportedNumbering).toBe(2);
+			expect(plan.missingSeriesIds).toBe(0);
+		});
+	}
+
+	it("blocks a show-number pair when episode IDs conflict", () => {
+		const plan = planWatchedUnion({
+			plex: [
+				inShow("p1", regular(1, 1), {
+					localId: "p-show",
+					ids: [{ provider: "tvdb", value: "1" }],
+				}),
+			],
+			jellyfin: [
+				inShow("j1", regular(1, 1), {
+					localId: "j-show",
+					ids: [{ provider: "tvdb", value: "2" }],
+				}),
+			],
+			showMatches,
+		});
+		expect(plan.pairs).toEqual([]);
+		expect(plan.ambiguous).toBe(2);
+		expect(plan.writes).toEqual([]);
+	});
+
+	it("uses the confirmed show identity despite conflicting provider series IDs", () => {
+		const plan = planWatchedUnion({
+			plex: [
+				inShow("p1", regular(1, 1), {
+					localId: "p-show",
+					series: { tvdb: "1" },
+				}),
+			],
+			jellyfin: [
+				inShow("j1", regular(1, 1), {
+					localId: "j-show",
+					series: { tvdb: "2" },
+				}),
+			],
+			showMatches,
+		});
+		expect(plan.pairs).toEqual([
+			{ plexItemId: "p1", jellyfinItemId: "j1", source: "showMatch" },
+		]);
+	});
+
+	it("keeps exact episode IDs ahead of show numbers", () => {
+		const ids: MediaItem["ids"] = [{ provider: "tvdb", value: "1" }];
+		const plan = planWatchedUnion({
+			plex: [inShow("p1", regular(1, 1), { localId: "p-show", ids })],
+			jellyfin: [inShow("j1", regular(1, 2), { localId: "j-show", ids })],
+			showMatches,
+		});
+		expect(plan.pairs).toEqual([
+			{ plexItemId: "p1", jellyfinItemId: "j1", source: "exactIds" },
+		]);
+	});
+
+	it("counts a leftover episode in an active show as missing episode IDs", () => {
+		const plan = planWatchedUnion({
+			plex: [plex()],
+			jellyfin: [jellyfin(2)],
+			showMatches,
+		});
+		expect(plan.unmatched).toBe(2);
+		expect(plan.missingEpisodeIds).toBe(2);
+		expect(plan.missingSeriesIds).toBe(0);
+	});
+});
+
+describe("showsInLibrary", () => {
+	it("groups episodes by local ID and sorts show titles with an ID tie-breaker", () => {
+		const items: MediaItem[] = [
+			{
+				...inShow("e1", regular(1, 1), { localId: "b" }),
+				details: { showTitle: "Alpha" },
+			},
+			{
+				...inShow("e2", regular(1, 2), { localId: "b" }),
+				details: { showTitle: "Alpha" },
+			},
+			{
+				...inShow("e3", regular(1, 1), { localId: "a" }),
+				details: { showTitle: "Alpha" },
+			},
+			inShow("e4", regular(1, 1), { localId: "Zulu" }),
+			inShow("missing-local-id", regular(1, 1)),
+			movie("film", false, []),
+		];
+		expect(showsInLibrary(items)).toEqual([
+			{ id: "a", title: "Alpha", episodeCount: 1 },
+			{ id: "b", title: "Alpha", episodeCount: 2 },
+			{ id: "Zulu", title: "Zulu", episodeCount: 1 },
+		]);
 	});
 });

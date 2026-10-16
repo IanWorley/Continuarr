@@ -9,7 +9,9 @@ import {
 	type PlexPin,
 	type PlexProvider,
 	type PlexServer,
+	type ShowMatch,
 	serverUrl,
+	showsInLibrary,
 } from "./model";
 import { planWatchedUnion, type WatchedWrite } from "./plan";
 import type { MediaRepository } from "./repo";
@@ -151,12 +153,19 @@ export function createMediaService({
 			plex.items(plexAccess),
 			jellyfin.items(jellyfinAccess),
 		]);
+		const [matches, showMatches] = await Promise.all([
+			repo.manualMatches(id),
+			repo.showMatches(id),
+		]);
 		const plan = planWatchedUnion({
 			plex: plexItems,
 			jellyfin: jellyfinItems,
-			manualMatches: await repo.manualMatches(id),
+			manualMatches: matches,
+			showMatches,
 		});
 		return {
+			matches,
+			showMatches,
 			plexAccess,
 			jellyfinAccess,
 			plex: plexItems,
@@ -507,8 +516,8 @@ export function createMediaService({
 			}
 		},
 		async library(id: string) {
-			const { plex, jellyfin } = await snapshot(id);
-			return { plex, jellyfin, matches: await repo.manualMatches(id) };
+			const { plex, jellyfin, matches, showMatches, plan } = await snapshot(id);
+			return { plex, jellyfin, matches, showMatches, pairs: plan.pairs };
 		},
 		async removeManualMatch(input: ManualMatch) {
 			await pairing(input.pairingId);
@@ -546,6 +555,48 @@ export function createMediaService({
 				if (existing) return existing;
 				throw new MediaError(
 					"One of these items already has a manual match. Select an unmatched item.",
+					409,
+				);
+			});
+		},
+		async showMatches(id: string) {
+			await pairing(id);
+			return repo.showMatches(id);
+		},
+		async removeShowMatch(input: ShowMatch) {
+			await pairing(input.pairingId);
+			return withConnectionWrite(async () => {
+				ensureIdle();
+				await repo.removeShowMatch(input);
+				return { removed: true };
+			});
+		},
+		async saveShowMatch(input: ShowMatch) {
+			ensureIdle();
+			const library = await snapshot(input.pairingId);
+			const p = showsInLibrary(library.plex).find(
+				(show) => show.id === input.plexShowId,
+			);
+			const j = showsInLibrary(library.jellyfin).find(
+				(show) => show.id === input.jellyfinShowId,
+			);
+			if (!p || !j)
+				throw new MediaError(
+					"A show is no longer available. Reload both libraries and select again.",
+					404,
+				);
+			return withConnectionWrite(async () => {
+				ensureIdle();
+				const inserted = await repo.addShowMatch(input);
+				if (inserted) return inserted;
+				const existing = (await repo.showMatches(input.pairingId)).find(
+					(match) =>
+						match.plexShowId === input.plexShowId &&
+						match.jellyfinShowId === input.jellyfinShowId,
+				);
+				if (existing) return existing;
+				throw new MediaError(
+					"One of these shows already has a show match. Select an unmatched show.",
 					409,
 				);
 			});
@@ -935,7 +986,7 @@ export function createMediaService({
 				await repo.updateRun(runId, { applied });
 			}
 			const { plan } = result;
-			const summary = `${applied} updates completed. ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
+			const summary = `${applied} updates completed. ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. ${plan.staleShowMatches} unavailable show matches skipped. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
 			await repo.updateRun(runId, {
 				status: "completed",
 				finishedAt: now(),

@@ -1036,7 +1036,7 @@ describe("media account and sync service", () => {
 			watched,
 			history: { lastPlayedAt: null, positionMs: null },
 			episode: {
-				series: { providerIds },
+				series: { localId: null, providerIds },
 				numbering: {
 					kind: "season",
 					season: 1,
@@ -1066,7 +1066,7 @@ describe("media account and sync service", () => {
 			status: "completed",
 			applied: 2,
 			summary:
-				"2 updates completed. 2 matched pairs; 1 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. Of the skipped episodes, 1 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
+				"2 updates completed. 2 matched pairs; 1 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. 0 unavailable show matches skipped. Of the skipped episodes, 1 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
 		});
 		expect(await service.run(pairing.id)).toMatchObject({
 			status: "completed",
@@ -1424,7 +1424,7 @@ describe("manual library matching", () => {
 				...movie("j1", false),
 				kind: "episode",
 				episode: {
-					series: { providerIds: {} },
+					series: { localId: null, providerIds: {} },
 					numbering: { kind: "unnumbered" },
 				},
 			},
@@ -2161,4 +2161,149 @@ it("does not expose internal disconnect failure details through HTTP", async () 
 			"Unable to contact the media service. Check the connection and try again.",
 	});
 	expect(await repo.plexServer(server.id)).toEqual(server);
+});
+
+function showEpisode(id: string, localId: string, watched = false): MediaItem {
+	return {
+		id,
+		kind: "episode",
+		title: id,
+		ids: [],
+		watched,
+		history: { lastPlayedAt: null, positionMs: null },
+		episode: {
+			series: { localId, providerIds: {} },
+			numbering: {
+				kind: "season",
+				season: 1,
+				episodes: { first: 1, count: 1 },
+			},
+		},
+	};
+}
+
+describe("saved show matches", () => {
+	async function setupShows() {
+		const context = await setup();
+		const pairing = await context.pair();
+		context.state.plex = [
+			showEpisode("p1", "p-show", true),
+			showEpisode("p2", "p-other"),
+		];
+		context.state.jellyfin = [
+			showEpisode("j1", "j-show"),
+			showEpisode("j2", "j-other"),
+		];
+		return {
+			...context,
+			match: {
+				pairingId: pairing.id,
+				plexShowId: "p-show",
+				jellyfinShowId: "j-show",
+			},
+		};
+	}
+
+	it("accepts identical retries without duplicating a show match", async () => {
+		const { service, repo, match } = await setupShows();
+		expect(await service.saveShowMatch(match)).toEqual(match);
+		expect(await service.saveShowMatch(match)).toEqual(match);
+		expect(await repo.showMatches(match.pairingId)).toEqual([match]);
+	});
+
+	it("returns 409 when either show already has a counterpart", async () => {
+		const { service, repo, match } = await setupShows();
+		await service.saveShowMatch(match);
+		for (const taken of [
+			{ ...match, jellyfinShowId: "j-other" },
+			{ ...match, plexShowId: "p-other" },
+		]) {
+			await expect(service.saveShowMatch(taken)).rejects.toMatchObject({
+				status: 409,
+			});
+			expect(await repo.addShowMatch(taken)).toBeUndefined();
+		}
+		expect(await repo.showMatches(match.pairingId)).toEqual([match]);
+	});
+
+	it("keeps show counterparts independent between person pairings", async () => {
+		const { service, repo, match, db, secrets } = await setupShows();
+		await service.saveShowMatch(match);
+		const secondPairingId = "second-show-pairing";
+		const original = await repo.pairing(match.pairingId);
+		if (!original) throw new Error("Missing original pairing");
+		const p = await repo.plexProfile(original.plexProfileId);
+		const j = await repo.jellyfinProfile(original.jellyfinProfileId);
+		if (!p?.token || !j) throw new Error("Missing original profiles");
+		const plexProfileId = "second-plex-profile";
+		const jellyfinProfileId = "second-jellyfin-profile";
+		await db.insert(schema.plexProfiles).values({
+			...p,
+			id: plexProfileId,
+			userId: "second-plex-user",
+			token: secrets.encrypt(plexProfileId, secrets.decrypt(p.id, p.token)),
+		});
+		await db
+			.insert(schema.jellyfinProfiles)
+			.values({ ...j, id: jellyfinProfileId, userId: "second-jellyfin-user" });
+		await db
+			.insert(schema.syncPairings)
+			.values({ id: secondPairingId, plexProfileId, jellyfinProfileId });
+		const second = {
+			...match,
+			pairingId: secondPairingId,
+			jellyfinShowId: "j-other",
+		};
+		expect(await repo.addShowMatch(second)).toEqual(second);
+		expect(await repo.showMatches(match.pairingId)).toEqual([match]);
+		expect(await service.showMatches(secondPairingId)).toEqual([second]);
+	});
+
+	it("rejects a missing show with 404 and saves nothing", async () => {
+		const { service, repo, match, state } = await setupShows();
+		for (const missing of [
+			{ ...match, plexShowId: "missing" },
+			{ ...match, jellyfinShowId: "missing" },
+		]) {
+			await expect(service.saveShowMatch(missing)).rejects.toMatchObject({
+				status: 404,
+			});
+		}
+		expect(await repo.showMatches(match.pairingId)).toEqual([]);
+		expect(state.writes).toEqual([]);
+	});
+
+	it("previews saved show episodes without changing watched state", async () => {
+		const { service, state, match } = await setupShows();
+		await service.saveShowMatch(match);
+		expect(await service.preview(match.pairingId)).toMatchObject({
+			matched: 1,
+			pairs: [{ plexItemId: "p1", jellyfinItemId: "j1", source: "showMatch" }],
+			writes: [
+				{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+			],
+		});
+		expect(await service.library(match.pairingId)).toMatchObject({
+			matches: [],
+			showMatches: [match],
+			pairs: [{ plexItemId: "p1", jellyfinItemId: "j1", source: "showMatch" }],
+		});
+		expect(state.writes).toEqual([]);
+	});
+
+	it("returns episodes to unmatched on removal without watched writes", async () => {
+		const { service, state, match } = await setupShows();
+		await service.saveShowMatch(match);
+		await service.removeShowMatch(match);
+		expect(await service.preview(match.pairingId)).toMatchObject({
+			matched: 0,
+			unmatched: 4,
+			pairs: [],
+			writes: [],
+		});
+		expect(await service.showMatches(match.pairingId)).toEqual([]);
+		expect(state.writes).toEqual([]);
+		expect(state.plex[0].watched).toBe(true);
+		expect(state.jellyfin[0].watched).toBe(false);
+	});
 });

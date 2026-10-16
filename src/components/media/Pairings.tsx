@@ -41,7 +41,7 @@ const SKIP_REASONS = [
 		label: "Episodes without a series ID",
 		unit: "episodes",
 		explanation:
-			"The show has no IMDb, TMDb, or TVDb ID on this server, so its episodes match only by an episode ID. Refresh the show's metadata or add a manual match. These episodes are also unmatched.",
+			"The show has no IMDb, TMDb, or TVDb ID on this server, so its episodes match only by an episode ID. Refresh the show's metadata or add a show match in Manual matching. These episodes are also unmatched.",
 	},
 	{
 		count: "missingEpisodeIds",
@@ -71,6 +71,13 @@ const SKIP_REASONS = [
 		explanation:
 			"Saved matches refer to missing or incompatible items. Review saved matches in Manual matching. Available items from these matches may also appear in the unmatched count.",
 	},
+	{
+		count: "staleShowMatches",
+		label: "Unavailable show matches",
+		unit: "saved show matches",
+		explanation:
+			"A saved show match refers to a show with no episodes in one library. Its remaining episodes use metadata matching. Review saved show matches in Manual matching.",
+	},
 ] satisfies {
 	count: keyof Pick<
 		Preview,
@@ -80,6 +87,7 @@ const SKIP_REASONS = [
 		| "ambiguous"
 		| "unsupportedNumbering"
 		| "staleManualMatches"
+		| "staleShowMatches"
 	>;
 	label: string;
 	unit: string;
@@ -394,8 +402,8 @@ export function PreviewResults({ preview }: { preview: Preview }) {
 							<p className="text-ink">{preview.matched} pairs</p>
 							<p>
 								Items paired by a saved manual match, a unique matching movie or
-								episode ID, or a shared series ID with the same season and
-								episode number.
+								episode ID, or a saved show match or shared series ID with the
+								same season and episode number.
 							</p>
 						</dd>
 					</div>
