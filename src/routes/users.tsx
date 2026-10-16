@@ -22,7 +22,16 @@ import { getApi } from "~/routes/api.$";
 const DIRECTORY_KEY = ["jellyfin-directory"];
 const STATE_KEY = ["media-state"];
 const REFRESH_MS = 10_000;
+const NEVER_LABEL = "Never";
 export const Route = createFileRoute("/users")({ component: Users });
+
+/**
+ * Eden revives ISO strings into Date objects at runtime even though the
+ * response type says string, so normalize through Date before rendering.
+ */
+function formatActivityDate(value: string | Date | null) {
+	return value ? new Date(value).toLocaleString() : NEVER_LABEL;
+}
 
 function Users() {
 	const client = useQueryClient();
@@ -247,11 +256,11 @@ function Users() {
 												</dd>
 												<dt>Last activity</dt>
 												<dd className="text-ink">
-													{user.lastActivityDate ?? "Never"}
+													{formatActivityDate(user.lastActivityDate)}
 												</dd>
 												<dt>Last login</dt>
 												<dd className="text-ink">
-													{user.lastLoginDate ?? "Never"}
+													{formatActivityDate(user.lastLoginDate)}
 												</dd>
 											</dl>
 											<details>
