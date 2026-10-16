@@ -1216,6 +1216,7 @@ describe("media account and sync service", () => {
 				title: "Alien",
 				replaces: 20000,
 				playedAt: 300000,
+				resumeAt: 20000,
 			},
 		]);
 		expect(preview.positionConflicts).toBe(1);
@@ -1230,7 +1231,7 @@ describe("media account and sync service", () => {
 		expect(state.writes).toEqual([
 			"jellyfin:j1 resume 30000",
 			"plex:p2 resume 50000",
-			"jellyfin:j3 played 300000",
+			"jellyfin:j3 played 300000 resume 20000",
 		]);
 		expect(await service.run(pairing.id)).toMatchObject({
 			status: "completed",

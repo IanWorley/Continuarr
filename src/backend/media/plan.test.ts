@@ -755,7 +755,7 @@ describe("watch-history policy", () => {
 		]);
 	});
 
-	it("marks a conflicting item watched without choosing a position for it", () => {
+	it("keeps the marked item's own position in a conflict without copying it", () => {
 		expect(
 			planHistory({
 				plex: { lastPlayedAt: 100_000, positionMs: null },
@@ -770,12 +770,33 @@ describe("watch-history policy", () => {
 					itemId: "j1",
 					title: "j1",
 					replaces: 20_000,
+					resumeAt: 20_000,
 					playedAt: 100_000,
 				},
 			],
 			matched: 1,
 			positionConflicts: 1,
 		});
+	});
+
+	it("keeps the marked item's own position when the later item has none", () => {
+		expect(
+			planHistory({
+				plex: { lastPlayedAt: 160_001, positionMs: null },
+				jellyfin: { lastPlayedAt: 100_000, positionMs: 20_000 },
+				plexWatched: true,
+			}).writes,
+		).toEqual([
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				replaces: 20_000,
+				playedAt: 160_001,
+				resumeAt: 20_000,
+			},
+		]);
 	});
 
 	it("plans nothing for a pair whose history already matches", () => {

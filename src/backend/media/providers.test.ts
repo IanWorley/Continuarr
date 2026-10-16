@@ -706,6 +706,48 @@ describe("Jellyfin provider", () => {
 		});
 	});
 
+	it("never sends a played date earlier than the item's current one", async () => {
+		const SCANNED_DATE = "2026-10-01T10:00:00.000Z";
+		const PLANNED_DATE_MS = Date.parse("2026-10-02T10:00:00.000Z");
+		const NEWER_DATE = "2026-10-03T10:00:00.000Z";
+		let lastPlayedDate = NEWER_DATE;
+		const queries: Array<Record<string, string>> = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/jf/Users/user-1/Items/item-1")
+				return json({
+					Id: "item-1",
+					UserData: {
+						Played: false,
+						LastPlayedDate: lastPlayedDate,
+						PlaybackPositionTicks: 0,
+					},
+				});
+			if (request.method === "POST") {
+				queries.push(Object.fromEntries(url.searchParams));
+				return new Response(null, { status: 204 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		const mark = () =>
+			provider.markWatched(
+				{
+					url: `${baseUrl}/jf`,
+					userId: "user-1",
+					token: new Secret("user-token"),
+				},
+				"item-1",
+				{ replaces: null, playedAt: PLANNED_DATE_MS },
+			);
+		await mark();
+		lastPlayedDate = SCANNED_DATE;
+		await mark();
+		expect(queries).toEqual([{}, { datePlayed: "2026-10-02T10:00:00.000Z" }]);
+	});
+
 	it("writes UserData with only the position replaced and skips the identical repeat", async () => {
 		const INITIAL_POSITION_TICKS = 1_000_000_000;
 		const userData = {

@@ -88,6 +88,7 @@ const seriesPageSchema = z.object({
 const userDataSchema = z
 	.object({
 		Played: z.boolean(),
+		LastPlayedDate: z.iso.datetime({ offset: true }).nullish(),
 		PlaybackPositionTicks: z.number().int().nonnegative().nullish(),
 	})
 	.catchall(z.json());
@@ -406,7 +407,14 @@ export function createJellyfinProvider(options: {
 					access.url,
 					`Users/${encodeURIComponent(access.userId)}/PlayedItems/${encodeURIComponent(itemId)}`,
 				);
-				if (datePlayed)
+				// Never move the played date earlier than the date read just now.
+				const lastPlayed = userData.LastPlayedDate
+					? Date.parse(userData.LastPlayedDate)
+					: null;
+				if (
+					datePlayed &&
+					(lastPlayed === null || datePlayed.getTime() >= lastPlayed)
+				)
 					url.searchParams.set("datePlayed", datePlayed.toISOString());
 				await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
 			}

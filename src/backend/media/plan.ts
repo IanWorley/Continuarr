@@ -103,7 +103,11 @@ function decidePair(pair: { plex: MediaItem; jellyfin: MediaItem }): {
 			replaces: item.history.positionMs,
 		});
 	}
-	const resumeAt = position === null ? {} : { resumeAt: position };
+	// Never clear a position: the marked item keeps its own unless one is copied to it.
+	const markedPosition =
+		marked === null ? null : pair[marked].history.positionMs;
+	const keep = position ?? markedPosition;
+	const resumeAt = keep === null ? {} : { resumeAt: keep };
 	if (marked === "jellyfin") {
 		const playedAt = plex.history.lastPlayedAt;
 		const jellyfinPlayedAt = jellyfin.history.lastPlayedAt;
