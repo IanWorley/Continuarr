@@ -160,6 +160,12 @@ export function PlexConnect({
 					<p className="text-sm text-muted">
 						Signed in as <span className="text-ink">{activeAccount.name}</span>
 					</p>
+					{servers.length === 1 && (
+						<p className="text-sm text-muted">
+							Continuarr connects one Plex server. To switch servers, disconnect{" "}
+							{servers[0]?.name} first.
+						</p>
+					)}
 					<Button
 						disabled={action.busy}
 						onClick={() =>
@@ -261,6 +267,12 @@ export function PlexConnect({
 			)}
 			<ErrorMessage message={action.error} />
 			{message && <Notice tone="success">{message}</Notice>}
+			{servers.length > 1 && (
+				<Notice tone="warning">
+					Continuarr connects one Plex server, and {servers.length} are saved.
+					Disconnect the servers you no longer need.
+				</Notice>
+			)}
 			{servers.length > 0 && (
 				<SavedServerList>
 					{servers.map((server) => (
@@ -285,7 +297,7 @@ export function PlexConnect({
 										credentials. Users, mappings, manual matches, and sync
 										history stay. Automatic sync for its pairings pauses. After
 										reconnecting, enable automatic sync again to resume. Your
-										Plex owner account stays linked for other servers.
+										Plex owner account stays linked.
 									</p>
 									<div className="flex flex-wrap gap-3">
 										<Button
