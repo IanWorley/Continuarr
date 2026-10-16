@@ -69,6 +69,8 @@ const jellyfinWatched = new Set(["j2"]);
 const plexInProgress = "2";
 const jellyfinInProgress = "j4";
 const LAST_PLAYED_AT_MS = Date.UTC(2026, 8, 1, 20);
+// Only Alex reports activity, so the Users page covers both a real date and "Never".
+const ALEX_LAST_ACTIVE_AT = new Date(Date.UTC(2026, 8, 2, 18)).toISOString();
 const RESUME_POSITION_MS = 754_000;
 const plexPositions = new Map([[plexInProgress, RESUME_POSITION_MS]]);
 const titles = [
@@ -218,7 +220,12 @@ const server = Bun.serve({
 			return new Response(null, { status: 401 });
 		if (path === "/jellyfin/Users")
 			return Response.json([
-				{ Id: "alex-id", Name: "Alex" },
+				{
+					Id: "alex-id",
+					Name: "Alex",
+					LastActivityDate: ALEX_LAST_ACTIVE_AT,
+					LastLoginDate: ALEX_LAST_ACTIVE_AT,
+				},
 				{ Id: "other-id", Name: "Other" },
 			]);
 		if (path === "/jellyfin/Users/other-id")
