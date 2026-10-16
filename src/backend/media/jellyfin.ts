@@ -408,7 +408,6 @@ export function createJellyfinProvider(options: {
 					access.url,
 					`Users/${encodeURIComponent(access.userId)}/PlayedItems/${encodeURIComponent(itemId)}`,
 				);
-				// Never move the played date earlier than the date read just now.
 				const lastPlayed = userData.LastPlayedDate
 					? Date.parse(userData.LastPlayedDate)
 					: null;
@@ -420,7 +419,6 @@ export function createJellyfinProvider(options: {
 				await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
 			}
 			if (resumeAt === undefined) return "applied";
-			// Re-read so the restore keeps the new Played state and sees playback during the mark.
 			const marked = userData.Played
 				? userData
 				: (await readItem(access, itemId)).userData;

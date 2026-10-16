@@ -104,7 +104,6 @@ async function setup(now: () => number = Date.now) {
 			NO_POSITION_MS
 		);
 	}
-	/** Follows the provider contract: skip a write once the destination moved since the scan. */
 	function positionWriter(side: "plex" | "jellyfin") {
 		return async (
 			_access: unknown,

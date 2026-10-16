@@ -645,7 +645,6 @@ export function createPlexProvider(options: {
 				await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
 			}
 			if (resumeAt === undefined) return "applied";
-			// Re-read after the scrobble to see playback that landed during the mark.
 			const marked = watched
 				? current
 				: ((await readItem(access, itemId)).item.viewOffset ?? NO_POSITION_MS);

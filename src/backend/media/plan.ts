@@ -14,11 +14,6 @@ import { NO_POSITION_MS, TIMESTAMP_TOLERANCE_MS } from "./constants";
 
 type Target = "plex" | "jellyfin";
 type Destination = { itemId: string; title: string };
-/**
- * Marking an item watched clears its resume position, so `resumeAt` is the
- * position the item keeps afterwards. `replaces` is the item's position the
- * planner saw, so the provider can skip the write after newer playback.
- */
 type WatchedWrite = Destination & {
 	kind: "watched";
 	replaces: number | null;
@@ -28,7 +23,6 @@ type PositionWrite = Destination & {
 	kind: "position";
 	target: Target;
 	value: number;
-	/** The destination position this write expects to overwrite, so a setter can skip it after newer playback. */
 	replaces: number | null;
 };
 export type Write = WatchedWrite | PositionWrite;
@@ -37,7 +31,6 @@ type CandidateResult =
 	| { kind: "none" | "many" }
 	| { kind: "one"; index: number };
 
-/** The position both items should end with, or null when none should be written. */
 function resumePosition({
 	plex,
 	jellyfin,
@@ -100,7 +93,6 @@ function decidePair(pair: { plex: MediaItem; jellyfin: MediaItem }): {
 			replaces: item.history.positionMs,
 		});
 	}
-	// Never clear a position: the marked item keeps its own unless one is copied to it.
 	const markedPosition =
 		marked === null ? null : pair[marked].history.positionMs;
 	const keep = position ?? markedPosition;
@@ -114,7 +106,6 @@ function decidePair(pair: { plex: MediaItem; jellyfin: MediaItem }): {
 			itemId: jellyfin.id,
 			title: jellyfin.title,
 			replaces: jellyfin.history.positionMs,
-			// Never move Jellyfin's played date earlier.
 			...(playedAt !== null &&
 			(jellyfinPlayedAt === null || playedAt >= jellyfinPlayedAt)
 				? { playedAt }
