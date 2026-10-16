@@ -57,6 +57,13 @@
       "when": 1792114996352,
       "tag": "0007_remove_event_inbox_and_delivery_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792118730508,
+      "tag": "0008_add_show_matches",
+      "breakpoints": true
     }
   ]
 }

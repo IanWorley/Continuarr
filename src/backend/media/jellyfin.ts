@@ -135,7 +135,6 @@ function toMediaItem(
 		paths: item.Path ? [item.Path] : undefined,
 		...(episode
 			? {
-					showId: item.SeriesId ?? undefined,
 					showTitle: item.SeriesName ?? undefined,
 					season: item.ParentIndexNumber ?? undefined,
 					episode: item.IndexNumber ?? undefined,
@@ -348,7 +347,10 @@ export function createJellyfinProvider(options: {
 					? seriesIds.get(item.SeriesId)
 					: undefined;
 				return toMediaItem(item, {
-					series: { providerIds: providerIds ?? {} },
+					series: {
+						localId: item.SeriesId ?? null,
+						providerIds: providerIds ?? {},
+					},
 					numbering: episodeNumbering(
 						item.ParentIndexNumber ?? undefined,
 						episodeSpan(item),

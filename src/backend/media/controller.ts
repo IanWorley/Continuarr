@@ -57,6 +57,21 @@ export function mediaRoutes(
 				}),
 			{ body: t.Object({ plexItemId: id, jellyfinItemId: id }) },
 		)
+		.get("/pairings/:id/show-matches", async ({ params }) =>
+			(await getService()).showMatches(params.id),
+		)
+		.post(
+			"/pairings/:id/show-matches",
+			async ({ params, body }) =>
+				(await getService()).saveShowMatch({ pairingId: params.id, ...body }),
+			{ body: t.Object({ plexShowId: id, jellyfinShowId: id }) },
+		)
+		.delete(
+			"/pairings/:id/show-matches",
+			async ({ params, body }) =>
+				(await getService()).removeShowMatch({ pairingId: params.id, ...body }),
+			{ body: t.Object({ plexShowId: id, jellyfinShowId: id }) },
+		)
 		.get("/state", async () => (await getService()).state())
 		.delete(
 			"/plex/:id",

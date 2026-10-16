@@ -212,3 +212,21 @@ export const manualMatches = pgTable(
 		),
 	],
 );
+
+export const showMatches = pgTable(
+	"show_matches",
+	{
+		pairingId: text("pairing_id")
+			.notNull()
+			.references(() => syncPairings.id),
+		plexShowId: text("plex_show_id").notNull(),
+		jellyfinShowId: text("jellyfin_show_id").notNull(),
+	},
+	(table) => [
+		uniqueIndex("show_match_plex").on(table.pairingId, table.plexShowId),
+		uniqueIndex("show_match_jellyfin").on(
+			table.pairingId,
+			table.jellyfinShowId,
+		),
+	],
+);

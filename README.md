@@ -66,6 +66,10 @@ Choose **Manual matching** in the navigation bar, then choose a person pairing. 
 
 Each item can have one manual counterpart within that person pairing. Matches persist across restarts. To correct a choice, choose **Remove match**, confirm removal, and select another counterpart. Saving or removing a match does not change watched status. Return to Users to preview and run sync, or let an enabled scheduled sync use the saved matches. Unavailable manual matches are skipped, and their remaining items are excluded from metadata matching until you remove the saved match.
 
+Use the **Shows** tab to match an entire show once. Select a show on each side and choose **Save show match**. Regular episodes then match by season and episode number, even when the shows have missing or different provider IDs. Episode-level manual matches take priority, followed by exact episode metadata IDs. Specials, absolute numbering, multi-episode files, duplicate coordinates, and conflicting episode IDs still need an episode-level match. The Episodes tab shows automatic show matches and episodes that need a manual choice.
+
+Each show can have one counterpart per person pairing. Saving a show match does not change watched status. Choose **Remove show match** and confirm to return its episodes to metadata matching without changing watched status. If either show becomes unavailable, sync skips and counts the saved show match; remaining episodes use metadata matching until both shows are available again.
+
 ### Watched-state behavior
 
 For a matched item, watched on either service means watched on both. Continuarr does not copy historical watch timestamps, play counts, ratings, or playback positions. The providers' mark-watched APIs may record the sync as a new play. Marking an item unwatched on one service does not clear the other service and the next sync can mark it watched again.

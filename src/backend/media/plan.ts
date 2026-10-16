@@ -3,7 +3,12 @@ import {
 	externalIdProviderSchema,
 	SINGLE_EPISODE,
 } from "~/backend/media/episode";
-import type { ManualMatch, MediaItem } from "~/backend/media/model";
+import {
+	type ManualMatch,
+	type MediaItem,
+	type ShowMatch,
+	showsInLibrary,
+} from "~/backend/media/model";
 import {
 	NO_POSITION_MS,
 	POSITION_TOLERANCE_MS,
@@ -154,23 +159,56 @@ const exactIdRule: MatchRule = {
 		haveConflictingIds(plex.ids, jellyfin.ids),
 };
 
-const seriesNumberRule: MatchRule = {
-	keys: (item) => {
-		const coordinates = regularCoordinates(item);
-		if (!coordinates) return [];
-		return seriesIds(item).map(({ provider, value }) =>
-			JSON.stringify([
-				provider,
-				value,
-				coordinates.season,
-				coordinates.episode,
-			]),
-		);
-	},
-	conflicts: ({ plex, jellyfin }) =>
-		haveConflictingIds(plex.ids, jellyfin.ids) ||
-		haveConflictingIds(seriesIds(plex), seriesIds(jellyfin)),
+type SeriesIdentity =
+	| { kind: "show"; match: ShowMatch }
+	| { kind: "provider"; ids: ExternalId[] };
+type PlannedPair = {
+	plexItemId: string;
+	jellyfinItemId: string;
+	source: "manual" | "exactIds" | "seriesNumber" | "showMatch";
 };
+
+function plannedPair(
+	{ plex, jellyfin }: Pair,
+	source: PlannedPair["source"],
+): PlannedPair {
+	return { plexItemId: plex.id, jellyfinItemId: jellyfin.id, source };
+}
+
+/** A saved show match replaces provider series IDs as the episode's series identity. */
+function seriesNumberRule(
+	identities: Map<MediaItem, SeriesIdentity>,
+): MatchRule {
+	return {
+		keys: (item) => {
+			const coordinates = regularCoordinates(item);
+			const identity = identities.get(item);
+			if (!coordinates || !identity) return [];
+			// One Plex show has at most one counterpart, so its ID names the match.
+			const seriesKeys =
+				identity.kind === "show"
+					? [["show", identity.match.plexShowId]]
+					: identity.ids.map(({ provider, value }) => [
+							"provider",
+							provider,
+							value,
+						]);
+			return seriesKeys.map((key) =>
+				JSON.stringify([...key, coordinates.season, coordinates.episode]),
+			);
+		},
+		conflicts: ({ plex, jellyfin }) => {
+			const left = identities.get(plex);
+			const right = identities.get(jellyfin);
+			return (
+				haveConflictingIds(plex.ids, jellyfin.ids) ||
+				(left?.kind === "provider" &&
+					right?.kind === "provider" &&
+					haveConflictingIds(left.ids, right.ids))
+			);
+		},
+	};
+}
 
 function indexItems(
 	items: MediaItem[],
@@ -246,9 +284,14 @@ function matchByRule(
  *
  * Exact episode and movie IDs match first. Only items that share no exact ID
  * and carry no conflicting IDs fall through to series identity plus season
- * and episode number, so numbers never override an ID.
+ * and episode number, so numbers never override an ID. Series identity is a
+ * saved show match when one covers the episode, otherwise provider series IDs.
  */
-function planAutomaticUnion(input: Libraries): {
+function planAutomaticUnion(
+	input: Libraries,
+	identities: Map<MediaItem, SeriesIdentity>,
+): {
+	pairs: PlannedPair[];
 	writes: Write[];
 	matched: number;
 	positionConflicts: number;
@@ -261,7 +304,7 @@ function planAutomaticUnion(input: Libraries): {
 			plex: input.plex.filter(fallsThrough),
 			jellyfin: input.jellyfin.filter(fallsThrough),
 		},
-		seriesNumberRule,
+		seriesNumberRule(identities),
 	);
 	const pairs = [...exact.pairs, ...bySeries.pairs];
 	const writes: Write[] = [];
@@ -279,6 +322,15 @@ function planAutomaticUnion(input: Libraries): {
 		if (!fallsThrough(item) || bySeries.candidates.get(item) !== "none")
 			return { kind: "ambiguous", reason: null };
 		if (item.kind === "movie") return { kind: "unmatched", reason: null };
+		const identity = identities.get(item);
+		if (identity?.kind === "show") {
+			if (!regularCoordinates(item))
+				return { kind: "ambiguous", reason: "unsupportedNumbering" };
+			return {
+				kind: "unmatched",
+				reason: item.ids.length ? null : "missingEpisodeIds",
+			};
+		}
 		const series = seriesIds(item);
 		if (!series.length)
 			return { kind: "unmatched", reason: "missingSeriesIds" };
@@ -302,7 +354,14 @@ function planAutomaticUnion(input: Libraries): {
 		[input.plex, input.jellyfin],
 		[input.jellyfin, input.plex],
 	]) {
-		const otherSeries = new Set(others.flatMap(seriesIds).map(idKey));
+		const otherSeries = new Set(
+			others
+				.flatMap((item) => {
+					const identity = identities.get(item);
+					return identity?.kind === "provider" ? identity.ids : [];
+				})
+				.map(idKey),
+		);
 		for (const item of items) {
 			if (paired.has(item)) continue;
 			const skip = skipFor(item, otherSeries);
@@ -310,20 +369,78 @@ function planAutomaticUnion(input: Libraries): {
 			if (skip.reason) counts[skip.reason] += 1;
 		}
 	}
-	return { writes, matched: pairs.length, ...counts, positionConflicts };
+	return {
+		writes,
+		matched: pairs.length,
+		...counts,
+		positionConflicts,
+		pairs: [
+			...exact.pairs.map((pair) => plannedPair(pair, "exactIds")),
+			...bySeries.pairs.map((pair) =>
+				plannedPair(
+					pair,
+					identities.get(pair.plex)?.kind === "show"
+						? "showMatch"
+						: "seriesNumber",
+				),
+			),
+		],
+	};
 }
 
 export function planWatchedUnion(
-	input: Libraries & { manualMatches?: ManualMatch[] },
-): ReturnType<typeof planAutomaticUnion> & { staleManualMatches?: number } {
+	input: Libraries & {
+		manualMatches?: ManualMatch[];
+		showMatches?: ShowMatch[];
+	},
+): ReturnType<typeof planAutomaticUnion> & {
+	staleManualMatches?: number;
+	staleShowMatches: number;
+} {
+	const plexShows = new Set(showsInLibrary(input.plex).map((show) => show.id));
+	const jellyfinShows = new Set(
+		showsInLibrary(input.jellyfin).map((show) => show.id),
+	);
+	const active = (input.showMatches ?? []).filter(
+		(match) =>
+			plexShows.has(match.plexShowId) &&
+			jellyfinShows.has(match.jellyfinShowId),
+	);
+	const staleShowMatches = (input.showMatches?.length ?? 0) - active.length;
+	const identities = new Map<MediaItem, SeriesIdentity>();
+	for (const side of ["plex", "jellyfin"] satisfies Target[]) {
+		const byShow = new Map(
+			active.map((match) => [
+				side === "plex" ? match.plexShowId : match.jellyfinShowId,
+				match,
+			]),
+		);
+		for (const item of input[side]) {
+			if (item.kind !== "episode") continue;
+			const match =
+				item.episode.series.localId === null
+					? undefined
+					: byShow.get(item.episode.series.localId);
+			identities.set(
+				item,
+				match
+					? { kind: "show", match }
+					: { kind: "provider", ids: seriesIds(item) },
+			);
+		}
+	}
 	const manual = input.manualMatches ?? [];
-	if (!manual.length) return planAutomaticUnion(input);
+	if (!manual.length)
+		return { ...planAutomaticUnion(input, identities), staleShowMatches };
 	const reservedPlex = new Set(manual.map((match) => match.plexItemId));
 	const reservedJellyfin = new Set(manual.map((match) => match.jellyfinItemId));
-	const plan = planAutomaticUnion({
-		plex: input.plex.filter((item) => !reservedPlex.has(item.id)),
-		jellyfin: input.jellyfin.filter((item) => !reservedJellyfin.has(item.id)),
-	});
+	const plan = planAutomaticUnion(
+		{
+			plex: input.plex.filter((item) => !reservedPlex.has(item.id)),
+			jellyfin: input.jellyfin.filter((item) => !reservedJellyfin.has(item.id)),
+		},
+		identities,
+	);
 	const plexById = new Map(input.plex.map((item) => [item.id, item]));
 	const jellyfinById = new Map(input.jellyfin.map((item) => [item.id, item]));
 	let staleManualMatches = 0;
@@ -335,10 +452,11 @@ export function planWatchedUnion(
 			plan.unmatched += Number(Boolean(plex)) + Number(Boolean(jellyfin));
 			continue;
 		}
-		plan.matched++;
+		plan.pairs.push(plannedPair({ plex, jellyfin }, "manual"));
+		plan.matched = plan.pairs.length;
 		const decision = decidePair({ plex, jellyfin });
 		plan.writes.push(...decision.writes);
 		plan.positionConflicts += decision.positionConflicts;
 	}
-	return { ...plan, staleManualMatches };
+	return { ...plan, staleManualMatches, staleShowMatches };
 }

@@ -23,7 +23,6 @@ const mediaItemBaseSchema = z.object({
 	details: z
 		.object({
 			paths: z.array(z.string()).optional(),
-			showId: z.string().optional(),
 			showTitle: z.string().optional(),
 			season: z.number().int().nonnegative().optional(),
 			episode: z.number().int().nonnegative().optional(),
@@ -35,7 +34,11 @@ export const mediaItemSchema = z.discriminatedUnion("kind", [
 	mediaItemBaseSchema.extend({
 		kind: z.literal("episode"),
 		// The episode's own provider IDs stay in `ids` with every other item's.
-		episode: episodeIdentitySchema.omit({ providerIds: true }),
+		episode: episodeIdentitySchema.omit({ providerIds: true }).extend({
+			series: episodeIdentitySchema.shape.series.extend({
+				localId: z.string().min(1).nullable(),
+			}),
+		}),
 	}),
 ]);
 export type MediaItem = z.infer<typeof mediaItemSchema>;
@@ -163,3 +166,34 @@ export const manualMatchSchema = z.object({
 	jellyfinItemId: z.string().min(1),
 });
 export type ManualMatch = z.infer<typeof manualMatchSchema>;
+
+export const showMatchSchema = z.object({
+	pairingId: z.string().min(1),
+	plexShowId: z.string().min(1),
+	jellyfinShowId: z.string().min(1),
+});
+export type ShowMatch = z.infer<typeof showMatchSchema>;
+
+export type LibraryShow = { id: string; title: string; episodeCount: number };
+
+/** Shows are known only through their episodes, so a show with none is absent. */
+export function showsInLibrary(items: readonly MediaItem[]): LibraryShow[] {
+	const shows = new Map<string, LibraryShow>();
+	for (const item of items) {
+		if (item.kind !== "episode" || item.episode.series.localId === null)
+			continue;
+		const id = item.episode.series.localId;
+		const existing = shows.get(id);
+		if (existing) existing.episodeCount++;
+		else
+			shows.set(id, {
+				id,
+				title: item.details?.showTitle ?? id,
+				episodeCount: 1,
+			});
+	}
+	return [...shows.values()].sort(
+		(left, right) =>
+			left.title.localeCompare(right.title) || left.id.localeCompare(right.id),
+	);
+}

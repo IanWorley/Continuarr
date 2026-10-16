@@ -54,6 +54,8 @@ function mediaState(overrides: Partial<MediaState> = {}): MediaState {
 
 function preview(overrides: Partial<Preview> = {}): Preview {
 	return {
+		pairs: [],
+		staleShowMatches: 0,
 		writes: [],
 		matched: 0,
 		unmatched: 0,
@@ -304,6 +306,7 @@ describe("current preview", () => {
 					missingEpisodeIds: 1,
 					unsupportedNumbering: 9,
 					staleManualMatches: 3,
+					staleShowMatches: 2,
 					positionConflicts: 17,
 				})}
 			/>,
@@ -318,6 +321,7 @@ describe("current preview", () => {
 		expect(html).toContain("6 items");
 		expect(html).toContain("2 items");
 		expect(html).toContain("3 saved matches");
+		expect(html).toContain("2 saved show matches");
 		expect(html).toContain("Episodes without a series ID");
 		expect(html).toContain("5 episodes");
 		expect(html).toContain("Episodes without an episode ID");
