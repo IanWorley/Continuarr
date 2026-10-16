@@ -51,6 +51,8 @@ export function createMediaService({
 }) {
 	const logins = new Map<string, PendingLogin>();
 	const selections = new Map<string, Selection>();
+	let discoveryEpoch = Symbol();
+	let jellyfinEpoch = Symbol();
 	const refreshes = new Map<
 		string,
 		Promise<{
@@ -105,7 +107,8 @@ export function createMediaService({
 					(profile.presence === "unverified" && profile.url && profile.token)),
 		);
 	}
-	async function snapshot(id: string) {
+	/** Rejects pairings whose profiles or servers cannot currently be read. */
+	async function connectedPairing(id: string) {
 		const pair = await pairing(id);
 		const [p, j] = await Promise.all([
 			repo.plexProfile(pair.plexProfileId),
@@ -130,6 +133,10 @@ export function createMediaService({
 		if (p.connectionId && !plexServer?.verified)
 			throw new MediaError("Reconnect the Plex server.");
 		if (!p.token) throw new MediaError("This Plex user has no server grant.");
+		return { p: { ...p, token: p.token }, j, server, plexServer };
+	}
+	async function snapshot(id: string) {
+		const { p, j, server, plexServer } = await connectedPairing(id);
 		const plexAccess = {
 			url: plexServer?.url ?? p.url,
 			token: secrets.decrypt(p.id, p.token),
@@ -217,6 +224,32 @@ export function createMediaService({
 				}),
 			};
 		},
+		async disconnectPlex(id: string) {
+			ensureIdle();
+			return withConnectionWrite(async () => {
+				ensureIdle();
+				const removed = await repo.disconnectPlexServer(id);
+				if (removed) {
+					discoveryEpoch = Symbol();
+					for (const [selectionId, selection] of selections)
+						if (
+							selection.servers.some(
+								(server) => server.id === removed.externalId,
+							)
+						)
+							selections.delete(selectionId);
+				}
+				return { id };
+			});
+		},
+		async disconnectJellyfin(id: string) {
+			ensureIdle();
+			return withConnectionWrite(async () => {
+				ensureIdle();
+				if (await repo.disconnectJellyfinServer(id)) jellyfinEpoch = Symbol();
+				return { id };
+			});
+		},
 		async importJellyfin(
 			input:
 				| { kind: "new"; url: string; apiKey: string }
@@ -228,6 +261,7 @@ export function createMediaService({
 						apiKey: string;
 				  },
 		) {
+			const epoch = jellyfinEpoch;
 			const url = serverUrl(input.url);
 			const directory = await jellyfin.directory({
 				url,
@@ -236,6 +270,11 @@ export function createMediaService({
 			return withConnectionWrite(async () => {
 				ensureIdle();
 				if (input.kind === "new") {
+					if (epoch !== jellyfinEpoch)
+						throw new MediaError(
+							"Jellyfin connections changed. Connect the server again.",
+							409,
+						);
 					if (
 						(await repo.jellyfinServers()).some(
 							(server) => server.externalId === directory.server.id,
@@ -672,6 +711,7 @@ export function createMediaService({
 			return { status: "linked" as const, accountId };
 		},
 		async selectPlexServer(input: { accountId: string }) {
+			const epoch = discoveryEpoch;
 			prune();
 			if (selections.size >= MAX_PENDING_ATTEMPTS)
 				throw new MediaError(
@@ -682,6 +722,11 @@ export function createMediaService({
 			const servers = await plex.servers(
 				secrets.decrypt(stored.id, stored.token),
 			);
+			if (epoch !== discoveryEpoch)
+				throw new MediaError(
+					"Plex connections changed. Find your servers again.",
+					409,
+				);
 			const id = randomUUID();
 			selections.set(id, {
 				accountId: stored.id,
@@ -737,6 +782,14 @@ export function createMediaService({
 			});
 			const id = await withConnectionWrite(async () => {
 				ensureIdle();
+				if (
+					selections.get(input.selectionId) !== selection ||
+					selection.expiresAt <= now()
+				)
+					throw new MediaError(
+						"Server selection expired. Select the Plex server again.",
+						409,
+					);
 				return repo.connectPlexServer({
 					accountId: stored.id,
 					expectedToken: stored.token,
@@ -797,9 +850,13 @@ export function createMediaService({
 			return result.row;
 		},
 		async automatic(id: string, enabled: boolean) {
-			await pairing(id);
-			await repo.automatic(id, enabled);
-			return { enabled };
+			// Queued with disconnects so a disconnected pairing cannot be re-enabled.
+			return withConnectionWrite(async () => {
+				if (enabled) await connectedPairing(id);
+				else await pairing(id);
+				await repo.automatic(id, enabled);
+				return { enabled };
+			});
 		},
 		async preview(id: string) {
 			ensureIdle();

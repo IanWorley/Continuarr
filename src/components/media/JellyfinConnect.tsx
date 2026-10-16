@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { MediaService } from "~/backend/media/service";
 import {
 	ErrorMessage,
@@ -33,6 +33,13 @@ export function JellyfinConnect({
 	const [apiKey, setApiKey] = useState("");
 	const [message, setMessage] = useState("");
 	const selected = servers.find((server) => server.id === selectedId);
+	useEffect(() => {
+		if (selectedId && !servers.some((server) => server.id === selectedId)) {
+			setSelectedId("");
+			setUrl("");
+			setApiKey("");
+		}
+	}, [selectedId, servers]);
 	return (
 		<Panel
 			id="jellyfin-heading"
@@ -116,7 +123,21 @@ export function JellyfinConnect({
 			{servers.length > 0 && (
 				<SavedServerList>
 					{servers.map((server) => (
-						<JellyfinServer key={server.id} server={server} refresh={refresh} />
+						<JellyfinServer
+							key={server.id}
+							server={server}
+							refresh={refresh}
+							onDisconnect={() => {
+								if (selectedId === server.id) {
+									setSelectedId("");
+									setUrl("");
+									setApiKey("");
+								}
+								setMessage(
+									`${server.name} disconnected. Mappings and history are preserved. After reconnecting, enable automatic sync again to resume.`,
+								);
+							}}
+						/>
 					))}
 				</SavedServerList>
 			)}
@@ -127,11 +148,14 @@ export function JellyfinConnect({
 function JellyfinServer({
 	server,
 	refresh,
+	onDisconnect,
 }: {
 	server: Server;
 	refresh: () => Promise<void>;
+	onDisconnect: () => void;
 }) {
 	const action = useAction();
+	const [confirming, setConfirming] = useState(false);
 	return (
 		<SavedServer
 			server={server}
@@ -149,22 +173,66 @@ function JellyfinServer({
 			}
 		>
 			<ErrorMessage message={server.lastError ?? ""} />
-			<Button
-				disabled={action.busy}
-				onClick={() =>
-					void action.perform(async () => {
-						const result = responseData(
-							await getApi()
-								.v1.media.jellyfin({ id: server.id })
-								.refresh.post(),
-						);
-						if (result.kind === "failed") throw new Error(result.message);
-						await refresh();
-					})
-				}
-			>
-				Refresh now
-			</Button>
+			<div className="flex flex-wrap gap-3">
+				<Button
+					disabled={action.busy}
+					onClick={() =>
+						void action.perform(async () => {
+							const result = responseData(
+								await getApi()
+									.v1.media.jellyfin({ id: server.id })
+									.refresh.post(),
+							);
+							if (result.kind === "failed") throw new Error(result.message);
+							await refresh();
+						})
+					}
+				>
+					Refresh now
+				</Button>
+				{!confirming && (
+					<Button disabled={action.busy} onClick={() => setConfirming(true)}>
+						Disconnect
+					</Button>
+				)}
+			</div>
+			{confirming && (
+				<fieldset
+					aria-label={`Disconnect ${server.name}`}
+					className="space-y-3 rounded-md border border-line bg-raised p-4 text-sm"
+				>
+					<p className="font-medium">Disconnect {server.name}?</p>
+					<p className="text-muted">
+						This removes this server's saved connection and local API key.
+						Users, mappings, manual matches, and sync history stay. Automatic
+						sync for its pairings pauses. After reconnecting, enable automatic
+						sync again to resume.
+					</p>
+					<div className="flex flex-wrap gap-3">
+						<Button
+							variant="danger"
+							disabled={action.busy}
+							onClick={() =>
+								void action.perform(async () => {
+									responseData(
+										await getApi()
+											.v1.media.jellyfin({ id: server.id })
+											.delete(),
+									);
+									setConfirming(false);
+									onDisconnect();
+									await refresh();
+								})
+							}
+						>
+							{action.busy ? "Disconnecting…" : "Confirm disconnect"}
+						</Button>
+						<Button disabled={action.busy} onClick={() => setConfirming(false)}>
+							Cancel
+						</Button>
+					</div>
+				</fieldset>
+			)}
 			<ErrorMessage message={action.error} />
 		</SavedServer>
 	);

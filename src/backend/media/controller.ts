@@ -3,7 +3,8 @@ import { MAX_USER_POLL_MINUTES, MIN_USER_POLL_MINUTES } from "./constants";
 import { MediaError } from "./model";
 import type { MediaService } from "./service";
 
-const id = t.String({ minLength: 1, maxLength: 200 });
+const MAX_ID_LENGTH = 200;
+const id = t.String({ minLength: 1, maxLength: MAX_ID_LENGTH });
 const MAX_SERVER_URL_LENGTH = 2048;
 const MAX_API_KEY_LENGTH = 1024;
 const jellyfinConnection = t.Union([
@@ -57,6 +58,16 @@ export function mediaRoutes(
 			{ body: t.Object({ plexItemId: id, jellyfinItemId: id }) },
 		)
 		.get("/state", async () => (await getService()).state())
+		.delete(
+			"/plex/:id",
+			async ({ params }) => (await getService()).disconnectPlex(params.id),
+			{ params: t.Object({ id }) },
+		)
+		.delete(
+			"/jellyfin/:id",
+			async ({ params }) => (await getService()).disconnectJellyfin(params.id),
+			{ params: t.Object({ id }) },
+		)
 		.post("/plex/start", async () => (await getService()).startLogin())
 		.post(
 			"/plex/poll",

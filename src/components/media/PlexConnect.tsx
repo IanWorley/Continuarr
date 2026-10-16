@@ -46,6 +46,7 @@ export function PlexConnect({
 	const [serverId, setServerId] = useState("");
 	const [serverUrl, setServerUrl] = useState("");
 	const [message, setMessage] = useState("");
+	const [disconnectId, setDisconnectId] = useState<string | null>(null);
 	const selectedServer = selection?.servers.find(
 		(server) => server.id === serverId,
 	);
@@ -273,6 +274,62 @@ export function PlexConnect({
 							}
 						>
 							<ErrorMessage message={server.lastError ?? ""} />
+							{disconnectId === server.id ? (
+								<fieldset
+									aria-label={`Disconnect ${server.name}`}
+									className="space-y-3 rounded-md border border-line bg-raised p-4 text-sm"
+								>
+									<p className="font-medium">Disconnect {server.name}?</p>
+									<p className="text-muted">
+										This removes this server's saved connection and local
+										credentials. Users, mappings, manual matches, and sync
+										history stay. Automatic sync for its pairings pauses. After
+										reconnecting, enable automatic sync again to resume. Your
+										Plex owner account stays linked for other servers.
+									</p>
+									<div className="flex flex-wrap gap-3">
+										<Button
+											variant="danger"
+											disabled={action.busy}
+											onClick={() =>
+												void action.perform(async () => {
+													responseData(
+														await getApi()
+															.v1.media.plex({ id: server.id })
+															.delete(),
+													);
+													setDisconnectId(null);
+													setSelection(null);
+													setServerId("");
+													setServerUrl("");
+													setMessage(
+														`${server.name} disconnected. Mappings and history are preserved. After reconnecting, enable automatic sync again to resume.`,
+													);
+													await refresh();
+												})
+											}
+										>
+											{action.busy ? "Disconnecting…" : "Confirm disconnect"}
+										</Button>
+										<Button
+											disabled={action.busy}
+											onClick={() => setDisconnectId(null)}
+										>
+											Cancel
+										</Button>
+									</div>
+								</fieldset>
+							) : (
+								<Button
+									disabled={action.busy}
+									onClick={() => {
+										setMessage("");
+										setDisconnectId(server.id);
+									}}
+								>
+									Disconnect
+								</Button>
+							)}
 						</SavedServer>
 					))}
 				</SavedServerList>
