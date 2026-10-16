@@ -120,6 +120,25 @@ export function createJellyfinProvider(options: {
 	fetch?: typeof globalThis.fetch;
 }): JellyfinProvider {
 	const fetcher = options.fetch ?? globalThis.fetch;
+	async function readItem(access: JellyfinAccess, itemId: string) {
+		const headers = jellyfinHeaders(
+			options.clientIdentifier,
+			access.token.reveal(),
+		);
+		const target = await requestJson({
+			fetch: fetcher,
+			url: endpoint(
+				access.url,
+				`Users/${encodeURIComponent(access.userId)}/Items/${encodeURIComponent(itemId)}`,
+			),
+			schema: targetSchema,
+			headers,
+		});
+		if (target.Id !== itemId)
+			throw new MediaError("Jellyfin returned a different item.", 502);
+		return { userData: target.UserData, headers };
+	}
+
 	async function server({ url, token }: MediaAccess) {
 		const info = await requestJson({
 			fetch: fetcher,
@@ -249,20 +268,8 @@ export function createJellyfinProvider(options: {
 		},
 
 		async markWatched(access: JellyfinAccess, itemId: string) {
-			const headers = jellyfinHeaders(
-				options.clientIdentifier,
-				access.token.reveal(),
-			);
-			const path = `Users/${encodeURIComponent(access.userId)}/Items/${encodeURIComponent(itemId)}`;
-			const target = await requestJson({
-				fetch: fetcher,
-				url: endpoint(access.url, path),
-				schema: targetSchema,
-				headers,
-			});
-			if (target.Id !== itemId)
-				throw new MediaError("Jellyfin returned a different item.", 502);
-			if (target.UserData.Played) return;
+			const { userData, headers } = await readItem(access, itemId);
+			if (userData.Played) return;
 			await requestEmpty({
 				fetch: fetcher,
 				url: endpoint(
