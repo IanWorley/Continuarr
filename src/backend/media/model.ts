@@ -1,10 +1,12 @@
 import { z } from "zod";
+import {
+	episodeIdentitySchema,
+	externalIdProviderSchema,
+} from "~/backend/media/episode";
 import type { Secret } from "~/backend/secrets/storage";
 
-export const externalIdProviderSchema = z.enum(["imdb", "tmdb", "tvdb"]);
-export const mediaItemSchema = z.object({
+const mediaItemBaseSchema = z.object({
 	id: z.string().min(1),
-	kind: z.enum(["movie", "episode"]),
 	title: z.string(),
 	ids: z.array(
 		z.object({
@@ -17,6 +19,7 @@ export const mediaItemSchema = z.object({
 		lastPlayedAt: z.number().int().nullable(),
 		positionMs: z.number().int().positive().nullable(),
 	}),
+	/** Raw values as each server reports them, for display only. */
 	details: z
 		.object({
 			paths: z.array(z.string()).optional(),
@@ -27,7 +30,16 @@ export const mediaItemSchema = z.object({
 		})
 		.optional(),
 });
+export const mediaItemSchema = z.discriminatedUnion("kind", [
+	mediaItemBaseSchema.extend({ kind: z.literal("movie") }),
+	mediaItemBaseSchema.extend({
+		kind: z.literal("episode"),
+		// The episode's own provider IDs stay in `ids` with every other item's.
+		episode: episodeIdentitySchema.omit({ providerIds: true }),
+	}),
+]);
 export type MediaItem = z.infer<typeof mediaItemSchema>;
+export type EpisodeItem = Extract<MediaItem, { kind: "episode" }>;
 export type MediaAccess = { url: string; token: Secret };
 export type JellyfinAccess = MediaAccess & { userId: string };
 export const jsonObjectSchema = z.record(z.string(), z.json());

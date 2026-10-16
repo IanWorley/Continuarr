@@ -8,7 +8,7 @@ import {
 } from "testcontainers";
 import { createDatabase } from "~/db/database";
 
-const POSTGRES_IMAGE = "postgres:17.6-alpine";
+const POSTGRES_IMAGE = "postgres:18.6-alpine";
 const POSTGRES_PORT = 5432;
 const POSTGRES_READY_LOG_OCCURRENCES = 2;
 const TEST_DATABASE_USER = "continuarr";

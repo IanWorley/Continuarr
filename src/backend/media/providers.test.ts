@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { z } from "zod";
 import { createJellyfinProvider } from "~/backend/media/jellyfin";
+import type { MediaItem } from "~/backend/media/model";
 import { createPlexProvider } from "~/backend/media/plex";
 import { Secret } from "~/backend/secrets/storage";
 
@@ -20,6 +21,10 @@ function serve(handler: (request: Request) => Response | Promise<Response>) {
 
 function json(value: unknown, status = 200) {
 	return Response.json(value, { status });
+}
+
+function episodeIdentity(item: MediaItem | undefined) {
+	return item?.kind === "episode" ? item.episode : null;
 }
 
 afterEach(() => {
@@ -804,6 +809,10 @@ it("keeps direct episode identifiers and rejects series paths as episode identif
 			ids: [],
 			watched: false,
 			history: { lastPlayedAt: null, positionMs: null },
+			episode: {
+				series: { providerIds: {} },
+				numbering: { kind: "unnumbered" },
+			},
 		},
 		{
 			id: "2",
@@ -812,14 +821,21 @@ it("keeps direct episode identifiers and rejects series paths as episode identif
 			ids: [{ provider: "tvdb", value: "349232" }],
 			watched: false,
 			history: { lastPlayedAt: null, positionMs: null },
+			episode: {
+				series: { providerIds: {} },
+				numbering: { kind: "unnumbered" },
+			},
 		},
 	]);
 });
 
 describe("library display details", () => {
 	it("reads Plex episode hierarchy and every media part path", async () => {
-		const url = serve((request) =>
-			new URL(request.url).pathname === "/library/sections"
+		const url = serve((request) => {
+			const path = new URL(request.url).pathname;
+			if (path === "/library/metadata/7")
+				return json({ MediaContainer: { Metadata: [{ ratingKey: "7" }] } });
+			return path === "/library/sections"
 				? json({ MediaContainer: { Directory: [{ key: "2", type: "show" }] } })
 				: json({
 						MediaContainer: {
@@ -828,7 +844,7 @@ describe("library display details", () => {
 								{
 									ratingKey: "12",
 									title: "Pilot",
-									grandparentRatingKey: "show-7",
+									grandparentRatingKey: "7",
 									grandparentTitle: "Example",
 									parentIndex: 0,
 									index: 1,
@@ -843,24 +859,29 @@ describe("library display details", () => {
 								},
 							],
 						},
-					}),
-		);
+					});
+		});
 		const items = await createPlexProvider({
 			clientIdentifier: PLEX_IDENTIFIER,
 		}).items({ url, token: new Secret("token") });
 		expect(items[0].details).toEqual({
 			paths: ["/tv/pilot-a.mkv", "/tv/pilot-b.mkv"],
-			showId: "show-7",
+			showId: "7",
 			showTitle: "Example",
 			season: 0,
 			episode: 1,
 		});
+		expect(episodeIdentity(items[0])).toEqual({
+			series: { providerIds: {} },
+			numbering: { kind: "special", episodes: { first: 1, count: 1 } },
+		});
 	});
 	it("requests Jellyfin paths and reads episode hierarchy without inventing missing metadata", async () => {
 		const url = serve((request) => {
-			expect(new URL(request.url).searchParams.get("Fields")).toBe(
-				"ProviderIds,Path",
-			);
+			const params = new URL(request.url).searchParams;
+			if (params.get("Ids") === "series-7")
+				return json({ Items: [{ Id: "series-7" }], TotalRecordCount: 1 });
+			expect(params.get("Fields")).toBe("ProviderIds,Path");
 			return json({
 				TotalRecordCount: 2,
 				Items: [
@@ -902,6 +923,171 @@ describe("library display details", () => {
 		expect(items[1].details?.paths).toBeUndefined();
 		expect(items[1].details?.season).toBeUndefined();
 		expect(items[1].ids).toEqual([]);
+	});
+});
+
+describe("series identity", () => {
+	it("attaches Plex show GUIDs and numbering with one read per show", async () => {
+		const showReads: string[] = [];
+		const sharedFile = [{ Part: [{ file: "/tv/other/s02e03-e04.mkv" }] }];
+		const library = [
+			...Array.from({ length: PAGE_SIZE + 1 }, (_, index) => ({
+				ratingKey: String(index + 1),
+				grandparentRatingKey: "7",
+				parentIndex: 1,
+				index: index + 1,
+				Media: [{ Part: [{ file: `/tv/show/${index + 1}.mkv` }] }],
+			})),
+			{
+				ratingKey: "201",
+				grandparentRatingKey: "8",
+				parentIndex: 2,
+				index: 3,
+				Media: sharedFile,
+			},
+			{
+				ratingKey: "202",
+				grandparentRatingKey: "8",
+				parentIndex: 2,
+				index: 4,
+				Media: sharedFile,
+			},
+		];
+		const url = serve((request) => {
+			const path = new URL(request.url).pathname;
+			if (path === "/library/sections")
+				return json({
+					MediaContainer: { Directory: [{ key: "1", type: "show" }] },
+				});
+			if (path === "/library/sections/1/all") {
+				const offset = Number(request.headers.get("X-Plex-Container-Start"));
+				return json({
+					MediaContainer: {
+						totalSize: library.length,
+						offset,
+						Metadata: library.slice(offset, offset + PAGE_SIZE),
+					},
+				});
+			}
+			const showKey = path.split("/").at(-1) ?? "";
+			showReads.push(showKey);
+			return json({
+				MediaContainer: {
+					Metadata: [
+						showKey === "7"
+							? {
+									ratingKey: "7",
+									Guid: [{ id: "tvdb://81189" }, { id: "imdb://tt0903747" }],
+								}
+							: { ratingKey: showKey },
+					],
+				},
+			});
+		});
+		const items = await createPlexProvider({
+			clientIdentifier: PLEX_IDENTIFIER,
+		}).items({ url, token: new Secret("token") });
+		expect(showReads).toEqual(["7", "8"]);
+		expect(episodeIdentity(items[PAGE_SIZE])).toEqual({
+			series: { providerIds: { tvdb: "81189", imdb: "tt0903747" } },
+			numbering: {
+				kind: "season",
+				season: 1,
+				episodes: { first: PAGE_SIZE + 1, count: 1 },
+			},
+		});
+		const multiEpisode: ReturnType<typeof episodeIdentity> = {
+			series: { providerIds: {} },
+			numbering: {
+				kind: "season",
+				season: 2,
+				episodes: { first: 3, count: 2 },
+			},
+		};
+		expect(items.slice(-2).map(episodeIdentity)).toEqual([
+			multiEpisode,
+			multiEpisode,
+		]);
+	});
+
+	it("attaches Jellyfin series provider IDs and numbering with one read per series", async () => {
+		const seriesReads: string[] = [];
+		const episode = (
+			id: string,
+			seriesId: string,
+			season: number | null,
+			first: number,
+			last?: number,
+		) => ({
+			Id: id,
+			Type: "Episode",
+			SeriesId: seriesId,
+			ParentIndexNumber: season,
+			IndexNumber: first,
+			IndexNumberEnd: last,
+			UserData: { Played: false },
+		});
+		const library = [
+			...Array.from({ length: PAGE_SIZE + 1 }, (_, index) =>
+				episode(`e${index + 1}`, "s1", 1, index + 1),
+			),
+			episode("multi", "s2", 2, 3, 4),
+			episode("special", "s2", 0, 1),
+			episode("absolute", "s2", null, 147),
+		];
+		const url = serve((request) => {
+			const params = new URL(request.url).searchParams;
+			const ids = params.get("Ids");
+			if (ids === null) {
+				const offset = Number(params.get("StartIndex"));
+				return json({
+					Items: library.slice(offset, offset + PAGE_SIZE),
+					TotalRecordCount: library.length,
+				});
+			}
+			seriesReads.push(`${ids}:${params.get("Fields")}`);
+			return json({
+				Items: [
+					ids === "s1"
+						? {
+								Id: "s1",
+								ProviderIds: { Tvdb: "81189", Imdb: "tt0903747", Tmdb: "" },
+							}
+						: { Id: ids, ProviderIds: {} },
+				],
+				TotalRecordCount: 1,
+			});
+		});
+		const items = await createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		}).items({ url, userId: "person", token: new Secret("token") });
+		expect(seriesReads).toEqual(["s1:ProviderIds", "s2:ProviderIds"]);
+		expect(episodeIdentity(items[0])).toEqual({
+			series: { providerIds: { tvdb: "81189", imdb: "tt0903747" } },
+			numbering: {
+				kind: "season",
+				season: 1,
+				episodes: { first: 1, count: 1 },
+			},
+		});
+		expect(items.slice(-3).map(episodeIdentity)).toEqual([
+			{
+				series: { providerIds: {} },
+				numbering: {
+					kind: "season",
+					season: 2,
+					episodes: { first: 3, count: 2 },
+				},
+			},
+			{
+				series: { providerIds: {} },
+				numbering: { kind: "special", episodes: { first: 1, count: 1 } },
+			},
+			{
+				series: { providerIds: {} },
+				numbering: { kind: "absolute", episodes: { first: 147, count: 1 } },
+			},
+		]);
 	});
 });
 

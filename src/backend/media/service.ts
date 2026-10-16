@@ -275,13 +275,9 @@ export function createMediaService({
 							"Jellyfin connections changed. Connect the server again.",
 							409,
 						);
-					if (
-						(await repo.jellyfinServers()).some(
-							(server) => server.externalId === directory.server.id,
-						)
-					)
+					if ((await repo.jellyfinServers()).length > 0)
 						throw new MediaError(
-							"This Jellyfin server is already connected. Replace its key instead.",
+							"A Jellyfin server is already connected. Replace its key, or disconnect it to connect a different server.",
 							409,
 						);
 					const id = randomUUID();
@@ -585,29 +581,29 @@ export function createMediaService({
 					userId,
 					name,
 				})),
-				plexServers: plexServers
-					.filter((server) => server.verified)
-					.map(
-						({
-							id,
-							accountId,
-							externalId,
-							name,
-							url,
-							lastAttemptAt,
-							lastSuccessAt,
-							lastError,
-						}) => ({
-							id,
-							accountId,
-							externalId,
-							name,
-							url,
-							lastAttemptAt,
-							lastSuccessAt,
-							lastError,
-						}),
-					),
+				plexServers: plexServers.map(
+					({
+						id,
+						accountId,
+						externalId,
+						name,
+						url,
+						verified,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}) => ({
+						id,
+						accountId,
+						externalId,
+						name,
+						url,
+						verified,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}),
+				),
 				directoryPolling: {
 					enabled: directoryPolling.enabled,
 					intervalMinutes: directoryPolling.intervalMinutes,
@@ -790,6 +786,15 @@ export function createMediaService({
 						"Server selection expired. Select the Plex server again.",
 						409,
 					);
+				if (
+					(await repo.plexServers()).some(
+						(saved) => saved.externalId !== server.id,
+					)
+				)
+					throw new MediaError(
+						"A Plex server is already connected. Disconnect it to connect a different server.",
+						409,
+					);
 				return repo.connectPlexServer({
 					accountId: stored.id,
 					expectedToken: stored.token,
@@ -929,7 +934,8 @@ export function createMediaService({
 				applied++;
 				await repo.updateRun(runId, { applied });
 			}
-			const summary = `${applied} updates completed. ${result.plan.matched} matched pairs; ${result.plan.unmatched} unmatched items; ${result.plan.ambiguous} ambiguous items skipped. ${result.plan.staleManualMatches ?? 0} unavailable manual matches skipped.`;
+			const { plan } = result;
+			const summary = `${applied} updates completed. ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
 			await repo.updateRun(runId, {
 				status: "completed",
 				finishedAt: now(),

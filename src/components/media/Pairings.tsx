@@ -37,11 +37,32 @@ const SKIP_REASONS = [
 			"No usable matching counterpart was found. Check provider IDs or add a manual match in Manual matching.",
 	},
 	{
+		count: "missingSeriesIds",
+		label: "Episodes without a series ID",
+		unit: "episodes",
+		explanation:
+			"The show has no IMDb, TMDb, or TVDb ID on this server, so its episodes match only by an episode ID. Refresh the show's metadata or add a manual match. These episodes are also unmatched.",
+	},
+	{
+		count: "missingEpisodeIds",
+		label: "Episodes without an episode ID",
+		unit: "episodes",
+		explanation:
+			"The show has a series ID, but the other server has no episode with the same series ID, season, and episode number. Check the episode numbering or add a manual match. These episodes are also unmatched.",
+	},
+	{
 		count: "ambiguous",
 		label: "Ambiguous or conflicting metadata",
 		unit: "items",
 		explanation:
 			"Multiple candidates or conflicting identifiers prevent a safe automatic match. Review provider IDs or choose a manual match in Manual matching.",
+	},
+	{
+		count: "unsupportedNumbering",
+		label: "Episodes that cannot match by number",
+		unit: "episodes",
+		explanation:
+			"Specials, absolute-numbered episodes, multi-episode files, and episodes without numbers never match by season and episode number. Add a manual match. These episodes are also ambiguous.",
 	},
 	{
 		count: "staleManualMatches",
@@ -51,7 +72,15 @@ const SKIP_REASONS = [
 			"Saved matches refer to missing or incompatible items. Review saved matches in Manual matching. Available items from these matches may also appear in the unmatched count.",
 	},
 ] satisfies {
-	count: keyof Pick<Preview, "unmatched" | "ambiguous" | "staleManualMatches">;
+	count: keyof Pick<
+		Preview,
+		| "unmatched"
+		| "missingSeriesIds"
+		| "missingEpisodeIds"
+		| "ambiguous"
+		| "unsupportedNumbering"
+		| "staleManualMatches"
+	>;
 	label: string;
 	unit: string;
 	explanation: string;
@@ -163,8 +192,9 @@ function PairingCard({
 			<p className="text-sm text-muted">
 				Preview compares both libraries without making changes. Sync checks them
 				again before updating watched status. Saved manual matches take
-				priority. Other items need a unique matching movie or episode ID or they
-				are skipped.
+				priority. Other items need a unique matching movie or episode ID. An
+				episode can also match by a shared series ID with the same season and
+				episode number. Everything else is skipped.
 			</p>
 			<div className="flex flex-wrap gap-3">
 				<Button
@@ -363,8 +393,9 @@ export function PreviewResults({ preview }: { preview: Preview }) {
 						<dd className="text-muted">
 							<p className="text-ink">{preview.matched} pairs</p>
 							<p>
-								Items paired by a saved manual match or a unique matching movie
-								or episode ID.
+								Items paired by a saved manual match, a unique matching movie or
+								episode ID, or a shared series ID with the same season and
+								episode number.
 							</p>
 						</dd>
 					</div>

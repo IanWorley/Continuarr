@@ -2,7 +2,6 @@ import {
 	bigint,
 	boolean,
 	check,
-	index,
 	integer,
 	jsonb,
 	pgTable,
@@ -13,11 +12,6 @@ import {
 import { sql } from "drizzle-orm/sql";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import type z from "zod";
-import {
-	type InboxEvent,
-	type OutboxDelivery,
-	QUEUE_STATUSES,
-} from "~/backend/events/model";
 import {
 	DEFAULT_USER_POLL_MINUTES,
 	MAX_USER_POLL_MINUTES,
@@ -218,42 +212,3 @@ export const manualMatches = pgTable(
 		),
 	],
 );
-
-function durableQueue<TPayload>(name: string) {
-	return pgTable(
-		name,
-		{
-			id: bigint("id", { mode: "number" })
-				.primaryKey()
-				.generatedAlwaysAsIdentity(),
-			idempotencyKey: text("idempotency_key").notNull().unique(),
-			payloadVersion: integer("payload_version").notNull(),
-			payload: jsonb("payload").$type<TPayload>().notNull(),
-			status: text("status", { enum: QUEUE_STATUSES })
-				.notNull()
-				.default("pending"),
-			attempts: integer("attempts").notNull().default(0),
-			// Earliest time a worker may claim the record: the retry time while pending, the lease expiry while processing.
-			nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
-				.notNull()
-				.defaultNow(),
-			lastError: text("last_error"),
-			createdAt: timestamp("created_at", { withTimezone: true })
-				.notNull()
-				.defaultNow(),
-			updatedAt: timestamp("updated_at", { withTimezone: true })
-				.notNull()
-				.defaultNow()
-				.$onUpdate(() => sql`now()`),
-		},
-		(table) => [
-			index(`${name}_claimable`).on(table.status, table.nextAttemptAt),
-		],
-	);
-}
-export type DurableQueueTable<TPayload> = ReturnType<
-	typeof durableQueue<TPayload>
->;
-
-export const eventInbox = durableQueue<InboxEvent>("event_inbox");
-export const deliveryOutbox = durableQueue<OutboxDelivery>("delivery_outbox");

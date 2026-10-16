@@ -6,6 +6,7 @@ import { createApi } from "~/backend/api";
 import { createSecretStorage, Secret } from "~/backend/secrets/storage";
 import * as schema from "~/db/schema";
 import { setupTestDatabase } from "~/db/test-database";
+import type { ProviderIds } from "./episode";
 import {
 	type JellyfinDirectory,
 	type JellyfinProvider,
@@ -225,7 +226,12 @@ describe("media account and sync service", () => {
 			await repo.backfillPlexServers();
 			const server = (await repo.plexServers())[0];
 			if (!server) throw new Error("Missing backfilled server");
-			expect((await service.state()).plexServers).toEqual([]);
+			expect(
+				(await service.state()).plexServers.map(({ externalId, verified }) => ({
+					externalId,
+					verified,
+				})),
+			).toEqual([{ externalId: "machine", verified: false }]);
 			const originalProfiles = await repo.plexProfiles();
 			state.grant = false;
 			if (refresh === "scheduled") {
@@ -308,7 +314,12 @@ describe("media account and sync service", () => {
 		await repo.backfillPlexServers();
 		const candidate = (await repo.plexServers())[0];
 		expect(candidate?.verified).toBe(false);
-		expect((await service.state()).plexServers).toEqual([]);
+		expect(
+			(await service.state()).plexServers.map(({ id, verified }) => ({
+				id,
+				verified,
+			})),
+		).toEqual([{ id: candidate?.id, verified: false }]);
 		state.plexLogin = {
 			userId: "real-owner",
 			name: "Real owner",
@@ -402,6 +413,120 @@ describe("media account and sync service", () => {
 		});
 		release?.();
 		await expect(stale).rejects.toThrow("connection changed");
+	});
+	it("rejects a different Plex server while one is connected", async () => {
+		const { service, repo, plex, pair } = await setup();
+		await pair();
+		plex.servers = async () => [
+			{
+				id: "other-machine",
+				name: "Other Plex",
+				token: new Secret("other-token"),
+				connections: ["http://other-plex:32400"],
+			},
+		];
+		const selection = await service.selectPlexServer({
+			accountId: (await repo.accounts())[0]?.id ?? "",
+		});
+		await expect(
+			service.connectPlex({
+				selectionId: selection.id,
+				serverId: "other-machine",
+				url: "http://other-plex:32400",
+			}),
+		).rejects.toMatchObject({
+			status: 409,
+			message:
+				"A Plex server is already connected. Disconnect it to connect a different server.",
+		});
+		expect(
+			(await repo.plexServers()).map(({ externalId, verified }) => ({
+				externalId,
+				verified,
+			})),
+		).toEqual([{ externalId: "machine", verified: true }]);
+	});
+	describe("with a Plex server saved before owner adoption", () => {
+		async function setupLegacyServer() {
+			const context = await setup();
+			const { service, repo, secrets } = context;
+			const attempt = await service.startLogin();
+			const login = await service.pollLogin(attempt.id);
+			if (login.status !== "linked") throw new Error("Expected login");
+			const legacyId = crypto.randomUUID();
+			await repo.savePlexProfile({
+				id: legacyId,
+				accountId: login.accountId,
+				userId: "owner",
+				name: "Owner",
+				serverId: "legacy-machine",
+				serverName: "Legacy Plex",
+				url: "http://legacy-plex:32400",
+				token: secrets.encrypt(legacyId, new Secret("legacy-token")),
+			});
+			await repo.backfillPlexServers();
+			const selection = await service.selectPlexServer({
+				accountId: login.accountId,
+			});
+			const connectMachine = () =>
+				service.connectPlex({
+					selectionId: selection.id,
+					serverId: "machine",
+					url: "http://plex:32400",
+				});
+			return { ...context, connectMachine };
+		}
+		it("rejects a different Plex server", async () => {
+			const { repo, connectMachine } = await setupLegacyServer();
+			await expect(connectMachine()).rejects.toMatchObject({
+				status: 409,
+				message:
+					"A Plex server is already connected. Disconnect it to connect a different server.",
+			});
+			expect(
+				(await repo.plexServers()).map(({ externalId }) => externalId),
+			).toEqual(["legacy-machine"]);
+		});
+		it("lists the legacy server so the owner can disconnect it and switch", async () => {
+			const { service, connectMachine } = await setupLegacyServer();
+			const [legacy] = (await service.state()).plexServers;
+			expect(legacy).toMatchObject({
+				externalId: "legacy-machine",
+				name: "Legacy Plex",
+				verified: false,
+			});
+			await service.disconnectPlex(legacy?.id ?? "");
+			await connectMachine();
+			expect(
+				(await service.state()).plexServers.map(({ externalId, verified }) => ({
+					externalId,
+					verified,
+				})),
+			).toEqual([{ externalId: "machine", verified: true }]);
+		});
+	});
+	it("rejects a second Jellyfin server while one is connected", async () => {
+		const { service, repo, jellyfin, pair } = await setup();
+		await pair();
+		const directory = jellyfin.directory;
+		jellyfin.directory = async (access) => ({
+			...(await directory(access)),
+			server: { id: "other-jellyfin", name: "Other Jellyfin" },
+		});
+		await expect(
+			service.importJellyfin({
+				kind: "new",
+				url: "http://other-jellyfin:8096",
+				apiKey: "other-key",
+			}),
+		).rejects.toMatchObject({
+			status: 409,
+			message:
+				"A Jellyfin server is already connected. Replace its key, or disconnect it to connect a different server.",
+		});
+		expect(
+			(await repo.jellyfinServers()).map(({ externalId }) => externalId),
+		).toEqual(["j-server"]);
 	});
 	it("imports every user and retains the full details", async () => {
 		const { service, jellyfin, repo } = await setup();
@@ -895,6 +1020,61 @@ describe("media account and sync service", () => {
 		expect(state.plex[0].watched).toBe(true);
 		expect(state.writes).toEqual(["jellyfin:j1", "plex:p1"]);
 	});
+	it("matches episodes by series ID and numbers, then plans nothing once converged", async () => {
+		const { service, state, pair } = await setup();
+		const pairing = await pair();
+		const episode = (
+			id: string,
+			number: number,
+			watched: boolean,
+			providerIds: ProviderIds,
+		): MediaItem => ({
+			id,
+			kind: "episode",
+			title: `Episode ${number}`,
+			ids: [],
+			watched,
+			history: { lastPlayedAt: null, positionMs: null },
+			episode: {
+				series: { providerIds },
+				numbering: {
+					kind: "season",
+					season: 1,
+					episodes: { first: number, count: 1 },
+				},
+			},
+		});
+		state.plex = [
+			episode("p1", 1, true, { tvdb: "81189" }),
+			episode("p2", 2, false, { tvdb: "81189" }),
+			episode("p3", 3, false, {}),
+		];
+		state.jellyfin = [
+			episode("j1", 1, false, { tvdb: "81189", tmdb: "1396" }),
+			episode("j2", 2, true, { tvdb: "81189", tmdb: "1396" }),
+		];
+		expect(await service.preview(pairing.id)).toMatchObject({
+			writes: [
+				{ target: "jellyfin", itemId: "j1" },
+				{ target: "plex", itemId: "p2" },
+			],
+			matched: 2,
+			unmatched: 1,
+			missingSeriesIds: 1,
+		});
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			applied: 2,
+			summary:
+				"2 updates completed. 2 matched pairs; 1 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. Of the skipped episodes, 1 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
+		});
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			planned: 0,
+			applied: 0,
+		});
+		expect(state.writes).toEqual(["jellyfin:j1", "plex:p2"]);
+	});
 	it("keeps position-only changes out of preview and recorded runs", async () => {
 		const { service, state, pair } = await setup();
 		const pairing = await pair();
@@ -1239,7 +1419,16 @@ describe("manual library matching", () => {
 	it("validates current existence and content kind before saving", async () => {
 		const { service, repo, state, pair } = await setup();
 		const pairing = await pair();
-		state.jellyfin[0].kind = "episode";
+		state.jellyfin = [
+			{
+				...movie("j1", false),
+				kind: "episode",
+				episode: {
+					series: { providerIds: {} },
+					numbering: { kind: "unnumbered" },
+				},
+			},
+		];
 		const match = {
 			pairingId: pairing.id,
 			plexItemId: "p1",
@@ -1479,42 +1668,46 @@ describe("safe server disconnect", () => {
 			);
 		});
 
-		it(`leaves another ${provider} server's credentials and automatic pairing unchanged`, async () => {
-			const { db, service, repo, plex, jellyfin, pair } = await setup();
+		it(`leaves a second ${provider} server saved by an earlier version unchanged`, async () => {
+			const { db, service, repo, secrets, jellyfin, pair } = await setup();
 			await pair();
 			const first =
 				provider === "plex"
 					? (await repo.plexServers())[0]
 					: (await repo.jellyfinServers())[0];
 			if (!first) throw new Error("Missing first server");
+			// The service now refuses a second server, so save it the way earlier versions did.
 			if (provider === "plex") {
-				plex.servers = async () => [
-					{
-						id: "other-machine",
-						name: "Other Plex",
-						token: new Secret("other-token"),
-						connections: ["http://other-plex:32400"],
-					},
-				];
-				const selection = await service.selectPlexServer({
-					accountId: (await repo.accounts())[0]?.id ?? "",
-				});
-				await service.connectPlex({
-					selectionId: selection.id,
+				const account = (await repo.accounts())[0];
+				if (!account) throw new Error("Missing Plex account");
+				await repo.connectPlexServer({
+					accountId: account.id,
+					expectedToken: account.token,
+					expectedRevision: null,
 					serverId: "other-machine",
+					name: "Other Plex",
 					url: "http://other-plex:32400",
+					users: [{ id: "owner", name: "Owner", access: { kind: "owner" } }],
+					secrets,
+					now: Date.now(),
 				});
 			} else {
-				const directory = jellyfin.directory;
-				jellyfin.directory = async (access) => ({
-					...(await directory(access)),
-					server: { id: "other-jellyfin", name: "Other Jellyfin" },
-				});
-				await service.importJellyfin({
-					kind: "new",
+				const id = crypto.randomUUID();
+				const { users } = await jellyfin.directory({
 					url: "http://other-jellyfin:8096",
-					apiKey: "other-key",
+					token: new Secret("other-key"),
 				});
+				await repo.addJellyfinServer(
+					{
+						id,
+						externalId: "other-jellyfin",
+						name: "Other Jellyfin",
+						url: "http://other-jellyfin:8096",
+						token: secrets.encrypt(id, new Secret("other-key")),
+					},
+					users,
+					Date.now(),
+				);
 			}
 			const other = (
 				provider === "plex"

@@ -64,7 +64,7 @@ await db.insert(schema.plexProfiles).values({
 	token: secrets.encrypt("fixture-plex", new Secret("fixture-plex-token")),
 });
 await client.end();
-const plexWatched = new Set(["1", "3"]);
+const plexWatched = new Set(["1", "3", "6"]);
 const jellyfinWatched = new Set(["j2"]);
 const plexInProgress = "2";
 const jellyfinInProgress = "j4";
@@ -81,32 +81,57 @@ const titles = [
 	"First contact",
 	"Return",
 	"New horizons",
+	"Aurora",
+	"Polar night",
+	"Behind the lights",
 ];
 const ids = ["329865", "286217"];
 const MOVIE_COUNT = 2;
-const EPISODE_SEASONS = [1, 1, 2];
-const EPISODE_NUMBERS = [1, 2, 1];
+// Expedition has no series ID, so its episodes need a manual match.
+// Northern Lights shares a TVDb series ID, so its regular episodes match by number.
+const EXPEDITION = {
+	plexKey: "100",
+	jellyfinId: "series-1",
+	title: "Expedition",
+	tvdb: null,
+};
+const NORTHERN_LIGHTS = {
+	plexKey: "101",
+	jellyfinId: "series-2",
+	title: "Northern Lights",
+	tvdb: "389204",
+};
+const SHOWS = [EXPEDITION, NORTHERN_LIGHTS];
+const EPISODES = [
+	{ show: EXPEDITION, season: 1, episode: 1 },
+	{ show: EXPEDITION, season: 1, episode: 2 },
+	{ show: EXPEDITION, season: 2, episode: 1 },
+	{ show: NORTHERN_LIGHTS, season: 1, episode: 1 },
+	{ show: NORTHERN_LIGHTS, season: 1, episode: 2 },
+	{ show: NORTHERN_LIGHTS, season: 0, episode: 1 },
+];
 function plexItem(index: number) {
 	const id = String(index + 1);
 	const viewOffset = plexPositions.get(id);
+	const episode = EPISODES[index - MOVIE_COUNT];
 	return {
 		ratingKey: id,
-		type: index < MOVIE_COUNT ? "movie" : "episode",
+		type: episode ? "episode" : "movie",
 		Media: [
 			{
 				Part: [
 					{
-						file: `/media/${index < MOVIE_COUNT ? "movies" : "tv/Expedition"}/${titles[index]}.mkv`,
+						file: `/media/${episode ? `tv/${episode.show.title}` : "movies"}/${titles[index]}.mkv`,
 					},
 				],
 			},
 		],
-		...(index >= MOVIE_COUNT
+		...(episode
 			? {
-					grandparentRatingKey: "show-1",
-					grandparentTitle: "Expedition",
-					parentIndex: EPISODE_SEASONS[index - MOVIE_COUNT],
-					index: EPISODE_NUMBERS[index - MOVIE_COUNT],
+					grandparentRatingKey: episode.show.plexKey,
+					grandparentTitle: episode.show.title,
+					parentIndex: episode.season,
+					index: episode.episode,
 				}
 			: {}),
 		title: titles[index],
@@ -118,8 +143,16 @@ function plexItem(index: number) {
 		...(viewOffset === undefined ? {} : { viewOffset }),
 	};
 }
+function plexShow(show: (typeof SHOWS)[number]) {
+	return {
+		ratingKey: show.plexKey,
+		title: show.title,
+		Guid: show.tvdb ? [{ id: `tvdb://${show.tvdb}` }] : [],
+	};
+}
 function jellyfinItem(index: number) {
 	const id = `j${index + 1}`;
+	const episode = EPISODES[index - MOVIE_COUNT];
 	const positionMs = jellyfinPositions.get(id);
 	const lastPlayedDate =
 		jellyfinPlayedDates.get(id) ??
@@ -129,14 +162,14 @@ function jellyfinItem(index: number) {
 	return {
 		Id: id,
 		Name: titles[index],
-		Type: index < MOVIE_COUNT ? "Movie" : "Episode",
-		Path: `/data/${index < MOVIE_COUNT ? "movies" : "shows/Expedition"}/${titles[index]}.mkv`,
-		...(index >= MOVIE_COUNT
+		Type: episode ? "Episode" : "Movie",
+		Path: `/data/${episode ? `shows/${episode.show.title}` : "movies"}/${titles[index]}.mkv`,
+		...(episode
 			? {
-					SeriesId: "series-1",
-					SeriesName: "Expedition",
-					ParentIndexNumber: EPISODE_SEASONS[index - MOVIE_COUNT],
-					IndexNumber: EPISODE_NUMBERS[index - MOVIE_COUNT],
+					SeriesId: episode.show.jellyfinId,
+					SeriesName: episode.show.title,
+					ParentIndexNumber: episode.season,
+					IndexNumber: episode.episode,
 				}
 			: {}),
 		ProviderIds: ids[index] ? { Tmdb: ids[index] } : {},
@@ -194,17 +227,20 @@ const server = Bun.serve({
 		if (path === "/plex/library/sections/2/all")
 			return Response.json({
 				MediaContainer: {
-					totalSize: 3,
+					totalSize: EPISODES.length,
 					offset: 0,
-					Metadata: [plexItem(2), plexItem(3), plexItem(4)],
+					Metadata: EPISODES.map((_, index) => plexItem(MOVIE_COUNT + index)),
 				},
 			});
-		if (path.startsWith("/plex/library/metadata/"))
+		if (path.startsWith("/plex/library/metadata/")) {
+			const key = path.split("/").at(-1);
+			const show = SHOWS.find(({ plexKey }) => plexKey === key);
 			return Response.json({
 				MediaContainer: {
-					Metadata: [plexItem(Number(path.split("/").at(-1)) - 1)],
+					Metadata: [show ? plexShow(show) : plexItem(Number(key) - 1)],
 				},
 			});
+		}
 		if (path === "/plex/:/scrobble") {
 			plexWatched.add(url.searchParams.get("key") ?? "");
 			return new Response(null, { status: 200 });
@@ -244,11 +280,19 @@ const server = Bun.serve({
 			return Response.json({ Items: [], TotalRecordCount: 0 });
 		if (path === "/jellyfin/Users/alex-id")
 			return Response.json({ Id: "alex-id", Name: "Alex" });
-		if (path === "/jellyfin/Users/alex-id/Items")
-			return Response.json({
-				Items: titles.map((_, index) => jellyfinItem(index)),
-				TotalRecordCount: titles.length,
-			});
+		if (path === "/jellyfin/Users/alex-id/Items") {
+			const seriesId = url.searchParams.get("Ids");
+			const items = seriesId
+				? SHOWS.filter(({ jellyfinId }) => jellyfinId === seriesId).map(
+						(show) => ({
+							Id: show.jellyfinId,
+							Name: show.title,
+							ProviderIds: show.tvdb ? { Tvdb: show.tvdb } : {},
+						}),
+					)
+				: titles.map((_, index) => jellyfinItem(index));
+			return Response.json({ Items: items, TotalRecordCount: items.length });
+		}
 		if (
 			path.startsWith("/jellyfin/Users/alex-id/Items/") &&
 			path.endsWith("/UserData") &&
@@ -281,7 +325,7 @@ const server = Bun.serve({
 	},
 });
 console.log(
-	`Fixture running at ${server.url}. Start the app in another terminal:\nDATABASE_URL=${databaseUrl} CREDENTIAL_ENCRYPTION_KEY=${KEY} bun run dev --host 127.0.0.1\nCreate a temporary Continuarr owner in the browser. Open Connections & sync and import Jellyfin at ${base}/jellyfin with API key fixture-jellyfin-token. Open Users and pair Alex with the seeded Alex Plex Home profile. Preview should show two writes; the second sync should show zero. Inspect ${base}/fixture-state for both watched item IDs on each service. Stop this process when finished. Its PostgreSQL container is isolated and stops with this process.`,
+	`Fixture running at ${server.url}. Start the app in another terminal:\nDATABASE_URL=${databaseUrl} CREDENTIAL_ENCRYPTION_KEY=${KEY} bun run dev --host 127.0.0.1\nCreate a temporary Continuarr owner in the browser. Open Connections & sync and import Jellyfin at ${base}/jellyfin with API key fixture-jellyfin-token. Open Users and pair Alex with the seeded Alex Plex Home profile. Preview should show three writes, four matched pairs, and two ambiguous specials; the second sync should show zero. Inspect ${base}/fixture-state for both watched item IDs on each service. Stop this process when finished. Its PostgreSQL container is isolated and stops with this process.`,
 );
 
 async function stop() {
