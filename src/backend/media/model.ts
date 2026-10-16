@@ -91,6 +91,15 @@ export type PlexPin = {
 };
 /** `stale` means the item's position moved since the scan, so nothing was written. */
 export type WriteResult = "applied" | "stale";
+/** A positive target counts as reached only by a positive position. Zero is never "close enough". */
+function holds(currentMs: number, targetMs: number | undefined): boolean {
+	return (
+		targetMs !== undefined &&
+		currentMs > NO_POSITION_MS &&
+		Math.abs(currentMs - targetMs) <= POSITION_TOLERANCE_MS
+	);
+}
+
 /**
  * A write is stale when the item's position moved away from what the planner
  * saw, unless it already holds the target. Overwriting it would lose newer playback.
@@ -100,15 +109,31 @@ export function isStale(
 	replaces: number | null,
 	targetMs: number | undefined,
 ): boolean {
-	if (
-		targetMs !== undefined &&
-		Math.abs(currentMs - targetMs) <= POSITION_TOLERANCE_MS
-	)
-		return false;
+	if (holds(currentMs, targetMs)) return false;
 	return (
 		Math.abs(currentMs - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
 	);
 }
+
+/**
+ * Decides the restore after a mark, from the position read after it. A
+ * cleared position or the scanned one is ours to restore; anything else is
+ * playback that landed during the write and wins.
+ */
+export function restoreAfterMark(
+	markedMs: number,
+	replaces: number | null,
+	resumeAt: number,
+): "write" | "done" | "stale" {
+	if (holds(markedMs, resumeAt)) return "done";
+	if (
+		markedMs <= NO_POSITION_MS ||
+		Math.abs(markedMs - (replaces ?? NO_POSITION_MS)) <= POSITION_TOLERANCE_MS
+	)
+		return "write";
+	return "stale";
+}
+
 /** `replaces` is the position the planner saw; marking clears it, so `resumeAt` is written back. */
 export type WatchedWriteOptions = {
 	replaces: number | null;

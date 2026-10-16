@@ -275,6 +275,75 @@ describe("Plex provider", () => {
 		});
 	});
 
+	describe("restore after scrobble", () => {
+		const SHORT_POSITION_MS = 3_000;
+		function serveMark(initialOffset: number, offsetAfterMark: number) {
+			let viewOffset: number | undefined = initialOffset;
+			let viewCount = 0;
+			const writes: string[] = [];
+			const baseUrl = serve((request) => {
+				const url = new URL(request.url);
+				if (url.pathname === "/plex/library/metadata/1")
+					return json({
+						MediaContainer: {
+							Metadata: [{ ratingKey: "1", viewCount, viewOffset }],
+						},
+					});
+				if (url.pathname === "/plex/:/scrobble") {
+					viewCount = 1;
+					viewOffset = offsetAfterMark;
+					return new Response(null, { status: 200 });
+				}
+				if (url.pathname === "/plex/:/progress") {
+					writes.push(url.searchParams.get("time") ?? "");
+					viewOffset = Number(url.searchParams.get("time"));
+					return new Response(null, { status: 200 });
+				}
+				return json({}, 404);
+			});
+			const provider = createPlexProvider({
+				clientIdentifier: PLEX_IDENTIFIER,
+			});
+			const access = {
+				url: `${baseUrl}/plex`,
+				token: new Secret("grant-token"),
+			};
+			return {
+				mark: (options: { replaces: number; resumeAt: number }) =>
+					provider.markWatched(access, "1", options),
+				state: () => ({ viewOffset, writes }),
+			};
+		}
+
+		it("writes back a short position the scrobble cleared", async () => {
+			const fixture = serveMark(SHORT_POSITION_MS, 0);
+			expect(
+				await fixture.mark({
+					replaces: SHORT_POSITION_MS,
+					resumeAt: SHORT_POSITION_MS,
+				}),
+			).toBe("applied");
+			expect(fixture.state()).toEqual({
+				viewOffset: SHORT_POSITION_MS,
+				writes: ["3000"],
+			});
+		});
+
+		it("keeps playback that landed during the scrobble", async () => {
+			const fixture = serveMark(SCANNED_POSITION_MS, ADVANCED_POSITION_MS);
+			expect(
+				await fixture.mark({
+					replaces: SCANNED_POSITION_MS,
+					resumeAt: PLANNED_POSITION_MS,
+				}),
+			).toBe("stale");
+			expect(fixture.state()).toEqual({
+				viewOffset: ADVANCED_POSITION_MS,
+				writes: [],
+			});
+		});
+	});
+
 	it("offers only owned servers and prefers a grant for a protected Home member", async () => {
 		const baseUrl = serve((request) => {
 			const path = new URL(request.url).pathname;
@@ -746,6 +815,82 @@ describe("Jellyfin provider", () => {
 		lastPlayedDate = SCANNED_DATE;
 		await mark();
 		expect(queries).toEqual([{}, { datePlayed: "2026-10-02T10:00:00.000Z" }]);
+	});
+
+	describe("restore after PlayedItems", () => {
+		const SHORT_POSITION_MS = 3_000;
+		function serveMark(initialMs: number, msAfterMark: number) {
+			const userData = {
+				Played: false,
+				LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+				PlayCount: 0,
+				PlaybackPositionTicks: initialMs * TICKS_PER_MILLISECOND,
+			};
+			const writes: number[] = [];
+			const baseUrl = serve(async (request) => {
+				const url = new URL(request.url);
+				if (url.pathname === "/jf/Users/user-1/Items/item-1")
+					return json({ Id: "item-1", UserData: userData });
+				if (url.pathname === "/jf/Users/user-1/PlayedItems/item-1") {
+					userData.Played = true;
+					userData.PlaybackPositionTicks = msAfterMark * TICKS_PER_MILLISECOND;
+					return new Response(null, { status: 204 });
+				}
+				if (url.pathname === "/jf/Users/user-1/Items/item-1/UserData") {
+					const ticks = z
+						.object({ PlaybackPositionTicks: z.number() })
+						.parse(await request.json()).PlaybackPositionTicks;
+					writes.push(ticks / TICKS_PER_MILLISECOND);
+					userData.PlaybackPositionTicks = ticks;
+					return new Response(null, { status: 200 });
+				}
+				return json({}, 404);
+			});
+			const provider = createJellyfinProvider({
+				clientIdentifier: JELLYFIN_IDENTIFIER,
+			});
+			const access = {
+				url: `${baseUrl}/jf`,
+				userId: "user-1",
+				token: new Secret("user-token"),
+			};
+			return {
+				mark: (options: { replaces: number; resumeAt: number }) =>
+					provider.markWatched(access, "item-1", options),
+				state: () => ({
+					positionMs: userData.PlaybackPositionTicks / TICKS_PER_MILLISECOND,
+					writes,
+				}),
+			};
+		}
+
+		it("writes back a short position that PlayedItems cleared", async () => {
+			const fixture = serveMark(SHORT_POSITION_MS, 0);
+			expect(
+				await fixture.mark({
+					replaces: SHORT_POSITION_MS,
+					resumeAt: SHORT_POSITION_MS,
+				}),
+			).toBe("applied");
+			expect(fixture.state()).toEqual({
+				positionMs: SHORT_POSITION_MS,
+				writes: [SHORT_POSITION_MS],
+			});
+		});
+
+		it("keeps playback that landed during PlayedItems", async () => {
+			const fixture = serveMark(SCANNED_POSITION_MS, ADVANCED_POSITION_MS);
+			expect(
+				await fixture.mark({
+					replaces: SCANNED_POSITION_MS,
+					resumeAt: PLANNED_POSITION_MS,
+				}),
+			).toBe("stale");
+			expect(fixture.state()).toEqual({
+				positionMs: ADVANCED_POSITION_MS,
+				writes: [],
+			});
+		});
 	});
 
 	it("writes UserData with only the position replaced and skips the identical repeat", async () => {

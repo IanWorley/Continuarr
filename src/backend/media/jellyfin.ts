@@ -17,6 +17,7 @@ import {
 	type MediaAccess,
 	MediaError,
 	type MediaItem,
+	restoreAfterMark,
 	serverUrl,
 	type WatchedWriteOptions,
 } from "~/backend/media/model";
@@ -419,14 +420,17 @@ export function createJellyfinProvider(options: {
 				await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
 			}
 			if (resumeAt === undefined) return "applied";
-			// Re-read so the position write keeps the new Played state and date.
+			// Re-read so the restore keeps the new Played state and sees playback during the mark.
 			const marked = userData.Played
 				? userData
 				: (await readItem(access, itemId)).userData;
-			if (
-				Math.abs(toPositionMs(marked.PlaybackPositionTicks) - resumeAt) >
-				POSITION_TOLERANCE_MS
-			)
+			const restore = restoreAfterMark(
+				toPositionMs(marked.PlaybackPositionTicks),
+				replaces,
+				resumeAt,
+			);
+			if (restore === "stale") return "stale";
+			if (restore === "write")
 				await writePosition(access, itemId, marked, resumeAt, headers);
 			return "applied";
 		},

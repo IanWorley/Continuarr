@@ -25,6 +25,7 @@ import {
 	type MediaItem,
 	type PlexDirectoryUser,
 	type PlexProvider,
+	restoreAfterMark,
 	type WatchedWriteOptions,
 } from "~/backend/media/model";
 import { Secret } from "~/backend/secrets/storage";
@@ -643,10 +644,14 @@ export function createPlexProvider(options: {
 				url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
 				await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
 			}
-			if (
-				resumeAt !== undefined &&
-				(!watched || Math.abs(current - resumeAt) > POSITION_TOLERANCE_MS)
-			)
+			if (resumeAt === undefined) return "applied";
+			// Re-read after the scrobble to see playback that landed during the mark.
+			const marked = watched
+				? current
+				: ((await readItem(access, itemId)).item.viewOffset ?? NO_POSITION_MS);
+			const restore = restoreAfterMark(marked, replaces, resumeAt);
+			if (restore === "stale") return "stale";
+			if (restore === "write")
 				await writeProgress(access, itemId, resumeAt, headers);
 			return "applied";
 		},
