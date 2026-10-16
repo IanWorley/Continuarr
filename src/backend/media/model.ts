@@ -91,13 +91,20 @@ export type PlexPin = {
 };
 /** `stale` means the item's position moved since the scan, so nothing was written. */
 export type WriteResult = "applied" | "stale";
-/** A positive target counts as reached only by a positive position. Zero is never "close enough". */
-function holds(currentMs: number, targetMs: number | undefined): boolean {
-	return (
-		targetMs !== undefined &&
-		currentMs > NO_POSITION_MS &&
-		Math.abs(currentMs - targetMs) <= POSITION_TOLERANCE_MS
-	);
+/**
+ * Two resume positions match when both are absent, or both are present and
+ * within the tolerance. An absent position never matches a present one, however
+ * short, so the tolerance can never turn an existing position into none.
+ */
+export function samePosition(
+	left: number | null | undefined,
+	right: number | null | undefined,
+): boolean {
+	const leftMs = left ?? NO_POSITION_MS;
+	const rightMs = right ?? NO_POSITION_MS;
+	if (leftMs <= NO_POSITION_MS || rightMs <= NO_POSITION_MS)
+		return leftMs <= NO_POSITION_MS && rightMs <= NO_POSITION_MS;
+	return Math.abs(leftMs - rightMs) <= POSITION_TOLERANCE_MS;
 }
 
 /**
@@ -109,10 +116,8 @@ export function isStale(
 	replaces: number | null,
 	targetMs: number | undefined,
 ): boolean {
-	if (holds(currentMs, targetMs)) return false;
-	return (
-		Math.abs(currentMs - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
-	);
+	if (targetMs !== undefined && samePosition(currentMs, targetMs)) return false;
+	return !samePosition(currentMs, replaces);
 }
 
 /**
@@ -125,11 +130,8 @@ export function restoreAfterMark(
 	replaces: number | null,
 	resumeAt: number,
 ): "write" | "done" | "stale" {
-	if (holds(markedMs, resumeAt)) return "done";
-	if (
-		markedMs <= NO_POSITION_MS ||
-		Math.abs(markedMs - (replaces ?? NO_POSITION_MS)) <= POSITION_TOLERANCE_MS
-	)
+	if (samePosition(markedMs, resumeAt)) return "done";
+	if (markedMs <= NO_POSITION_MS || samePosition(markedMs, replaces))
 		return "write";
 	return "stale";
 }

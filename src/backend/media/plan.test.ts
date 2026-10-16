@@ -779,6 +779,24 @@ describe("watch-history policy", () => {
 		});
 	});
 
+	it("treats a short position as present when the other item has none", () => {
+		expect(
+			planHistory({
+				plex: { lastPlayedAt: 160_001, positionMs: 3_000 },
+				jellyfin: { lastPlayedAt: 100_000, positionMs: null },
+			}).writes,
+		).toEqual([
+			{
+				kind: "position",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				value: 3_000,
+				replaces: null,
+			},
+		]);
+	});
+
 	it("keeps the marked item's own position when the later item has none", () => {
 		expect(
 			planHistory({

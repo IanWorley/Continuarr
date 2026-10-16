@@ -7,13 +7,10 @@ import {
 	type ManualMatch,
 	type MediaItem,
 	type ShowMatch,
+	samePosition,
 	showsInLibrary,
 } from "~/backend/media/model";
-import {
-	NO_POSITION_MS,
-	POSITION_TOLERANCE_MS,
-	TIMESTAMP_TOLERANCE_MS,
-} from "./constants";
+import { NO_POSITION_MS, TIMESTAMP_TOLERANCE_MS } from "./constants";
 
 type Target = "plex" | "jellyfin";
 type Destination = { itemId: string; title: string };
@@ -53,7 +50,7 @@ function resumePosition({
 	const plexPlayedAt = plex.history.lastPlayedAt;
 	const jellyfinPlayedAt = jellyfin.history.lastPlayedAt;
 	let position: number;
-	if (Math.abs(plexPosition - jellyfinPosition) <= POSITION_TOLERANCE_MS)
+	if (samePosition(plexPosition, jellyfinPosition))
 		position = Math.max(plexPosition, jellyfinPosition);
 	else if (
 		plexPlayedAt === null ||
@@ -91,7 +88,7 @@ function decidePair(pair: { plex: MediaItem; jellyfin: MediaItem }): {
 		if (
 			position === null ||
 			target === marked ||
-			Math.abs(position - current) <= POSITION_TOLERANCE_MS
+			samePosition(position, current)
 		)
 			continue;
 		writes.push({

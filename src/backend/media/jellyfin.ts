@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { POSITION_TOLERANCE_MS } from "~/backend/media/constants";
 import {
 	type EpisodeSpan,
 	episodeNumbering,
@@ -18,6 +17,7 @@ import {
 	MediaError,
 	type MediaItem,
 	restoreAfterMark,
+	samePosition,
 	serverUrl,
 	type WatchedWriteOptions,
 } from "~/backend/media/model";
@@ -444,8 +444,7 @@ export function createJellyfinProvider(options: {
 			assertPosition(positionMs);
 			const { userData, headers } = await readItem(access, itemId);
 			const current = toPositionMs(userData.PlaybackPositionTicks);
-			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
-				return "applied";
+			if (samePosition(current, positionMs)) return "applied";
 			if (isStale(current, replaces, positionMs)) return "stale";
 			await writePosition(access, itemId, userData, positionMs, headers);
 			return "applied";

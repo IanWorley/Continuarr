@@ -95,7 +95,7 @@ describe("Plex provider", () => {
 			[759_000, RESUME_POSITION_MS, 0],
 			[748_999, RESUME_POSITION_MS, 1],
 			[759_001, RESUME_POSITION_MS, 1],
-			[undefined, 5_000, 0],
+			[undefined, 3_000, 1],
 			[undefined, 5_001, 1],
 		];
 		for (const [currentOffset, target, expectedWrites] of cases) {
@@ -277,7 +277,10 @@ describe("Plex provider", () => {
 
 	describe("restore after scrobble", () => {
 		const SHORT_POSITION_MS = 3_000;
-		function serveMark(initialOffset: number, offsetAfterMark: number) {
+		function serveMark(
+			initialOffset: number | undefined,
+			offsetAfterMark: number,
+		) {
 			let viewOffset: number | undefined = initialOffset;
 			let viewCount = 0;
 			const writes: string[] = [];
@@ -309,9 +312,9 @@ describe("Plex provider", () => {
 				token: new Secret("grant-token"),
 			};
 			return {
-				mark: (options: { replaces: number; resumeAt: number }) =>
+				mark: (options: { replaces: number | null; resumeAt?: number }) =>
 					provider.markWatched(access, "1", options),
-				state: () => ({ viewOffset, writes }),
+				state: () => ({ viewOffset, writes, marked: viewCount > 0 }),
 			};
 		}
 
@@ -326,7 +329,21 @@ describe("Plex provider", () => {
 			expect(fixture.state()).toEqual({
 				viewOffset: SHORT_POSITION_MS,
 				writes: ["3000"],
+				marked: true,
 			});
+		});
+
+		it("skips marking an item that started short playback after an empty scan", async () => {
+			const started = serveMark(SHORT_POSITION_MS, 0);
+			expect(await started.mark({ replaces: null })).toBe("stale");
+			expect(started.state()).toEqual({
+				viewOffset: SHORT_POSITION_MS,
+				writes: [],
+				marked: false,
+			});
+			const untouched = serveMark(undefined, 0);
+			expect(await untouched.mark({ replaces: null })).toBe("applied");
+			expect(untouched.state()).toMatchObject({ marked: true });
 		});
 
 		it("keeps playback that landed during the scrobble", async () => {
@@ -340,6 +357,7 @@ describe("Plex provider", () => {
 			expect(fixture.state()).toEqual({
 				viewOffset: ADVANCED_POSITION_MS,
 				writes: [],
+				marked: true,
 			});
 		});
 	});
@@ -855,11 +873,12 @@ describe("Jellyfin provider", () => {
 				token: new Secret("user-token"),
 			};
 			return {
-				mark: (options: { replaces: number; resumeAt: number }) =>
+				mark: (options: { replaces: number | null; resumeAt?: number }) =>
 					provider.markWatched(access, "item-1", options),
 				state: () => ({
 					positionMs: userData.PlaybackPositionTicks / TICKS_PER_MILLISECOND,
 					writes,
+					played: userData.Played,
 				}),
 			};
 		}
@@ -875,7 +894,21 @@ describe("Jellyfin provider", () => {
 			expect(fixture.state()).toEqual({
 				positionMs: SHORT_POSITION_MS,
 				writes: [SHORT_POSITION_MS],
+				played: true,
 			});
+		});
+
+		it("skips marking an item that started short playback after an empty scan", async () => {
+			const started = serveMark(SHORT_POSITION_MS, 0);
+			expect(await started.mark({ replaces: null })).toBe("stale");
+			expect(started.state()).toEqual({
+				positionMs: SHORT_POSITION_MS,
+				writes: [],
+				played: false,
+			});
+			const untouched = serveMark(0, 0);
+			expect(await untouched.mark({ replaces: null })).toBe("applied");
+			expect(untouched.state()).toMatchObject({ played: true });
 		});
 
 		it("keeps playback that landed during PlayedItems", async () => {
@@ -889,6 +922,7 @@ describe("Jellyfin provider", () => {
 			expect(fixture.state()).toEqual({
 				positionMs: ADVANCED_POSITION_MS,
 				writes: [],
+				played: true,
 			});
 		});
 	});
@@ -962,7 +996,7 @@ describe("Jellyfin provider", () => {
 			[7_590_000_000, RESUME_POSITION_MS, 0],
 			[7_489_990_000, RESUME_POSITION_MS, 1],
 			[7_590_010_000, RESUME_POSITION_MS, 1],
-			[0, 5_000, 0],
+			[0, 3_000, 1],
 			[0, 5_001, 1],
 		];
 		for (const [currentTicks, target, expectedWrites] of cases) {

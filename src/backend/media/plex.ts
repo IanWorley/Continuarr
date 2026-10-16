@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
 	MILLISECONDS_PER_SECOND,
 	NO_POSITION_MS,
-	POSITION_TOLERANCE_MS,
 } from "~/backend/media/constants";
 import {
 	type EpisodeSpan,
@@ -26,6 +25,7 @@ import {
 	type PlexDirectoryUser,
 	type PlexProvider,
 	restoreAfterMark,
+	samePosition,
 	type WatchedWriteOptions,
 } from "~/backend/media/model";
 import { Secret } from "~/backend/secrets/storage";
@@ -665,8 +665,7 @@ export function createPlexProvider(options: {
 			assertPosition(positionMs);
 			const { item, headers } = await readItem(access, itemId);
 			const current = item.viewOffset ?? NO_POSITION_MS;
-			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
-				return "applied";
+			if (samePosition(current, positionMs)) return "applied";
 			if (isStale(current, replaces, positionMs)) return "stale";
 			await writeProgress(access, itemId, positionMs, headers);
 			return "applied";
