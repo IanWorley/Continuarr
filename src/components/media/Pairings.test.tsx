@@ -412,12 +412,20 @@ describe("current preview", () => {
 							title: "Alien",
 							playedAt: Date.parse("2024-03-02T12:00:00.000Z"),
 						},
+						{
+							kind: "watched",
+							target: "plex",
+							itemId: "p4",
+							title: "Heat",
+							resumeAt: 754000,
+						},
 					],
 				})}
 			/>,
 		);
 
-		expect(html).toContain("3 proposed updates (1 watched, 2 positions)");
+		expect(html).toContain("4 proposed updates (2 watched, 2 positions)");
+		expect(html).toContain("Mark watched on Plex and resume at 12:34");
 		expect(html).toContain("Resume at 42:17 on Plex");
 		expect(html).toContain("Resume at 1:40:17 on Jellyfin");
 		expect(html).toContain(

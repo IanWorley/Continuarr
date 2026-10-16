@@ -655,7 +655,7 @@ describe("watch-history policy", () => {
 		).toEqual([{ kind: "watched", target: "plex", itemId: "p1", title: "p1" }]);
 	});
 
-	it("emits the watched write before the position write", () => {
+	it("carries the later position on the watched write to the item it marks", () => {
 		expect(
 			planHistory({
 				plex: { lastPlayedAt: 160_001, positionMs: 30_000 },
@@ -669,16 +669,57 @@ describe("watch-history policy", () => {
 				itemId: "j1",
 				title: "j1",
 				playedAt: 160_001,
+				resumeAt: 30_000,
 			},
+		]);
+	});
+
+	it("keeps the newer position on the item it marks watched without moving its date earlier", () => {
+		expect(
+			planHistory({
+				plex: { lastPlayedAt: 100_000, positionMs: null },
+				jellyfin: { lastPlayedAt: 160_001, positionMs: 20_000 },
+				plexWatched: true,
+			}).writes,
+		).toEqual([
 			{
 				kind: "position",
+				target: "plex",
+				itemId: "p1",
+				title: "p1",
+				value: 20_000,
+				replaces: null,
+			},
+			{
+				kind: "watched",
 				target: "jellyfin",
 				itemId: "j1",
 				title: "j1",
-				value: 30_000,
-				replaces: null,
+				resumeAt: 20_000,
 			},
 		]);
+	});
+
+	it("marks a conflicting item watched without choosing a position for it", () => {
+		expect(
+			planHistory({
+				plex: { lastPlayedAt: 100_000, positionMs: null },
+				jellyfin: { lastPlayedAt: 100_000, positionMs: 20_000 },
+				plexWatched: true,
+			}),
+		).toEqual({
+			writes: [
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "j1",
+					playedAt: 100_000,
+				},
+			],
+			matched: 1,
+			positionConflicts: 1,
+		});
 	});
 
 	it("plans nothing for a pair whose history already matches", () => {
@@ -723,19 +764,19 @@ describe("watch-history policy", () => {
 		).toEqual({
 			writes: [
 				{
-					kind: "watched",
-					target: "jellyfin",
-					itemId: "j1",
-					title: "j1",
-					playedAt: 100_000,
-				},
-				{
 					kind: "position",
 					target: "plex",
 					itemId: "p1",
 					title: "p1",
 					value: 10_000,
 					replaces: 30_000,
+				},
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "j1",
+					resumeAt: 10_000,
 				},
 			],
 			matched: 1,

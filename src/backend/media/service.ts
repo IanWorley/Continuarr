@@ -966,12 +966,18 @@ export function createMediaService({
 		switch (write.kind) {
 			case "watched":
 				if (write.target === "plex")
-					await plex.markWatched(plexAccess, write.itemId);
+					await plex.markWatched(
+						plexAccess,
+						write.itemId,
+						undefined,
+						write.resumeAt,
+					);
 				else
 					await jellyfin.markWatched(
 						jellyfinAccess,
 						write.itemId,
 						write.playedAt,
+						write.resumeAt,
 					);
 				return "applied";
 			case "position":

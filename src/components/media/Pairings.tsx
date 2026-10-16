@@ -414,18 +414,26 @@ function WriteLabel({ write }: { write: PreviewWrite }) {
 					Resume at {formatPosition(write.value)} on {server}
 				</>
 			);
-		case "watched":
-			if (write.target === "plex" || write.playedAt === undefined)
-				return <>Mark watched on {server}</>;
+		case "watched": {
+			const playedAt = write.target === "jellyfin" ? write.playedAt : undefined;
 			return (
 				<>
-					Mark watched on {server} (
-					<time dateTime={new Date(write.playedAt).toISOString()}>
-						{new Date(write.playedAt).toLocaleDateString()}
-					</time>
-					)
+					Mark watched on {server}
+					{playedAt !== undefined && (
+						<>
+							{" "}
+							(
+							<time dateTime={new Date(playedAt).toISOString()}>
+								{new Date(playedAt).toLocaleDateString()}
+							</time>
+							)
+						</>
+					)}
+					{write.resumeAt !== undefined &&
+						` and resume at ${formatPosition(write.resumeAt)}`}
 				</>
 			);
+		}
 	}
 }
 

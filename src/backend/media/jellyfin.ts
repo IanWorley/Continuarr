@@ -188,6 +188,33 @@ export function createJellyfinProvider(options: {
 		return { userData: target.UserData, headers };
 	}
 
+	function assertPosition(positionMs: number) {
+		if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
+			throw new MediaError("Invalid Jellyfin resume position.");
+	}
+
+	async function writePosition(
+		access: JellyfinAccess,
+		itemId: string,
+		userData: Awaited<ReturnType<typeof readItem>>["userData"],
+		positionMs: number,
+		headers: Headers,
+	) {
+		await requestEmpty({
+			fetch: fetcher,
+			url: endpoint(
+				access.url,
+				`Users/${encodeURIComponent(access.userId)}/Items/${encodeURIComponent(itemId)}/UserData`,
+			),
+			method: "POST",
+			headers,
+			body: {
+				...userData,
+				PlaybackPositionTicks: positionMs * TICKS_PER_MILLISECOND,
+			},
+		});
+	}
+
 	async function server({ url, token }: MediaAccess) {
 		const info = await requestJson({
 			fetch: fetcher,
@@ -366,20 +393,33 @@ export function createJellyfinProvider(options: {
 			access: JellyfinAccess,
 			itemId: string,
 			playedAt?: number,
+			resumeAt?: number,
 		) {
 			const datePlayed =
 				playedAt === undefined ? undefined : new Date(playedAt);
 			if (datePlayed && Number.isNaN(datePlayed.getTime()))
 				throw new MediaError("Invalid Jellyfin played date.");
+			if (resumeAt !== undefined) assertPosition(resumeAt);
 			const { userData, headers } = await readItem(access, itemId);
-			if (userData.Played) return;
-			const url = endpoint(
-				access.url,
-				`Users/${encodeURIComponent(access.userId)}/PlayedItems/${encodeURIComponent(itemId)}`,
-			);
-			if (datePlayed)
-				url.searchParams.set("datePlayed", datePlayed.toISOString());
-			await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
+			if (!userData.Played) {
+				const url = endpoint(
+					access.url,
+					`Users/${encodeURIComponent(access.userId)}/PlayedItems/${encodeURIComponent(itemId)}`,
+				);
+				if (datePlayed)
+					url.searchParams.set("datePlayed", datePlayed.toISOString());
+				await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
+			}
+			if (resumeAt === undefined) return;
+			// Re-read so the position write keeps the new Played state and date.
+			const marked = userData.Played
+				? userData
+				: (await readItem(access, itemId)).userData;
+			if (
+				Math.abs(toPositionMs(marked.PlaybackPositionTicks) - resumeAt) >
+				POSITION_TOLERANCE_MS
+			)
+				await writePosition(access, itemId, marked, resumeAt, headers);
 		},
 
 		async setPosition(
@@ -388,8 +428,7 @@ export function createJellyfinProvider(options: {
 			positionMs: number,
 			replaces: number | null,
 		) {
-			if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
-				throw new MediaError("Invalid Jellyfin resume position.");
+			assertPosition(positionMs);
 			const { userData, headers } = await readItem(access, itemId);
 			const current = toPositionMs(userData.PlaybackPositionTicks);
 			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
@@ -398,19 +437,7 @@ export function createJellyfinProvider(options: {
 				Math.abs(current - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
 			)
 				return "stale";
-			await requestEmpty({
-				fetch: fetcher,
-				url: endpoint(
-					access.url,
-					`Users/${encodeURIComponent(access.userId)}/Items/${encodeURIComponent(itemId)}/UserData`,
-				),
-				method: "POST",
-				headers,
-				body: {
-					...userData,
-					PlaybackPositionTicks: positionMs * TICKS_PER_MILLISECOND,
-				},
-			});
+			await writePosition(access, itemId, userData, positionMs, headers);
 			return "applied";
 		},
 	};

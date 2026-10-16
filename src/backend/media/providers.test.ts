@@ -217,6 +217,30 @@ describe("Plex provider", () => {
 		]);
 	});
 
+	it("restores resumeAt after the scrobble clears the position", async () => {
+		const requests: string[] = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/plex/library/metadata/1")
+				return json({
+					MediaContainer: { Metadata: [{ ratingKey: "1", viewCount: 0 }] },
+				});
+			if (request.method === "PUT") {
+				requests.push(`${url.pathname} ${url.searchParams.get("time") ?? ""}`);
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		await provider.markWatched(
+			{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
+			"1",
+			undefined,
+			RESUME_POSITION_MS,
+		);
+		expect(requests).toEqual(["/plex/:/scrobble ", "/plex/:/progress 754000"]);
+	});
+
 	it("offers only owned servers and prefers a grant for a protected Home member", async () => {
 		const baseUrl = serve((request) => {
 			const path = new URL(request.url).pathname;
@@ -529,6 +553,70 @@ describe("Jellyfin provider", () => {
 		await provider.markWatched(access, "item-1", PLAYED_AT_MS);
 		await provider.markWatched(access, "item-2");
 		expect(queries).toEqual([{ datePlayed: "2026-09-01T20:00:00.000Z" }, {}]);
+	});
+
+	it("restores resumeAt from the marked state after PlayedItems clears the position", async () => {
+		let userData = {
+			Played: false,
+			LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+			PlayCount: 0,
+			IsFavorite: false,
+			Key: "key-item-1",
+			ItemId: "item-1",
+			PlaybackPositionTicks: RESUME_POSITION_MS * TICKS_PER_MILLISECOND,
+		};
+		const posts: unknown[] = [];
+		const baseUrl = serve(async (request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/jf/Users/user-1/Items/item-1")
+				return json({ Id: "item-1", UserData: userData });
+			if (
+				url.pathname === "/jf/Users/user-1/PlayedItems/item-1" &&
+				request.method === "POST"
+			) {
+				posts.push("PlayedItems");
+				userData = {
+					...userData,
+					Played: true,
+					PlayCount: 1,
+					PlaybackPositionTicks: 0,
+				};
+				return new Response(null, { status: 204 });
+			}
+			if (
+				url.pathname === "/jf/Users/user-1/Items/item-1/UserData" &&
+				request.method === "POST"
+			) {
+				posts.push(await request.json());
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		await provider.markWatched(
+			{
+				url: `${baseUrl}/jf`,
+				userId: "user-1",
+				token: new Secret("user-token"),
+			},
+			"item-1",
+			undefined,
+			RESUME_POSITION_MS,
+		);
+		expect(posts).toEqual([
+			"PlayedItems",
+			{
+				Played: true,
+				LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+				PlayCount: 1,
+				IsFavorite: false,
+				Key: "key-item-1",
+				ItemId: "item-1",
+				PlaybackPositionTicks: 7_540_000_000,
+			},
+		]);
 	});
 
 	it("writes UserData with only the position replaced and skips the identical repeat", async () => {

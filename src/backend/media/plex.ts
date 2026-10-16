@@ -261,6 +261,25 @@ export function createPlexProvider(options: {
 	const accountUrl = `${plexRoot}/api/v2`;
 	const homeUrl = `${plexRoot}/api`;
 
+	function assertPosition(positionMs: number) {
+		if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
+			throw new MediaError("Invalid Plex resume position.");
+	}
+
+	async function writeProgress(
+		access: MediaAccess,
+		itemId: string,
+		positionMs: number,
+		headers: Headers,
+	) {
+		const url = endpoint(access.url, ":/progress");
+		url.searchParams.set("key", itemId);
+		url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
+		url.searchParams.set("time", String(positionMs));
+		url.searchParams.set("state", "stopped");
+		await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+	}
+
 	async function readItem(access: MediaAccess, itemId: string) {
 		if (!/^\d+$/.test(itemId)) throw new MediaError("Invalid Plex item ID.");
 		const headers = plexHeaders(
@@ -606,13 +625,28 @@ export function createPlexProvider(options: {
 			});
 		},
 
-		async markWatched(access: MediaAccess, itemId: string) {
+		async markWatched(
+			access: MediaAccess,
+			itemId: string,
+			_playedAt?: number,
+			resumeAt?: number,
+		) {
+			if (resumeAt !== undefined) assertPosition(resumeAt);
 			const { item, headers } = await readItem(access, itemId);
-			if ((item.viewCount ?? 0) > 0) return;
-			const url = endpoint(access.url, ":/scrobble");
-			url.searchParams.set("key", itemId);
-			url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
-			await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+			const watched = (item.viewCount ?? 0) > 0;
+			if (!watched) {
+				const url = endpoint(access.url, ":/scrobble");
+				url.searchParams.set("key", itemId);
+				url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
+				await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+			}
+			if (
+				resumeAt !== undefined &&
+				(!watched ||
+					Math.abs((item.viewOffset ?? NO_POSITION_MS) - resumeAt) >
+						POSITION_TOLERANCE_MS)
+			)
+				await writeProgress(access, itemId, resumeAt, headers);
 		},
 
 		async setPosition(
@@ -621,8 +655,7 @@ export function createPlexProvider(options: {
 			positionMs: number,
 			replaces: number | null,
 		) {
-			if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
-				throw new MediaError("Invalid Plex resume position.");
+			assertPosition(positionMs);
 			const { item, headers } = await readItem(access, itemId);
 			const current = item.viewOffset ?? NO_POSITION_MS;
 			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
@@ -631,12 +664,7 @@ export function createPlexProvider(options: {
 				Math.abs(current - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
 			)
 				return "stale";
-			const url = endpoint(access.url, ":/progress");
-			url.searchParams.set("key", itemId);
-			url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
-			url.searchParams.set("time", String(positionMs));
-			url.searchParams.set("state", "stopped");
-			await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+			await writeProgress(access, itemId, positionMs, headers);
 			return "applied";
 		},
 	};

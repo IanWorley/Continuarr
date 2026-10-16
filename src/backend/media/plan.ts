@@ -17,10 +17,10 @@ import {
 
 type Target = "plex" | "jellyfin";
 type Destination = { itemId: string; title: string };
-type WatchedWrite = Destination &
-	(
-		| { kind: "watched"; target: "plex" }
-		| { kind: "watched"; target: "jellyfin"; playedAt?: number }
+/** Marking an item watched clears its resume position, so `resumeAt` is the position the item keeps afterwards. */
+type WatchedWrite = Destination & { kind: "watched"; resumeAt?: number } & (
+		| { target: "plex" }
+		| { target: "jellyfin"; playedAt?: number }
 	);
 type PositionWrite = Destination & {
 	kind: "position";
@@ -35,65 +35,94 @@ type CandidateResult =
 	| { kind: "none" | "many" }
 	| { kind: "one"; index: number };
 
-function decidePair({
+/** The position both items should end with, or null when none should be written. */
+function resumePosition({
 	plex,
 	jellyfin,
 }: {
 	plex: MediaItem;
 	jellyfin: MediaItem;
-}): { writes: Write[]; positionConflicts: 0 | 1 } {
+}): { position: number | null; positionConflicts: 0 | 1 } {
+	const plexPosition = plex.history.positionMs ?? NO_POSITION_MS;
+	const jellyfinPosition = jellyfin.history.positionMs ?? NO_POSITION_MS;
+	const plexPlayedAt = plex.history.lastPlayedAt;
+	const jellyfinPlayedAt = jellyfin.history.lastPlayedAt;
+	let position: number;
+	if (Math.abs(plexPosition - jellyfinPosition) <= POSITION_TOLERANCE_MS)
+		position = Math.max(plexPosition, jellyfinPosition);
+	else if (
+		plexPlayedAt === null ||
+		jellyfinPlayedAt === null ||
+		Math.abs(plexPlayedAt - jellyfinPlayedAt) <= TIMESTAMP_TOLERANCE_MS
+	)
+		return { position: null, positionConflicts: 1 };
+	else
+		position =
+			plexPlayedAt > jellyfinPlayedAt ? plexPosition : jellyfinPosition;
+	return {
+		position: position > NO_POSITION_MS ? position : null,
+		positionConflicts: 0,
+	};
+}
+
+function decidePair(pair: { plex: MediaItem; jellyfin: MediaItem }): {
+	writes: Write[];
+	positionConflicts: 0 | 1;
+} {
+	const { plex, jellyfin } = pair;
+	const marked: Target | null =
+		plex.watched && !jellyfin.watched
+			? "jellyfin"
+			: jellyfin.watched && !plex.watched
+				? "plex"
+				: null;
+	const { position, positionConflicts } = resumePosition(pair);
 	const writes: Write[] = [];
-	if (plex.watched && !jellyfin.watched)
+	for (const [target, item] of [
+		["plex", plex],
+		["jellyfin", jellyfin],
+	] as const) {
+		const current = item.history.positionMs ?? NO_POSITION_MS;
+		if (
+			position === null ||
+			target === marked ||
+			Math.abs(position - current) <= POSITION_TOLERANCE_MS
+		)
+			continue;
+		writes.push({
+			kind: "position",
+			target,
+			itemId: item.id,
+			title: item.title,
+			value: position,
+			replaces: item.history.positionMs,
+		});
+	}
+	const resumeAt = position === null ? {} : { resumeAt: position };
+	if (marked === "jellyfin") {
+		const playedAt = plex.history.lastPlayedAt;
+		const jellyfinPlayedAt = jellyfin.history.lastPlayedAt;
 		writes.push({
 			kind: "watched",
 			target: "jellyfin",
 			itemId: jellyfin.id,
 			title: jellyfin.title,
-			...(plex.history.lastPlayedAt !== null
-				? { playedAt: plex.history.lastPlayedAt }
+			// Never move Jellyfin's played date earlier.
+			...(playedAt !== null &&
+			(jellyfinPlayedAt === null || playedAt >= jellyfinPlayedAt)
+				? { playedAt }
 				: {}),
+			...resumeAt,
 		});
-	else if (jellyfin.watched && !plex.watched)
+	} else if (marked === "plex")
 		writes.push({
 			kind: "watched",
 			target: "plex",
 			itemId: plex.id,
 			title: plex.title,
+			...resumeAt,
 		});
-
-	const plexPosition = plex.history.positionMs ?? NO_POSITION_MS;
-	const jellyfinPosition = jellyfin.history.positionMs ?? NO_POSITION_MS;
-	if (Math.abs(plexPosition - jellyfinPosition) <= POSITION_TOLERANCE_MS)
-		return { writes, positionConflicts: 0 };
-
-	const plexPlayedAt = plex.history.lastPlayedAt;
-	const jellyfinPlayedAt = jellyfin.history.lastPlayedAt;
-	if (
-		plexPlayedAt === null ||
-		jellyfinPlayedAt === null ||
-		Math.abs(plexPlayedAt - jellyfinPlayedAt) <= TIMESTAMP_TOLERANCE_MS
-	)
-		return { writes, positionConflicts: 1 };
-
-	const plexIsLater = plexPlayedAt > jellyfinPlayedAt;
-	const source = plexIsLater ? plex : jellyfin;
-	const destination = plexIsLater ? jellyfin : plex;
-	const position = plexIsLater ? plexPosition : jellyfinPosition;
-	if (position <= NO_POSITION_MS) return { writes, positionConflicts: 0 };
-
-	writes.push({
-		kind: "position",
-		target: plexIsLater ? "jellyfin" : "plex",
-		itemId: destination.id,
-		title: destination.title,
-		value: position,
-		// Marking an item watched clears its resume position on both servers.
-		replaces:
-			source.watched && !destination.watched
-				? null
-				: destination.history.positionMs,
-	});
-	return { writes, positionConflicts: 0 };
+	return { writes, positionConflicts };
 }
 
 type Pair = { plex: MediaItem; jellyfin: MediaItem };

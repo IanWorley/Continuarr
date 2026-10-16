@@ -103,10 +103,12 @@ export interface PlexProvider {
 	verifyServer(access: MediaAccess, serverId: string): Promise<void>;
 	items(access: MediaAccess): Promise<MediaItem[]>;
 	// Plex has no API for a dated scrobble, so the Plex provider ignores playedAt.
+	/** Marking clears the resume position, so the provider writes `resumeAt` back afterwards. */
 	markWatched(
 		access: MediaAccess,
 		itemId: string,
 		playedAt?: number,
+		resumeAt?: number,
 	): Promise<void>;
 	setPosition(
 		access: MediaAccess,
@@ -123,10 +125,12 @@ export interface JellyfinProvider {
 	}): Promise<JellyfinAdminConnection>;
 	directory(access: MediaAccess): Promise<JellyfinDirectory>;
 	items(access: JellyfinAccess): Promise<MediaItem[]>;
+	/** Marking clears the resume position, so the provider writes `resumeAt` back afterwards. */
 	markWatched(
 		access: JellyfinAccess,
 		itemId: string,
 		playedAt?: number,
+		resumeAt?: number,
 	): Promise<void>;
 	setPosition(
 		access: JellyfinAccess,
