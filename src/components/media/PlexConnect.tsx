@@ -280,9 +280,11 @@ export function PlexConnect({
 							key={server.id}
 							server={server}
 							status={
-								server.lastSuccessAt
-									? `Last imported ${new Date(server.lastSuccessAt).toLocaleString()}`
-									: "Waiting for first import"
+								!server.verified
+									? "Saved by an earlier version"
+									: server.lastSuccessAt
+										? `Last imported ${new Date(server.lastSuccessAt).toLocaleString()}`
+										: "Waiting for first import"
 							}
 						>
 							<ErrorMessage message={server.lastError ?? ""} />

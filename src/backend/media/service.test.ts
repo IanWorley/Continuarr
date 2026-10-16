@@ -224,7 +224,12 @@ describe("media account and sync service", () => {
 			await repo.backfillPlexServers();
 			const server = (await repo.plexServers())[0];
 			if (!server) throw new Error("Missing backfilled server");
-			expect((await service.state()).plexServers).toEqual([]);
+			expect(
+				(await service.state()).plexServers.map(({ externalId, verified }) => ({
+					externalId,
+					verified,
+				})),
+			).toEqual([{ externalId: "machine", verified: false }]);
 			const originalProfiles = await repo.plexProfiles();
 			state.grant = false;
 			if (refresh === "scheduled") {
@@ -307,7 +312,12 @@ describe("media account and sync service", () => {
 		await repo.backfillPlexServers();
 		const candidate = (await repo.plexServers())[0];
 		expect(candidate?.verified).toBe(false);
-		expect((await service.state()).plexServers).toEqual([]);
+		expect(
+			(await service.state()).plexServers.map(({ id, verified }) => ({
+				id,
+				verified,
+			})),
+		).toEqual([{ id: candidate?.id, verified: false }]);
 		state.plexLogin = {
 			userId: "real-owner",
 			name: "Real owner",
@@ -433,6 +443,65 @@ describe("media account and sync service", () => {
 				verified,
 			})),
 		).toEqual([{ externalId: "machine", verified: true }]);
+	});
+	describe("with a Plex server saved before owner adoption", () => {
+		async function setupLegacyServer() {
+			const context = await setup();
+			const { service, repo, secrets } = context;
+			const attempt = await service.startLogin();
+			const login = await service.pollLogin(attempt.id);
+			if (login.status !== "linked") throw new Error("Expected login");
+			const legacyId = crypto.randomUUID();
+			await repo.savePlexProfile({
+				id: legacyId,
+				accountId: login.accountId,
+				userId: "owner",
+				name: "Owner",
+				serverId: "legacy-machine",
+				serverName: "Legacy Plex",
+				url: "http://legacy-plex:32400",
+				token: secrets.encrypt(legacyId, new Secret("legacy-token")),
+			});
+			await repo.backfillPlexServers();
+			const selection = await service.selectPlexServer({
+				accountId: login.accountId,
+			});
+			const connectMachine = () =>
+				service.connectPlex({
+					selectionId: selection.id,
+					serverId: "machine",
+					url: "http://plex:32400",
+				});
+			return { ...context, connectMachine };
+		}
+		it("rejects a different Plex server", async () => {
+			const { repo, connectMachine } = await setupLegacyServer();
+			await expect(connectMachine()).rejects.toMatchObject({
+				status: 409,
+				message:
+					"A Plex server is already connected. Disconnect it to connect a different server.",
+			});
+			expect(
+				(await repo.plexServers()).map(({ externalId }) => externalId),
+			).toEqual(["legacy-machine"]);
+		});
+		it("lists the legacy server so the owner can disconnect it and switch", async () => {
+			const { service, connectMachine } = await setupLegacyServer();
+			const [legacy] = (await service.state()).plexServers;
+			expect(legacy).toMatchObject({
+				externalId: "legacy-machine",
+				name: "Legacy Plex",
+				verified: false,
+			});
+			await service.disconnectPlex(legacy?.id ?? "");
+			await connectMachine();
+			expect(
+				(await service.state()).plexServers.map(({ externalId, verified }) => ({
+					externalId,
+					verified,
+				})),
+			).toEqual([{ externalId: "machine", verified: true }]);
+		});
 	});
 	it("rejects a second Jellyfin server while one is connected", async () => {
 		const { service, repo, jellyfin, pair } = await setup();

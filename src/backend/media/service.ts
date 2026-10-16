@@ -581,29 +581,29 @@ export function createMediaService({
 					userId,
 					name,
 				})),
-				plexServers: plexServers
-					.filter((server) => server.verified)
-					.map(
-						({
-							id,
-							accountId,
-							externalId,
-							name,
-							url,
-							lastAttemptAt,
-							lastSuccessAt,
-							lastError,
-						}) => ({
-							id,
-							accountId,
-							externalId,
-							name,
-							url,
-							lastAttemptAt,
-							lastSuccessAt,
-							lastError,
-						}),
-					),
+				plexServers: plexServers.map(
+					({
+						id,
+						accountId,
+						externalId,
+						name,
+						url,
+						verified,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}) => ({
+						id,
+						accountId,
+						externalId,
+						name,
+						url,
+						verified,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}),
+				),
 				directoryPolling: {
 					enabled: directoryPolling.enabled,
 					intervalMinutes: directoryPolling.intervalMinutes,
@@ -788,7 +788,7 @@ export function createMediaService({
 					);
 				if (
 					(await repo.plexServers()).some(
-						(saved) => saved.verified && saved.externalId !== server.id,
+						(saved) => saved.externalId !== server.id,
 					)
 				)
 					throw new MediaError(

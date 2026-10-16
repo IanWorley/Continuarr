@@ -9,6 +9,7 @@ const SERVER = {
 	externalId: "machine-a",
 	name: "Living Room",
 	url: "http://plex-a:32400",
+	verified: true,
 	lastAttemptAt: null,
 	lastSuccessAt: null,
 	lastError: null,
@@ -24,6 +25,18 @@ describe("PlexConnect", () => {
 		expect(html).toContain(
 			"Continuarr connects one Plex server. To switch servers, disconnect Living Room first.",
 		);
+	});
+
+	test("labels a server that was never saved through the owner flow", () => {
+		const html = renderToStaticMarkup(
+			<PlexConnect
+				account={ACCOUNT}
+				servers={[{ ...SERVER, verified: false }]}
+				refresh={refresh}
+			/>,
+		);
+
+		expect(html).toContain("Saved by an earlier version");
 	});
 
 	test("asks to disconnect extra servers saved by an earlier version", () => {
