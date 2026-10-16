@@ -5,12 +5,16 @@ import {
 	type MediaItem,
 	showsInLibrary,
 } from "~/backend/media/model";
-import { planWatchedUnion } from "~/backend/media/plan";
+import { type ItemState, planWatchedUnion } from "~/backend/media/plan";
 
 const NO_HISTORY: MediaItem["history"] = {
 	lastPlayedAt: null,
 	positionMs: null,
 };
+function planMatches(input: Parameters<typeof planWatchedUnion>[0]) {
+	const { itemStates: _itemStates, ...plan } = planWatchedUnion(input);
+	return plan;
+}
 const NO_SKIP_REASONS = {
 	missingSeriesIds: 0,
 	missingEpisodeIds: 0,
@@ -76,7 +80,7 @@ function inShow(
 describe("planWatchedUnion", () => {
 	it("marks only the unwatched Jellyfin item when Plex is watched", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [movie("p1", true, [{ provider: "imdb", value: "tt0001" }])],
 				jellyfin: [
 					movie("j1", false, [{ provider: "imdb", value: "tt0001" }], "Film"),
@@ -84,7 +88,13 @@ describe("planWatchedUnion", () => {
 			}),
 		).toEqual({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j1", title: "Film" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "Film",
+					replaces: null,
+				},
 			],
 			matched: 1,
 			unmatched: 0,
@@ -97,17 +107,25 @@ describe("planWatchedUnion", () => {
 
 	it("marks only the unwatched Plex item when Jellyfin is watched", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [episode("p1", false, [{ provider: "tvdb", value: "10" }])],
 				jellyfin: [episode("j1", true, [{ provider: "tvdb", value: "10" }])],
 			}).writes,
-		).toEqual([{ kind: "watched", target: "plex", itemId: "p1", title: "p1" }]);
+		).toEqual([
+			{
+				kind: "watched",
+				target: "plex",
+				itemId: "p1",
+				title: "p1",
+				replaces: null,
+			},
+		]);
 	});
 
 	it("plans no write when watched states already agree", () => {
 		for (const watched of [true, false]) {
 			expect(
-				planWatchedUnion({
+				planMatches({
 					plex: [movie("p1", watched, [{ provider: "tmdb", value: "8" }])],
 					jellyfin: [movie("j1", watched, [{ provider: "tmdb", value: "8" }])],
 				}),
@@ -125,7 +143,7 @@ describe("planWatchedUnion", () => {
 
 	it("does not match a movie to an episode with the same external ID", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [movie("p1", true, [{ provider: "imdb", value: "tt1" }])],
 				jellyfin: [episode("j1", false, [{ provider: "imdb", value: "tt1" }])],
 			}),
@@ -143,7 +161,7 @@ describe("planWatchedUnion", () => {
 
 	it("rejects duplicate candidates on either provider", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [movie("p1", true, [{ provider: "imdb", value: "tt1" }])],
 				jellyfin: [
 					movie("j1", false, [{ provider: "imdb", value: "tt1" }]),
@@ -163,7 +181,7 @@ describe("planWatchedUnion", () => {
 
 	it("rejects a shared ID when another shared namespace conflicts", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [
 					movie("p1", true, [
 						{ provider: "imdb", value: "tt1" },
@@ -190,7 +208,7 @@ describe("planWatchedUnion", () => {
 
 	it("does not use titles when external IDs are missing", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [movie("p1", true, [], "Same title")],
 				jellyfin: [movie("j1", false, [], "Same title")],
 			}),
@@ -209,7 +227,7 @@ describe("planWatchedUnion", () => {
 describe("series and episode number matching", () => {
 	it("pairs episodes without episode IDs by shared series ID and equal numbers", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [
 					inShow("p1", regular(1, 1), { watched: true }),
 					inShow("p2", regular(1, 2)),
@@ -221,7 +239,13 @@ describe("series and episode number matching", () => {
 			}),
 		).toEqual({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "j1",
+					replaces: null,
+				},
 			],
 			matched: 2,
 			unmatched: 0,
@@ -237,7 +261,7 @@ describe("series and episode number matching", () => {
 
 	it("leaves episodes with different numbers unmatched", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [inShow("p1", regular(1, 1), { watched: true })],
 				jellyfin: [inShow("j1", regular(1, 2))],
 			}),
@@ -263,7 +287,7 @@ describe("series and episode number matching", () => {
 		["unnumbered episodes", { kind: "unnumbered" }],
 	])("reports %s in a shared series as ambiguous", (_label, numbering) => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [inShow("p1", numbering, { watched: true })],
 				jellyfin: [inShow("j1", numbering)],
 			}),
@@ -285,7 +309,7 @@ describe("series and episode number matching", () => {
 			episodes: { first: 1, count: 1 },
 		};
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [inShow("p1", special)],
 				jellyfin: [inShow("j1", special, { series: { tvdb: "1" } })],
 			}),
@@ -299,7 +323,7 @@ describe("series and episode number matching", () => {
 
 	it("refuses series that share one provider ID and conflict on another", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [inShow("p1", regular(1, 1), { watched: true })],
 				jellyfin: [
 					inShow("j1", regular(1, 1), {
@@ -312,7 +336,7 @@ describe("series and episode number matching", () => {
 
 	it("refuses two candidates with the same series and numbers", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [inShow("p1", regular(1, 1), { watched: true })],
 				jellyfin: [inShow("j1", regular(1, 1)), inShow("j2", regular(1, 1))],
 			}),
@@ -321,7 +345,7 @@ describe("series and episode number matching", () => {
 
 	it("refuses equal numbers when the episode IDs conflict", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [
 					inShow("p1", regular(1, 1), {
 						watched: true,
@@ -340,7 +364,7 @@ describe("series and episode number matching", () => {
 	it("pairs by an exact episode ID before equal numbers", () => {
 		const pilotId: MediaItem["ids"] = [{ provider: "tvdb", value: "349232" }];
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [
 					inShow("p1", regular(1, 1), { watched: true, ids: pilotId }),
 					inShow("p2", regular(1, 2)),
@@ -352,7 +376,13 @@ describe("series and episode number matching", () => {
 			}),
 		).toEqual({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "j1",
+					replaces: null,
+				},
 			],
 			matched: 1,
 			unmatched: 2,
@@ -366,7 +396,7 @@ describe("series and episode number matching", () => {
 
 	it("separates a missing series ID from a missing episode ID", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [inShow("p1", regular(1, 1), { series: {} })],
 				jellyfin: [inShow("j1", regular(1, 1))],
 			}),
@@ -391,7 +421,7 @@ describe("series and episode number matching", () => {
 			inShow("j3", regular(1, 3)),
 			inShow("j3-copy", regular(1, 3)),
 		];
-		const summarize = (plan: ReturnType<typeof planWatchedUnion>) => ({
+		const summarize = (plan: ReturnType<typeof planMatches>) => ({
 			...plan,
 			writes: plan.writes.map((write) => write.itemId).sort(),
 			pairs: [...plan.pairs].sort((a, b) =>
@@ -411,14 +441,14 @@ describe("series and episode number matching", () => {
 			],
 			unsupportedNumbering: 1,
 		} satisfies ReturnType<typeof summarize>;
-		const plan = planWatchedUnion({ plex, jellyfin });
+		const plan = planMatches({ plex, jellyfin });
 		expect(2 * plan.matched + plan.unmatched + plan.ambiguous).toBe(
 			plex.length + jellyfin.length,
 		);
 		expect(summarize(plan)).toEqual(expected);
 		expect(
 			summarize(
-				planWatchedUnion({
+				planMatches({
 					plex: [...plex].reverse(),
 					jellyfin: [...jellyfin].reverse(),
 				}),
@@ -428,7 +458,7 @@ describe("series and episode number matching", () => {
 
 	it("keeps a saved manual match ahead of equal numbers", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [inShow("p1", regular(1, 1), { watched: true })],
 				jellyfin: [inShow("j1", regular(1, 1)), inShow("j2", regular(1, 2))],
 				manualMatches: [
@@ -437,7 +467,13 @@ describe("series and episode number matching", () => {
 			}),
 		).toMatchObject({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j2", title: "j2" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j2",
+					title: "j2",
+					replaces: null,
+				},
 			],
 			matched: 1,
 			unmatched: 1,
@@ -450,7 +486,7 @@ describe("manual watched-union matches", () => {
 	it("uses a manual pair before metadata and reserves both items", () => {
 		const ids: MediaItem["ids"] = [{ provider: "tmdb", value: "123" }];
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [movie("p1", true, ids), movie("p2", true, [])],
 				jellyfin: [movie("j1", false, ids), movie("j2", false, [])],
 				manualMatches: [
@@ -459,7 +495,13 @@ describe("manual watched-union matches", () => {
 			}),
 		).toEqual({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j2", title: "j2" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j2",
+					title: "j2",
+					replaces: null,
+				},
 			],
 			matched: 1,
 			unmatched: 2,
@@ -473,7 +515,7 @@ describe("manual watched-union matches", () => {
 	it("reserves a surviving manual item when its counterpart disappears", () => {
 		const ids: MediaItem["ids"] = [{ provider: "tvdb", value: "123" }];
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [episode("p1", true, ids)],
 				jellyfin: [episode("replacement", false, ids)],
 				manualMatches: [
@@ -502,7 +544,7 @@ describe("watch-history policy", () => {
 		plexWatched?: boolean;
 		jellyfinWatched?: boolean;
 	}) {
-		const { writes, matched, positionConflicts } = planWatchedUnion({
+		const { writes, matched, positionConflicts } = planMatches({
 			plex: [movie("p1", input.plexWatched ?? false, ids, "p1", input.plex)],
 			jellyfin: [
 				movie("j1", input.jellyfinWatched ?? false, ids, "j1", input.jellyfin),
@@ -525,6 +567,7 @@ describe("watch-history policy", () => {
 					itemId: "j1",
 					title: "j1",
 					value: 30_000,
+					replaces: 10_000,
 				},
 			],
 			matched: 1,
@@ -546,6 +589,7 @@ describe("watch-history policy", () => {
 					itemId: "p1",
 					title: "p1",
 					value: 10_000,
+					replaces: 30_000,
 				},
 			],
 			matched: 1,
@@ -600,6 +644,7 @@ describe("watch-history policy", () => {
 				itemId: "j1",
 				title: "j1",
 				value: 15_001,
+				replaces: 10_000,
 			},
 		]);
 	});
@@ -628,6 +673,7 @@ describe("watch-history policy", () => {
 				target: "jellyfin",
 				itemId: "j1",
 				title: "j1",
+				replaces: null,
 				playedAt: 160_001,
 			},
 		]);
@@ -638,7 +684,13 @@ describe("watch-history policy", () => {
 			planHistory({ plex: NO_HISTORY, jellyfin: NO_HISTORY, plexWatched: true })
 				.writes,
 		).toEqual([
-			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				replaces: null,
+			},
 		]);
 	});
 
@@ -649,10 +701,18 @@ describe("watch-history policy", () => {
 				jellyfin: { lastPlayedAt: 160_001, positionMs: null },
 				jellyfinWatched: true,
 			}).writes,
-		).toEqual([{ kind: "watched", target: "plex", itemId: "p1", title: "p1" }]);
+		).toEqual([
+			{
+				kind: "watched",
+				target: "plex",
+				itemId: "p1",
+				title: "p1",
+				replaces: null,
+			},
+		]);
 	});
 
-	it("emits the watched write before the position write", () => {
+	it("carries the later position on the watched write to the item it marks", () => {
 		expect(
 			planHistory({
 				plex: { lastPlayedAt: 160_001, positionMs: 30_000 },
@@ -665,14 +725,98 @@ describe("watch-history policy", () => {
 				target: "jellyfin",
 				itemId: "j1",
 				title: "j1",
+				replaces: 10_000,
 				playedAt: 160_001,
+				resumeAt: 30_000,
 			},
+		]);
+	});
+
+	it("keeps the newer position on the item it marks watched without moving its date earlier", () => {
+		expect(
+			planHistory({
+				plex: { lastPlayedAt: 100_000, positionMs: null },
+				jellyfin: { lastPlayedAt: 160_001, positionMs: 20_000 },
+				plexWatched: true,
+			}).writes,
+		).toEqual([
+			{
+				kind: "position",
+				target: "plex",
+				itemId: "p1",
+				title: "p1",
+				value: 20_000,
+				replaces: null,
+			},
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				replaces: 20_000,
+				resumeAt: 20_000,
+			},
+		]);
+	});
+
+	it("keeps the marked item's own position in a conflict without copying it", () => {
+		expect(
+			planHistory({
+				plex: { lastPlayedAt: 100_000, positionMs: null },
+				jellyfin: { lastPlayedAt: 100_000, positionMs: 20_000 },
+				plexWatched: true,
+			}),
+		).toEqual({
+			writes: [
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "j1",
+					replaces: 20_000,
+					resumeAt: 20_000,
+					playedAt: 100_000,
+				},
+			],
+			matched: 1,
+			positionConflicts: 1,
+		});
+	});
+
+	it("treats a short position as present when the other item has none", () => {
+		expect(
+			planHistory({
+				plex: { lastPlayedAt: 160_001, positionMs: 3_000 },
+				jellyfin: { lastPlayedAt: 100_000, positionMs: null },
+			}).writes,
+		).toEqual([
 			{
 				kind: "position",
 				target: "jellyfin",
 				itemId: "j1",
 				title: "j1",
-				value: 30_000,
+				value: 3_000,
+				replaces: null,
+			},
+		]);
+	});
+
+	it("keeps the marked item's own position when the later item has none", () => {
+		expect(
+			planHistory({
+				plex: { lastPlayedAt: 160_001, positionMs: null },
+				jellyfin: { lastPlayedAt: 100_000, positionMs: 20_000 },
+				plexWatched: true,
+			}).writes,
+		).toEqual([
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				replaces: 20_000,
+				playedAt: 160_001,
+				resumeAt: 20_000,
 			},
 		]);
 	});
@@ -699,7 +843,7 @@ describe("watch-history policy", () => {
 
 	it("applies the same rules to a manual pair", () => {
 		expect(
-			planWatchedUnion({
+			planMatches({
 				plex: [
 					movie("p1", true, [], "p1", {
 						lastPlayedAt: 100_000,
@@ -719,18 +863,20 @@ describe("watch-history policy", () => {
 		).toEqual({
 			writes: [
 				{
-					kind: "watched",
-					target: "jellyfin",
-					itemId: "j1",
-					title: "j1",
-					playedAt: 100_000,
-				},
-				{
 					kind: "position",
 					target: "plex",
 					itemId: "p1",
 					title: "p1",
 					value: 10_000,
+					replaces: 30_000,
+				},
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "j1",
+					replaces: 10_000,
+					resumeAt: 10_000,
 				},
 			],
 			matched: 1,
@@ -761,13 +907,19 @@ describe("saved show numbering", () => {
 		inShow("j1", regular(1, number), { localId: "j-show", series: {} });
 
 	it("pairs regular episodes without series IDs using the saved show identity", () => {
-		const plan = planWatchedUnion({
+		const plan = planMatches({
 			plex: [plex()],
 			jellyfin: [jellyfin()],
 			showMatches,
 		});
 		expect(plan.writes).toEqual([
-			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				replaces: null,
+			},
 		]);
 		expect(plan.matched).toBe(1);
 		expect(plan.pairs).toEqual([
@@ -776,7 +928,7 @@ describe("saved show numbering", () => {
 	});
 
 	it("reserves episode manual matches before the show numbering stage", () => {
-		const plan = planWatchedUnion({
+		const plan = planMatches({
 			plex: [plex()],
 			jellyfin: [
 				jellyfin(),
@@ -791,12 +943,18 @@ describe("saved show numbering", () => {
 			{ plexItemId: "p1", jellyfinItemId: "j2", source: "manual" },
 		]);
 		expect(plan.writes).toEqual([
-			{ kind: "watched", target: "jellyfin", itemId: "j2", title: "j2" },
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j2",
+				title: "j2",
+				replaces: null,
+			},
 		]);
 	});
 
 	it("counts stale show matches and lets survivors use provider series matching", () => {
-		const plan = planWatchedUnion({
+		const plan = planMatches({
 			plex: [inShow("p1", regular(1, 1), { localId: "p-show", watched: true })],
 			jellyfin: [inShow("j1", regular(1, 1), { localId: "replacement" })],
 			showMatches,
@@ -806,12 +964,18 @@ describe("saved show numbering", () => {
 			{ plexItemId: "p1", jellyfinItemId: "j1", source: "seriesNumber" },
 		]);
 		expect(plan.writes).toEqual([
-			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				replaces: null,
+			},
 		]);
 	});
 
 	it("does not number-match a third show with the same provider series IDs", () => {
-		const plan = planWatchedUnion({
+		const plan = planMatches({
 			plex: [inShow("p1", regular(1, 1), { localId: "p-show" })],
 			jellyfin: [
 				inShow("j1", regular(1, 2), { localId: "j-show" }),
@@ -833,7 +997,7 @@ describe("saved show numbering", () => {
 	];
 	for (const { label, numbering } of unsupported) {
 		it(`keeps ${label} in matched shows ambiguous`, () => {
-			const plan = planWatchedUnion({
+			const plan = planMatches({
 				plex: [inShow("p1", numbering, { localId: "p-show", series: {} })],
 				jellyfin: [inShow("j1", numbering, { localId: "j-show", series: {} })],
 				showMatches,
@@ -846,7 +1010,7 @@ describe("saved show numbering", () => {
 	}
 
 	it("blocks a show-number pair when episode IDs conflict", () => {
-		const plan = planWatchedUnion({
+		const plan = planMatches({
 			plex: [
 				inShow("p1", regular(1, 1), {
 					localId: "p-show",
@@ -867,7 +1031,7 @@ describe("saved show numbering", () => {
 	});
 
 	it("uses the confirmed show identity despite conflicting provider series IDs", () => {
-		const plan = planWatchedUnion({
+		const plan = planMatches({
 			plex: [
 				inShow("p1", regular(1, 1), {
 					localId: "p-show",
@@ -889,7 +1053,7 @@ describe("saved show numbering", () => {
 
 	it("keeps exact episode IDs ahead of show numbers", () => {
 		const ids: MediaItem["ids"] = [{ provider: "tvdb", value: "1" }];
-		const plan = planWatchedUnion({
+		const plan = planMatches({
 			plex: [inShow("p1", regular(1, 1), { localId: "p-show", ids })],
 			jellyfin: [inShow("j1", regular(1, 2), { localId: "j-show", ids })],
 			showMatches,
@@ -900,7 +1064,7 @@ describe("saved show numbering", () => {
 	});
 
 	it("counts a leftover episode in an active show as missing episode IDs", () => {
-		const plan = planWatchedUnion({
+		const plan = planMatches({
 			plex: [plex()],
 			jellyfin: [jellyfin(2)],
 			showMatches,
@@ -935,5 +1099,176 @@ describe("showsInLibrary", () => {
 			{ id: "b", title: "Alpha", episodeCount: 2 },
 			{ id: "Zulu", title: "Zulu", episodeCount: 1 },
 		]);
+	});
+});
+
+describe("saved item state", () => {
+	const ids: MediaItem["ids"] = [{ provider: "imdb", value: "tt1" }];
+	const stored: ItemState = {
+		plexItemId: "p1",
+		jellyfinItemId: "j1",
+		scanned: {
+			plex: { watched: true, positionMs: 30_000 },
+			jellyfin: { watched: false, positionMs: 10_000 },
+		},
+		target: {
+			plex: { watched: true, positionMs: 30_000 },
+			jellyfin: { watched: true, positionMs: 30_000 },
+		},
+		playedAt: 160_001,
+		positionConflict: false,
+	};
+	const afterMark = {
+		plex: [
+			movie("p1", true, ids, "p1", {
+				lastPlayedAt: 160_001,
+				positionMs: 30_000,
+			}),
+		],
+		jellyfin: [
+			movie("j1", true, ids, "j1", { lastPlayedAt: 160_001, positionMs: null }),
+		],
+	};
+
+	it("resumes the saved intent when neither item moved past it", () => {
+		expect(planWatchedUnion(afterMark)).toMatchObject({
+			writes: [],
+			positionConflicts: 1,
+		});
+		expect(
+			planWatchedUnion({ ...afterMark, itemStates: [stored] }),
+		).toMatchObject({
+			writes: [
+				{
+					kind: "position",
+					target: "jellyfin",
+					itemId: "j1",
+					value: 30_000,
+					replaces: null,
+				},
+			],
+			positionConflicts: 0,
+			itemStates: { save: [], clear: [] },
+		});
+	});
+
+	it("restores a short position that an interrupted mark cleared", () => {
+		const SHORT_POSITION_MS = 3_000;
+		const first = planWatchedUnion({
+			plex: [
+				movie("p1", true, ids, "p1", {
+					lastPlayedAt: 160_001,
+					positionMs: SHORT_POSITION_MS,
+				}),
+			],
+			jellyfin: [
+				movie("j1", false, ids, "j1", {
+					lastPlayedAt: 100_000,
+					positionMs: SHORT_POSITION_MS,
+				}),
+			],
+		});
+		expect(first.writes).toMatchObject([
+			{ kind: "watched", target: "jellyfin", resumeAt: SHORT_POSITION_MS },
+		]);
+		const retry = planWatchedUnion({
+			plex: [
+				movie("p1", true, ids, "p1", {
+					lastPlayedAt: 160_001,
+					positionMs: SHORT_POSITION_MS,
+				}),
+			],
+			jellyfin: [
+				movie("j1", true, ids, "j1", {
+					lastPlayedAt: 160_001,
+					positionMs: null,
+				}),
+			],
+			itemStates: first.itemStates.save,
+		});
+		expect(retry.writes).toEqual([
+			{
+				kind: "position",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				value: SHORT_POSITION_MS,
+				replaces: null,
+			},
+		]);
+		expect(retry.itemStates.save).toEqual([]);
+	});
+
+	it("settles a resumed intent whose writes already landed", () => {
+		const landed = {
+			plex: afterMark.plex,
+			jellyfin: [
+				movie("j1", true, ids, "j1", {
+					lastPlayedAt: 160_001,
+					positionMs: 30_000,
+				}),
+			],
+		};
+		expect(
+			planWatchedUnion({ ...landed, itemStates: [stored] }).itemStates,
+		).toEqual({
+			save: [{ ...stored, scanned: stored.target }],
+			clear: [],
+			writePairs: [],
+		});
+	});
+
+	it("treats finishing a settled item as user activity, not an interrupted mark", () => {
+		const finished = {
+			plex: afterMark.plex,
+			jellyfin: [
+				movie("j1", true, ids, "j1", {
+					lastPlayedAt: 400_000,
+					positionMs: null,
+				}),
+			],
+		};
+		const settled = { ...stored, scanned: stored.target };
+		expect(
+			planWatchedUnion({ ...finished, itemStates: [settled] }),
+		).toMatchObject({
+			writes: [],
+			itemStates: {
+				save: [],
+				clear: [{ plexItemId: "p1", jellyfinItemId: "j1" }],
+			},
+		});
+	});
+
+	it("plans from live state and replaces the saved intent after newer playback", () => {
+		const played = {
+			plex: afterMark.plex,
+			jellyfin: [
+				movie("j1", true, ids, "j1", {
+					lastPlayedAt: 400_000,
+					positionMs: 50_000,
+				}),
+			],
+		};
+		expect(planWatchedUnion({ ...played, itemStates: [stored] })).toMatchObject(
+			{
+				writes: [
+					{ kind: "position", target: "plex", value: 50_000, replaces: 30_000 },
+				],
+				itemStates: {
+					save: [
+						{
+							plexItemId: "p1",
+							jellyfinItemId: "j1",
+							target: {
+								plex: { watched: true, positionMs: 50_000 },
+								jellyfin: { watched: true, positionMs: 50_000 },
+							},
+						},
+					],
+					clear: [],
+				},
+			},
+		);
 	});
 });

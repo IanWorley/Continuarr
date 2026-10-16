@@ -5,6 +5,7 @@ import {
 	integer,
 	jsonb,
 	pgTable,
+	primaryKey,
 	text,
 	timestamp,
 	uniqueIndex,
@@ -210,6 +211,40 @@ export const manualMatches = pgTable(
 			table.pairingId,
 			table.jellyfinItemId,
 		),
+	],
+);
+
+export const syncItemStates = pgTable(
+	"sync_item_states",
+	{
+		pairingId: text("pairing_id")
+			.notNull()
+			.references(() => syncPairings.id),
+		plexItemId: text("plex_item_id").notNull(),
+		jellyfinItemId: text("jellyfin_item_id").notNull(),
+		scannedPlexWatched: boolean("scanned_plex_watched").notNull(),
+		scannedPlexPositionMs: bigint("scanned_plex_position_ms", {
+			mode: "number",
+		}),
+		scannedJellyfinWatched: boolean("scanned_jellyfin_watched").notNull(),
+		scannedJellyfinPositionMs: bigint("scanned_jellyfin_position_ms", {
+			mode: "number",
+		}),
+		targetPlexWatched: boolean("target_plex_watched").notNull(),
+		targetPlexPositionMs: bigint("target_plex_position_ms", {
+			mode: "number",
+		}),
+		targetJellyfinWatched: boolean("target_jellyfin_watched").notNull(),
+		targetJellyfinPositionMs: bigint("target_jellyfin_position_ms", {
+			mode: "number",
+		}),
+		jellyfinPlayedAt: bigint("jellyfin_played_at", { mode: "number" }),
+		positionConflict: boolean("position_conflict").notNull(),
+	},
+	(table) => [
+		primaryKey({
+			columns: [table.pairingId, table.plexItemId, table.jellyfinItemId],
+		}),
 	],
 );
 

@@ -1,6 +1,6 @@
 # Continuarr
 
-Sync watched movies and episodes for paired Plex and Jellyfin users. Continuarr merges watched status in both directions. It never marks an item unwatched.
+Sync watched movies and episodes for paired Plex and Jellyfin users. Continuarr merges watched status and resume positions in both directions. It never marks an item unwatched.
 
 Built with:
 
@@ -37,7 +37,7 @@ Use the separate [self-hosting guide](docs/self-hosting.md) to build and run the
 2. Sign in as the Plex server owner, choose **Find Plex servers**, then choose an owned server and a reachable connection address. **Save server and import users** saves the connection and imports the owner, Home users, and users with accepted server grants. No Plex Home PIN is requested. Other users use their own server grant tokens, including Home members with a grant. A listed user without a grant remains visible but cannot sync watched status.
 3. Continuarr requires Jellyfin 10.9 or later. On **Connections & sync**, enter the Jellyfin server URL and a key from Jellyfin Dashboard → API Keys. Continuarr verifies the server and imports every user returned by Jellyfin, including their complete UserDto details. Include a reverse proxy path in the URL when your server uses one. The key is encrypted in PostgreSQL and never returned by the API.
 4. On **Users**, review both directories and pair the same person across Plex and Jellyfin. Each user can belong to one pairing. Missing users, disabled Jellyfin users, and Plex users without watched access stay visible but cannot start a new pairing or sync.
-5. On **Users**, preview the pairing, then run sync. A run reads both libraries again and applies the current watched status. Check the run result for completed updates and skipped items.
+5. On **Users**, preview the pairing, then run sync. A run reads both libraries again and applies watched status and resume positions. Check the run result for completed updates and skipped items.
 6. On **Connections & sync**, configure **Automatic user imports** for both services. One PostgreSQL setting controls the interval and enabled state, defaulting to every 60 minutes. **Refresh all users now** imports both directories immediately. Successful imports preserve user and pairing IDs; failures keep the last successful list. Watched sync remains separate and can be enabled hourly for each pairing.
 
 Continuarr connects one Plex server and one Jellyfin server. To switch servers, disconnect the saved one on **Connections & sync**, then connect the new one. If an earlier version saved more than one server for a service, that page asks you to disconnect the extras. A disconnect keeps users, pairings, manual matches, and sync history, and pauses automatic sync for that server's pairings.
@@ -60,6 +60,10 @@ Everything else stays manual. Specials (season 0), absolute numbering, multi-epi
 
 Preview and each run summary break skipped episodes down by reason. An episode whose show has no series ID can match only by an episode ID. An episode whose show has a series ID but no counterpart with the same numbers is reported as missing an episode ID. Refresh the show's metadata on that server or add a manual match.
 
+Resume positions follow the server that played the item most recently. For each matched pair, Continuarr compares the last-played times and copies the position from the later server to the other one. If either time is missing, or the two times are within one minute, Continuarr copies neither position and preview reports a position conflict. Continuarr ignores differences of 5 seconds or less between two positions. An item with no position never counts as matching one, however short. It never writes a zero position. Both servers clear an item's resume position when they mark it watched. Continuarr writes a position back to the item it marks watched: the newer position when it copies one, otherwise the item's own. So marking an item watched never clears its position, and with a position conflict neither position is copied.
+
+Continuarr saves what each run saw and intended for every matched pair it updates. Its own writes move the servers' last-played times, Plex's to the time of the write. While neither item's watched state or position has changed since, the next run continues from that saved intent instead of those times. So a run that stops partway finishes the remaining updates, and a resolved pair stays resolved. Once a pair's updates all land, only that exact end state counts as unchanged. If you later finish, rewatch, or move either item, Continuarr plans from the current state again.
+
 ### Match content manually
 
 Choose **Manual matching** in the navigation bar, then choose a person pairing. On smaller screens, open the navigation menu first. Browse each library by show and season, or switch to movies. Select one item on each side and choose **Save manual match**. File paths, metadata IDs, and watched states help you compare the items. Missing file paths appear as unavailable.
@@ -72,9 +76,11 @@ Each show can have one counterpart per person pairing. Saving a show match does 
 
 ### Watched-state behavior
 
-For a matched item, watched on either service means watched on both. Continuarr does not copy historical watch timestamps, play counts, ratings, or playback positions. The providers' mark-watched APIs may record the sync as a new play. Marking an item unwatched on one service does not clear the other service and the next sync can mark it watched again.
+For a matched item, watched on either service means watched on both. When sync marks an item watched in Jellyfin, Jellyfin receives the Plex last-viewed date as the played date, unless that would move Jellyfin's date earlier. Jellyfin's date is read again just before the write. Plex has no API for a dated watched write, so Plex records the sync time. Continuarr does not copy play counts or ratings. The providers' mark-watched APIs may record the sync as a new play. Marking an item unwatched on one service does not clear the other service and the next sync can mark it watched again.
 
-Both library scans must finish before any writes begin. A failed write stops the run and preserves its progress in the run history. Run sync again after fixing the connection; the next attempt reads current state and skips items already watched. An interrupted run is reported as failed after restart. The dashboard shows the latest 50 run records.
+Automatic sync runs at most once an hour, so a copied position can lag live playback by up to an hour. A player that is still playing the item can overwrite a position that sync wrote. Before each position or watched write, Continuarr reads the item again. If its position moved since the scan, for example because someone kept watching during the run, Continuarr skips that write and counts it in the run summary. It does not mark that item watched either, because marking would clear the newer position. After marking an item watched, it reads the item once more and writes the kept position back, unless playback moved the item during the mark. The next sync compares the newer playback.
+
+Both library scans must finish before any writes begin. A failed write stops the run and preserves its progress in the run history. Run sync again after fixing the connection; the next attempt reads current state and skips updates that are already applied. An interrupted run is reported as failed after restart. The dashboard shows the latest 50 run records.
 
 ### Deployment
 
@@ -92,9 +98,9 @@ bun run db:check
 bun run build
 ```
 
-For a repeatable browser check, run `bun scripts/media-fixture.ts` and follow its printed startup instructions. It starts an isolated PostgreSQL container with a seeded Plex Home profile and two local media-server fixtures. Import the fixture Jellyfin server on Connections & sync, open Users, create a pairing, and confirm that preview shows three updates and a repeated sync shows zero. One fixture show matches its regular episodes by series ID and number and reports its special as ambiguous. The other has no series ID, so its episodes stay unmatched until you match them manually.
+For a repeatable browser check, run `bun scripts/media-fixture.ts` and follow its printed startup instructions. It starts an isolated PostgreSQL container with a seeded Plex Home profile and two local media-server fixtures. Import the fixture Jellyfin server on Connections & sync, open Users, create a pairing, and confirm that preview shows five updates (three watched, two resume positions) and one position conflict. A repeated sync shows zero updates. One fixture show matches its regular episodes by series ID and number and reports its special as ambiguous. The other has no series ID, so its episodes stay unmatched until you match them manually.
 
-Provider tests run local HTTP fixtures for authentication, owner server selection, grant-based directories, paginated inventories, and watched updates. Service tests use migrated PostgreSQL and exercise encrypted persistence, pairing constraints, API authentication, retries, and automatic sync. These tests do not sign in to a real Plex or Jellyfin account.
+Provider tests run local HTTP fixtures for authentication, owner server selection, grant-based directories, paginated inventories, watched updates, and resume positions. Service tests use migrated PostgreSQL and exercise encrypted persistence, pairing constraints, API authentication, retries, and automatic sync. These tests do not sign in to a real Plex or Jellyfin account.
 
 ## Installation-owner authentication
 

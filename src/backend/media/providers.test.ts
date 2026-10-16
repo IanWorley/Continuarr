@@ -2,13 +2,20 @@
 
 import { afterEach, describe, expect, it } from "bun:test";
 import { z } from "zod";
-import { createJellyfinProvider } from "~/backend/media/jellyfin";
+import {
+	createJellyfinProvider,
+	TICKS_PER_MILLISECOND,
+} from "~/backend/media/jellyfin";
 import type { MediaItem } from "~/backend/media/model";
 import { createPlexProvider } from "~/backend/media/plex";
 import { Secret } from "~/backend/secrets/storage";
 
 const PAGE_SIZE = 100;
 const RESUME_POSITION_MS = 754_000;
+// The scan saw 20:00, the plan copies 30:00, and playback reached 40:00 before the write.
+const SCANNED_POSITION_MS = 1_200_000;
+const PLANNED_POSITION_MS = 1_800_000;
+const ADVANCED_POSITION_MS = 2_400_000;
 const PLEX_IDENTIFIER = "plex-client";
 const JELLYFIN_IDENTIFIER = "jellyfin-client";
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
@@ -57,8 +64,18 @@ describe("Plex provider", () => {
 		});
 		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
 		const access = { url: `${baseUrl}/plex`, token: new Secret("grant-token") };
-		await provider.setPosition(access, "2", RESUME_POSITION_MS);
-		await provider.setPosition(access, "2", RESUME_POSITION_MS);
+		await provider.setPosition(
+			access,
+			"2",
+			RESUME_POSITION_MS,
+			INITIAL_POSITION_MS,
+		);
+		await provider.setPosition(
+			access,
+			"2",
+			RESUME_POSITION_MS,
+			INITIAL_POSITION_MS,
+		);
 		expect(writes).toEqual([
 			{
 				token: "grant-token",
@@ -78,7 +95,7 @@ describe("Plex provider", () => {
 			[759_000, RESUME_POSITION_MS, 0],
 			[748_999, RESUME_POSITION_MS, 1],
 			[759_001, RESUME_POSITION_MS, 1],
-			[undefined, 5_000, 0],
+			[undefined, 3_000, 1],
 			[undefined, 5_001, 1],
 		];
 		for (const [currentOffset, target, expectedWrites] of cases) {
@@ -111,6 +128,7 @@ describe("Plex provider", () => {
 				{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
 				"2",
 				target,
+				currentOffset ?? null,
 			);
 			expect({ currentOffset, target, writes }).toEqual({
 				currentOffset,
@@ -118,6 +136,41 @@ describe("Plex provider", () => {
 				writes: expectedWrites,
 			});
 		}
+	});
+
+	it("skips a stale write after playback moves past the scanned position", async () => {
+		let viewOffset = ADVANCED_POSITION_MS;
+		let writes = 0;
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/plex/library/metadata/2")
+				return json({
+					MediaContainer: { Metadata: [{ ratingKey: "2", viewOffset }] },
+				});
+			if (url.pathname === "/plex/:/progress" && request.method === "PUT") {
+				writes++;
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		const access = { url: `${baseUrl}/plex`, token: new Secret("grant-token") };
+		const write = () =>
+			provider.setPosition(
+				access,
+				"2",
+				PLANNED_POSITION_MS,
+				SCANNED_POSITION_MS,
+			);
+		expect({ result: await write(), writes }).toEqual({
+			result: "stale",
+			writes: 0,
+		});
+		viewOffset = SCANNED_POSITION_MS;
+		expect({ result: await write(), writes }).toEqual({
+			result: "applied",
+			writes: 1,
+		});
 	});
 
 	it("rejects an invalid item ID or position before any request", async () => {
@@ -130,11 +183,11 @@ describe("Plex provider", () => {
 		const access = { url: `${baseUrl}/plex`, token: new Secret("grant-token") };
 		for (const itemId of ["../2", "2?time=0", ""])
 			await expect(
-				provider.setPosition(access, itemId, RESUME_POSITION_MS),
+				provider.setPosition(access, itemId, RESUME_POSITION_MS, null),
 			).rejects.toThrow("Invalid Plex item ID.");
 		for (const positionMs of [0, -1, 1.5])
 			await expect(
-				provider.setPosition(access, "2", positionMs),
+				provider.setPosition(access, "2", positionMs, null),
 			).rejects.toThrow("Invalid Plex resume position.");
 		expect(requests).toBe(0);
 	});
@@ -157,11 +210,156 @@ describe("Plex provider", () => {
 		await provider.markWatched(
 			{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
 			"1",
-			Date.UTC(2026, 8, 1, 20),
+			{ replaces: null, playedAt: Date.UTC(2026, 8, 1, 20) },
 		);
 		expect(scrobbles).toEqual([
 			{ key: "1", identifier: "com.plexapp.plugins.library" },
 		]);
+	});
+
+	it("restores resumeAt after the scrobble clears the position", async () => {
+		const requests: string[] = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/plex/library/metadata/1")
+				return json({
+					MediaContainer: { Metadata: [{ ratingKey: "1", viewCount: 0 }] },
+				});
+			if (request.method === "PUT") {
+				requests.push(`${url.pathname} ${url.searchParams.get("time") ?? ""}`);
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		await provider.markWatched(
+			{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
+			"1",
+			{ replaces: null, resumeAt: RESUME_POSITION_MS },
+		);
+		expect(requests).toEqual(["/plex/:/scrobble ", "/plex/:/progress 754000"]);
+	});
+
+	it("skips marking watched after playback moves past the scanned position", async () => {
+		let viewOffset = ADVANCED_POSITION_MS;
+		const requests: string[] = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/plex/library/metadata/1")
+				return json({
+					MediaContainer: {
+						Metadata: [{ ratingKey: "1", viewCount: 0, viewOffset }],
+					},
+				});
+			if (request.method === "PUT") {
+				requests.push(url.pathname);
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		const mark = () =>
+			provider.markWatched(
+				{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
+				"1",
+				{ replaces: SCANNED_POSITION_MS, resumeAt: PLANNED_POSITION_MS },
+			);
+		expect({ result: await mark(), requests }).toEqual({
+			result: "stale",
+			requests: [],
+		});
+		viewOffset = SCANNED_POSITION_MS;
+		expect({ result: await mark(), requests }).toEqual({
+			result: "applied",
+			requests: ["/plex/:/scrobble", "/plex/:/progress"],
+		});
+	});
+
+	describe("restore after scrobble", () => {
+		const SHORT_POSITION_MS = 3_000;
+		function serveMark(
+			initialOffset: number | undefined,
+			offsetAfterMark: number,
+		) {
+			let viewOffset: number | undefined = initialOffset;
+			let viewCount = 0;
+			const writes: string[] = [];
+			const baseUrl = serve((request) => {
+				const url = new URL(request.url);
+				if (url.pathname === "/plex/library/metadata/1")
+					return json({
+						MediaContainer: {
+							Metadata: [{ ratingKey: "1", viewCount, viewOffset }],
+						},
+					});
+				if (url.pathname === "/plex/:/scrobble") {
+					viewCount = 1;
+					viewOffset = offsetAfterMark;
+					return new Response(null, { status: 200 });
+				}
+				if (url.pathname === "/plex/:/progress") {
+					writes.push(url.searchParams.get("time") ?? "");
+					viewOffset = Number(url.searchParams.get("time"));
+					return new Response(null, { status: 200 });
+				}
+				return json({}, 404);
+			});
+			const provider = createPlexProvider({
+				clientIdentifier: PLEX_IDENTIFIER,
+			});
+			const access = {
+				url: `${baseUrl}/plex`,
+				token: new Secret("grant-token"),
+			};
+			return {
+				mark: (options: { replaces: number | null; resumeAt?: number }) =>
+					provider.markWatched(access, "1", options),
+				state: () => ({ viewOffset, writes, marked: viewCount > 0 }),
+			};
+		}
+
+		it("writes back a short position the scrobble cleared", async () => {
+			const fixture = serveMark(SHORT_POSITION_MS, 0);
+			expect(
+				await fixture.mark({
+					replaces: SHORT_POSITION_MS,
+					resumeAt: SHORT_POSITION_MS,
+				}),
+			).toBe("applied");
+			expect(fixture.state()).toEqual({
+				viewOffset: SHORT_POSITION_MS,
+				writes: ["3000"],
+				marked: true,
+			});
+		});
+
+		it("skips marking an item that started short playback after an empty scan", async () => {
+			const started = serveMark(SHORT_POSITION_MS, 0);
+			expect(await started.mark({ replaces: null })).toBe("stale");
+			expect(started.state()).toEqual({
+				viewOffset: SHORT_POSITION_MS,
+				writes: [],
+				marked: false,
+			});
+			const untouched = serveMark(undefined, 0);
+			expect(await untouched.mark({ replaces: null })).toBe("applied");
+			expect(untouched.state()).toMatchObject({ marked: true });
+		});
+
+		it("keeps playback that landed during the scrobble", async () => {
+			const fixture = serveMark(SCANNED_POSITION_MS, ADVANCED_POSITION_MS);
+			expect(
+				await fixture.mark({
+					replaces: SCANNED_POSITION_MS,
+					resumeAt: PLANNED_POSITION_MS,
+				}),
+			).toBe("stale");
+			expect(fixture.state()).toEqual({
+				viewOffset: ADVANCED_POSITION_MS,
+				writes: [],
+				marked: true,
+			});
+		});
 	});
 
 	it("offers only owned servers and prefers a grant for a protected Home member", async () => {
@@ -315,8 +513,8 @@ describe("Plex provider", () => {
 		if (grant?.kind !== "shared_grant") throw new Error("Missing grant");
 		const access = { url: `${baseUrl}/plex`, token: grant.token };
 		expect((await provider.items(access))[0]?.watched).toBe(false);
-		await provider.markWatched(access, "1");
-		await provider.markWatched(access, "1");
+		await provider.markWatched(access, "1", { replaces: null });
+		await provider.markWatched(access, "1", { replaces: null });
 		expect(scrobbles).toBe(1);
 		expect(usedTokens.slice(1)).toEqual(["grant-token", "grant-token"]);
 	});
@@ -473,9 +671,260 @@ describe("Jellyfin provider", () => {
 			userId: "user-1",
 			token: new Secret("user-token"),
 		};
-		await provider.markWatched(access, "item-1", PLAYED_AT_MS);
-		await provider.markWatched(access, "item-2");
+		await provider.markWatched(access, "item-1", {
+			replaces: null,
+			playedAt: PLAYED_AT_MS,
+		});
+		await provider.markWatched(access, "item-2", { replaces: null });
 		expect(queries).toEqual([{ datePlayed: "2026-09-01T20:00:00.000Z" }, {}]);
+	});
+
+	it("restores resumeAt from the marked state after PlayedItems clears the position", async () => {
+		let userData = {
+			Played: false,
+			LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+			PlayCount: 0,
+			IsFavorite: false,
+			Key: "key-item-1",
+			ItemId: "item-1",
+			PlaybackPositionTicks: RESUME_POSITION_MS * TICKS_PER_MILLISECOND,
+		};
+		const posts: unknown[] = [];
+		const baseUrl = serve(async (request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/jf/Users/user-1/Items/item-1")
+				return json({ Id: "item-1", UserData: userData });
+			if (
+				url.pathname === "/jf/Users/user-1/PlayedItems/item-1" &&
+				request.method === "POST"
+			) {
+				posts.push("PlayedItems");
+				userData = {
+					...userData,
+					Played: true,
+					PlayCount: 1,
+					PlaybackPositionTicks: 0,
+				};
+				return new Response(null, { status: 204 });
+			}
+			if (
+				url.pathname === "/jf/Users/user-1/Items/item-1/UserData" &&
+				request.method === "POST"
+			) {
+				posts.push(await request.json());
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		await provider.markWatched(
+			{
+				url: `${baseUrl}/jf`,
+				userId: "user-1",
+				token: new Secret("user-token"),
+			},
+			"item-1",
+			{ replaces: RESUME_POSITION_MS, resumeAt: RESUME_POSITION_MS },
+		);
+		expect(posts).toEqual([
+			"PlayedItems",
+			{
+				Played: true,
+				LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+				PlayCount: 1,
+				IsFavorite: false,
+				Key: "key-item-1",
+				ItemId: "item-1",
+				PlaybackPositionTicks: 7_540_000_000,
+			},
+		]);
+	});
+
+	it("skips marking watched after playback moves past the scanned position, even when already played", async () => {
+		const userData = {
+			Played: false,
+			LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+			PlayCount: 0,
+			IsFavorite: false,
+			Key: "key-item-1",
+			ItemId: "item-1",
+			PlaybackPositionTicks: ADVANCED_POSITION_MS * TICKS_PER_MILLISECOND,
+		};
+		const posts: string[] = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/jf/Users/user-1/Items/item-1")
+				return json({ Id: "item-1", UserData: userData });
+			if (request.method === "POST") {
+				posts.push(url.pathname);
+				return new Response(null, { status: 204 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		const mark = () =>
+			provider.markWatched(
+				{
+					url: `${baseUrl}/jf`,
+					userId: "user-1",
+					token: new Secret("user-token"),
+				},
+				"item-1",
+				{ replaces: SCANNED_POSITION_MS, resumeAt: PLANNED_POSITION_MS },
+			);
+		expect({ result: await mark(), posts }).toEqual({
+			result: "stale",
+			posts: [],
+		});
+		userData.Played = true;
+		expect({ result: await mark(), posts }).toEqual({
+			result: "stale",
+			posts: [],
+		});
+		userData.PlaybackPositionTicks =
+			SCANNED_POSITION_MS * TICKS_PER_MILLISECOND;
+		expect({ result: await mark(), posts }).toEqual({
+			result: "applied",
+			posts: ["/jf/Users/user-1/Items/item-1/UserData"],
+		});
+	});
+
+	it("never sends a played date earlier than the item's current one", async () => {
+		const SCANNED_DATE = "2026-10-01T10:00:00.000Z";
+		const PLANNED_DATE_MS = Date.parse("2026-10-02T10:00:00.000Z");
+		const NEWER_DATE = "2026-10-03T10:00:00.000Z";
+		let lastPlayedDate = NEWER_DATE;
+		const queries: Array<Record<string, string>> = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/jf/Users/user-1/Items/item-1")
+				return json({
+					Id: "item-1",
+					UserData: {
+						Played: false,
+						LastPlayedDate: lastPlayedDate,
+						PlaybackPositionTicks: 0,
+					},
+				});
+			if (request.method === "POST") {
+				queries.push(Object.fromEntries(url.searchParams));
+				return new Response(null, { status: 204 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		const mark = () =>
+			provider.markWatched(
+				{
+					url: `${baseUrl}/jf`,
+					userId: "user-1",
+					token: new Secret("user-token"),
+				},
+				"item-1",
+				{ replaces: null, playedAt: PLANNED_DATE_MS },
+			);
+		await mark();
+		lastPlayedDate = SCANNED_DATE;
+		await mark();
+		expect(queries).toEqual([{}, { datePlayed: "2026-10-02T10:00:00.000Z" }]);
+	});
+
+	describe("restore after PlayedItems", () => {
+		const SHORT_POSITION_MS = 3_000;
+		function serveMark(initialMs: number, msAfterMark: number) {
+			const userData = {
+				Played: false,
+				LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+				PlayCount: 0,
+				PlaybackPositionTicks: initialMs * TICKS_PER_MILLISECOND,
+			};
+			const writes: number[] = [];
+			const baseUrl = serve(async (request) => {
+				const url = new URL(request.url);
+				if (url.pathname === "/jf/Users/user-1/Items/item-1")
+					return json({ Id: "item-1", UserData: userData });
+				if (url.pathname === "/jf/Users/user-1/PlayedItems/item-1") {
+					userData.Played = true;
+					userData.PlaybackPositionTicks = msAfterMark * TICKS_PER_MILLISECOND;
+					return new Response(null, { status: 204 });
+				}
+				if (url.pathname === "/jf/Users/user-1/Items/item-1/UserData") {
+					const ticks = z
+						.object({ PlaybackPositionTicks: z.number() })
+						.parse(await request.json()).PlaybackPositionTicks;
+					writes.push(ticks / TICKS_PER_MILLISECOND);
+					userData.PlaybackPositionTicks = ticks;
+					return new Response(null, { status: 200 });
+				}
+				return json({}, 404);
+			});
+			const provider = createJellyfinProvider({
+				clientIdentifier: JELLYFIN_IDENTIFIER,
+			});
+			const access = {
+				url: `${baseUrl}/jf`,
+				userId: "user-1",
+				token: new Secret("user-token"),
+			};
+			return {
+				mark: (options: { replaces: number | null; resumeAt?: number }) =>
+					provider.markWatched(access, "item-1", options),
+				state: () => ({
+					positionMs: userData.PlaybackPositionTicks / TICKS_PER_MILLISECOND,
+					writes,
+					played: userData.Played,
+				}),
+			};
+		}
+
+		it("writes back a short position that PlayedItems cleared", async () => {
+			const fixture = serveMark(SHORT_POSITION_MS, 0);
+			expect(
+				await fixture.mark({
+					replaces: SHORT_POSITION_MS,
+					resumeAt: SHORT_POSITION_MS,
+				}),
+			).toBe("applied");
+			expect(fixture.state()).toEqual({
+				positionMs: SHORT_POSITION_MS,
+				writes: [SHORT_POSITION_MS],
+				played: true,
+			});
+		});
+
+		it("skips marking an item that started short playback after an empty scan", async () => {
+			const started = serveMark(SHORT_POSITION_MS, 0);
+			expect(await started.mark({ replaces: null })).toBe("stale");
+			expect(started.state()).toEqual({
+				positionMs: SHORT_POSITION_MS,
+				writes: [],
+				played: false,
+			});
+			const untouched = serveMark(0, 0);
+			expect(await untouched.mark({ replaces: null })).toBe("applied");
+			expect(untouched.state()).toMatchObject({ played: true });
+		});
+
+		it("keeps playback that landed during PlayedItems", async () => {
+			const fixture = serveMark(SCANNED_POSITION_MS, ADVANCED_POSITION_MS);
+			expect(
+				await fixture.mark({
+					replaces: SCANNED_POSITION_MS,
+					resumeAt: PLANNED_POSITION_MS,
+				}),
+			).toBe("stale");
+			expect(fixture.state()).toEqual({
+				positionMs: ADVANCED_POSITION_MS,
+				writes: [],
+				played: true,
+			});
+		});
 	});
 
 	it("writes UserData with only the position replaced and skips the identical repeat", async () => {
@@ -515,8 +964,19 @@ describe("Jellyfin provider", () => {
 			userId: "user-1",
 			token: new Secret("user-token"),
 		};
-		await provider.setPosition(access, "item-1", RESUME_POSITION_MS);
-		await provider.setPosition(access, "item-1", RESUME_POSITION_MS);
+		const initialPositionMs = INITIAL_POSITION_TICKS / TICKS_PER_MILLISECOND;
+		await provider.setPosition(
+			access,
+			"item-1",
+			RESUME_POSITION_MS,
+			initialPositionMs,
+		);
+		await provider.setPosition(
+			access,
+			"item-1",
+			RESUME_POSITION_MS,
+			initialPositionMs,
+		);
 		expect(writes).toEqual([
 			{
 				Played: true,
@@ -536,7 +996,7 @@ describe("Jellyfin provider", () => {
 			[7_590_000_000, RESUME_POSITION_MS, 0],
 			[7_489_990_000, RESUME_POSITION_MS, 1],
 			[7_590_010_000, RESUME_POSITION_MS, 1],
-			[0, 5_000, 0],
+			[0, 3_000, 1],
 			[0, 5_001, 1],
 		];
 		for (const [currentTicks, target, expectedWrites] of cases) {
@@ -576,6 +1036,7 @@ describe("Jellyfin provider", () => {
 				},
 				"item-1",
 				target,
+				currentTicks / TICKS_PER_MILLISECOND,
 			);
 			expect({ currentTicks, target, writes }).toEqual({
 				currentTicks,
@@ -583,6 +1044,59 @@ describe("Jellyfin provider", () => {
 				writes: expectedWrites,
 			});
 		}
+	});
+
+	it("skips a stale write after playback moves past the scanned position", async () => {
+		let positionTicks = ADVANCED_POSITION_MS * TICKS_PER_MILLISECOND;
+		let writes = 0;
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/jf/Users/user-1/Items/item-1")
+				return json({
+					Id: "item-1",
+					UserData: {
+						Played: false,
+						LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+						PlayCount: 0,
+						IsFavorite: false,
+						Key: "key-item-1",
+						ItemId: "item-1",
+						PlaybackPositionTicks: positionTicks,
+					},
+				});
+			if (
+				url.pathname === "/jf/Users/user-1/Items/item-1/UserData" &&
+				request.method === "POST"
+			) {
+				writes++;
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		const access = {
+			url: `${baseUrl}/jf`,
+			userId: "user-1",
+			token: new Secret("user-token"),
+		};
+		const write = () =>
+			provider.setPosition(
+				access,
+				"item-1",
+				PLANNED_POSITION_MS,
+				SCANNED_POSITION_MS,
+			);
+		expect({ result: await write(), writes }).toEqual({
+			result: "stale",
+			writes: 0,
+		});
+		positionTicks = SCANNED_POSITION_MS * TICKS_PER_MILLISECOND;
+		expect({ result: await write(), writes }).toEqual({
+			result: "applied",
+			writes: 1,
+		});
 	});
 
 	it("rejects an invalid position or played date before any request", async () => {
@@ -602,7 +1116,7 @@ describe("Jellyfin provider", () => {
 		};
 		for (const positionMs of [0, -1, 1.5])
 			await expect(
-				provider.setPosition(access, "item-1", positionMs),
+				provider.setPosition(access, "item-1", positionMs, null),
 			).rejects.toThrow("Invalid Jellyfin resume position.");
 		for (const playedAt of [
 			Number.NaN,
@@ -610,7 +1124,7 @@ describe("Jellyfin provider", () => {
 			LATEST_DATE_MS + 1,
 		])
 			await expect(
-				provider.markWatched(access, "item-1", playedAt),
+				provider.markWatched(access, "item-1", { replaces: null, playedAt }),
 			).rejects.toThrow("Invalid Jellyfin played date.");
 		expect(requests).toBe(0);
 	});
@@ -704,8 +1218,8 @@ describe("Jellyfin provider", () => {
 			history: { lastPlayedAt: null, positionMs: null },
 		});
 		expect(starts).toEqual([0, PAGE_SIZE]);
-		await provider.markWatched(access, "item-1");
-		await provider.markWatched(access, "item-1");
+		await provider.markWatched(access, "item-1", { replaces: null });
+		await provider.markWatched(access, "item-1", { replaces: null });
 		expect(marks).toBe(1);
 	});
 

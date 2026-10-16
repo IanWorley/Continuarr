@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MILLISECONDS_PER_SECOND } from "~/backend/media/constants";
 import type { MediaService } from "~/backend/media/service";
 import {
 	ErrorMessage,
@@ -20,7 +21,11 @@ import { getApi } from "~/routes/api.$";
 
 const PREVIEW_VISIBLE_LIMIT = 100;
 const RECENT_RUN_LIMIT = 5;
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+const CLOCK_FIELD_DIGITS = 2;
 type Preview = Awaited<ReturnType<MediaService["preview"]>>;
+type PreviewWrite = Preview["writes"][number];
 type SyncRun = MediaState["runs"][number];
 const RUN_STATUS_BADGES = {
 	running: { tone: "neutral", label: "In progress" },
@@ -78,6 +83,13 @@ const SKIP_REASONS = [
 		explanation:
 			"A saved show match refers to a show with no episodes in one library. Its remaining episodes use metadata matching. Review saved show matches in Manual matching.",
 	},
+	{
+		count: "positionConflicts",
+		label: "Resume position conflicts",
+		unit: "pairs",
+		explanation:
+			"Both servers report a different resume position, but neither was clearly played last. A last-played time is missing, or both were played within a minute of each other. Continuarr copies neither position.",
+	},
 ] satisfies {
 	count: keyof Pick<
 		Preview,
@@ -88,6 +100,7 @@ const SKIP_REASONS = [
 		| "unsupportedNumbering"
 		| "staleManualMatches"
 		| "staleShowMatches"
+		| "positionConflicts"
 	>;
 	label: string;
 	unit: string;
@@ -105,7 +118,7 @@ export function Pairings({
 		<Section
 			id="pairings-heading"
 			title="Pairings and sync"
-			description="Pair the same person across both servers. If a movie or episode is watched on either server, sync marks it watched on the other. Nothing is marked unwatched."
+			description="Pair the same person across both servers. If a movie or episode is watched on either server, sync marks it watched on the other. Resume positions follow the server that played the item most recently. Nothing is marked unwatched."
 		>
 			{state.running && (
 				<Notice tone="neutral">
@@ -199,10 +212,10 @@ function PairingCard({
 			/>
 			<p className="text-sm text-muted">
 				Preview compares both libraries without making changes. Sync checks them
-				again before updating watched status. Saved manual matches take
-				priority. Other items need a unique matching movie or episode ID. An
-				episode can also match by a shared series ID with the same season and
-				episode number. Everything else is skipped.
+				again before applying updates. Saved manual matches take priority. Other
+				items need a unique matching movie or episode ID. An episode can also
+				match by a shared series ID with the same season and episode number.
+				Everything else is skipped.
 			</p>
 			<div className="flex flex-wrap gap-3">
 				<Button
@@ -234,7 +247,7 @@ function PairingCard({
 						})
 					}
 				>
-					Sync watched status now
+					Sync now
 				</Button>
 			</div>
 			<ErrorMessage message={action.error} />
@@ -362,8 +375,8 @@ function SnapshotRun({
 			</div>
 			<p className="text-sm">
 				{run.status === "running"
-					? `${run.applied} watched updates applied; ${run.planned} planned so far`
-					: `${run.applied} of ${run.planned} planned watched updates applied`}
+					? `${run.applied} updates applied; ${run.planned} planned so far`
+					: `${run.applied} of ${run.planned} planned updates applied`}
 			</p>
 			<p className="break-words text-sm text-muted">{run.summary}</p>
 			{run.status === "failed" && (
@@ -372,15 +385,63 @@ function SnapshotRun({
 					<a href="/" className={linkClass}>
 						server connections
 					</a>
-					, then retry sync. A retry reads current watched status before
-					applying updates.
+					, then retry sync. A retry reads both libraries again before applying
+					updates.
 				</p>
 			)}
 		</div>
 	);
 }
 
+function formatPosition(positionMs: number): string {
+	const totalSeconds = Math.floor(positionMs / MILLISECONDS_PER_SECOND);
+	const totalMinutes = Math.floor(totalSeconds / SECONDS_PER_MINUTE);
+	const hours = Math.floor(totalMinutes / MINUTES_PER_HOUR);
+	const pad = (value: number) =>
+		String(value).padStart(CLOCK_FIELD_DIGITS, "0");
+	const seconds = pad(totalSeconds % SECONDS_PER_MINUTE);
+	return hours > 0
+		? `${hours}:${pad(totalMinutes % MINUTES_PER_HOUR)}:${seconds}`
+		: `${totalMinutes}:${seconds}`;
+}
+
+function WriteLabel({ write }: { write: PreviewWrite }) {
+	const server = write.target === "plex" ? "Plex" : "Jellyfin";
+	switch (write.kind) {
+		case "position":
+			return (
+				<>
+					Resume at {formatPosition(write.value)} on {server}
+				</>
+			);
+		case "watched": {
+			const playedAt = write.target === "jellyfin" ? write.playedAt : undefined;
+			return (
+				<>
+					Mark watched on {server}
+					{playedAt !== undefined && (
+						<>
+							{" "}
+							(
+							<time dateTime={new Date(playedAt).toISOString()}>
+								{new Date(playedAt).toLocaleDateString()}
+							</time>
+							)
+						</>
+					)}
+					{write.resumeAt !== undefined &&
+						` and resume at ${formatPosition(write.resumeAt)}`}
+				</>
+			);
+		}
+	}
+}
+
 export function PreviewResults({ preview }: { preview: Preview }) {
+	const watched = preview.writes.filter(
+		(write) => write.kind === "watched",
+	).length;
+	const positions = preview.writes.length - watched;
 	return (
 		<section
 			aria-label="Current preview"
@@ -389,7 +450,8 @@ export function PreviewResults({ preview }: { preview: Preview }) {
 			<div className="border-b border-line px-4 py-3">
 				<h4 className="text-sm font-medium">Current preview</h4>
 				<p className="mt-1 text-sm">
-					{preview.writes.length} proposed watched updates
+					{preview.writes.length} proposed updates ({watched} watched,{" "}
+					{positions} positions)
 				</p>
 				<p className="mt-0.5 text-xs text-faint">
 					Preview only. No changes have been applied. Sync reads both libraries
@@ -430,20 +492,20 @@ export function PreviewResults({ preview }: { preview: Preview }) {
 			</div>
 			{preview.writes.length === 0 ? (
 				<p className="px-4 py-3 text-sm text-muted">
-					No watched updates are needed for the items that match.
+					No updates are needed for the items that match.
 				</p>
 			) : (
 				<ul className="max-h-80 divide-y divide-line overflow-y-auto">
 					{preview.writes.slice(0, PREVIEW_VISIBLE_LIMIT).map((write) => (
 						<li
-							key={`${write.target}:${write.itemId}`}
+							key={`${write.kind}:${write.target}:${write.itemId}`}
 							className="flex flex-col justify-between gap-1 px-4 py-3 text-sm sm:flex-row sm:gap-4"
 						>
 							<span className="min-w-0 break-words">
 								{write.title || "Untitled item"}
 							</span>
 							<span className="shrink-0 text-muted">
-								Mark watched in {write.target === "plex" ? "Plex" : "Jellyfin"}
+								<WriteLabel write={write} />
 							</span>
 						</li>
 					))}

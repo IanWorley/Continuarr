@@ -4,6 +4,11 @@ import type {
 	JellyfinDirectory,
 	PlexDirectoryUser,
 } from "~/backend/media/model";
+import type {
+	ItemKey,
+	ItemState,
+	ItemStateChanges,
+} from "~/backend/media/plan";
 import { type createSecretStorage, Secret } from "~/backend/secrets/storage";
 import {
 	findApplicationSetting,
@@ -39,6 +44,7 @@ export function createMediaRepository(
 		syncRuns,
 		manualMatches,
 		showMatches,
+		syncItemStates,
 	} = schema;
 	async function reconcileUsers(
 		transaction: MediaTransaction,
@@ -181,6 +187,100 @@ export function createMediaRepository(
 				.returning();
 			return inserted;
 		},
+		itemStates: async (pairingId: string): Promise<ItemState[]> =>
+			(
+				await database()
+					.select()
+					.from(syncItemStates)
+					.where(eq(syncItemStates.pairingId, pairingId))
+			).map((row) => ({
+				plexItemId: row.plexItemId,
+				jellyfinItemId: row.jellyfinItemId,
+				scanned: {
+					plex: {
+						watched: row.scannedPlexWatched,
+						positionMs: row.scannedPlexPositionMs,
+					},
+					jellyfin: {
+						watched: row.scannedJellyfinWatched,
+						positionMs: row.scannedJellyfinPositionMs,
+					},
+				},
+				target: {
+					plex: {
+						watched: row.targetPlexWatched,
+						positionMs: row.targetPlexPositionMs,
+					},
+					jellyfin: {
+						watched: row.targetJellyfinWatched,
+						positionMs: row.targetJellyfinPositionMs,
+					},
+				},
+				playedAt: row.jellyfinPlayedAt,
+				positionConflict: row.positionConflict,
+			})),
+		settleItemStates: (pairingId: string, keys: ItemKey[]) =>
+			database().transaction(async (transaction) => {
+				for (const key of keys)
+					await transaction
+						.update(syncItemStates)
+						.set({
+							scannedPlexWatched: sql`${syncItemStates.targetPlexWatched}`,
+							scannedPlexPositionMs: sql`${syncItemStates.targetPlexPositionMs}`,
+							scannedJellyfinWatched: sql`${syncItemStates.targetJellyfinWatched}`,
+							scannedJellyfinPositionMs: sql`${syncItemStates.targetJellyfinPositionMs}`,
+						})
+						.where(
+							and(
+								eq(syncItemStates.pairingId, pairingId),
+								eq(syncItemStates.plexItemId, key.plexItemId),
+								eq(syncItemStates.jellyfinItemId, key.jellyfinItemId),
+							),
+						);
+			}),
+		saveItemStates: (pairingId: string, changes: ItemStateChanges) =>
+			database().transaction(async (transaction) => {
+				for (const key of changes.clear)
+					await transaction
+						.delete(syncItemStates)
+						.where(
+							and(
+								eq(syncItemStates.pairingId, pairingId),
+								eq(syncItemStates.plexItemId, key.plexItemId),
+								eq(syncItemStates.jellyfinItemId, key.jellyfinItemId),
+							),
+						);
+				for (const state of changes.save) {
+					const values = {
+						scannedPlexWatched: state.scanned.plex.watched,
+						scannedPlexPositionMs: state.scanned.plex.positionMs,
+						scannedJellyfinWatched: state.scanned.jellyfin.watched,
+						scannedJellyfinPositionMs: state.scanned.jellyfin.positionMs,
+						targetPlexWatched: state.target.plex.watched,
+						targetPlexPositionMs: state.target.plex.positionMs,
+						targetJellyfinWatched: state.target.jellyfin.watched,
+						targetJellyfinPositionMs: state.target.jellyfin.positionMs,
+						jellyfinPlayedAt: state.playedAt,
+						positionConflict: state.positionConflict,
+					};
+					await transaction
+						.insert(syncItemStates)
+						.values({
+							pairingId,
+							plexItemId: state.plexItemId,
+							jellyfinItemId: state.jellyfinItemId,
+							...values,
+						})
+						.onConflictDoUpdate({
+							target: [
+								syncItemStates.pairingId,
+								syncItemStates.plexItemId,
+								syncItemStates.jellyfinItemId,
+							],
+							set: values,
+						});
+				}
+			}),
 		accounts: async () => await database().select().from(plexAccounts),
 		activePlexAccountId: async () =>
 			(await findApplicationSetting(ACTIVE_PLEX_ACCOUNT_KEY, database()))

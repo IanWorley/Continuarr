@@ -4,6 +4,7 @@ import {
 	externalIdProviderSchema,
 } from "~/backend/media/episode";
 import type { Secret } from "~/backend/secrets/storage";
+import { NO_POSITION_MS, POSITION_TOLERANCE_MS } from "./constants";
 
 const mediaItemBaseSchema = z.object({
 	id: z.string().min(1),
@@ -88,6 +89,59 @@ export type PlexPin = {
 	expiresIn: number;
 	authorizationUrl: string;
 };
+/** `stale` skips the requested position change; a watched mark may already have landed. */
+export type WriteResult = "applied" | "stale";
+/**
+ * Two resume positions match when both are absent, or both are present and
+ * within the tolerance. An absent position never matches a present one, however
+ * short, so the tolerance can never turn an existing position into none.
+ */
+export function samePosition(
+	left: number | null | undefined,
+	right: number | null | undefined,
+): boolean {
+	const leftMs = left ?? NO_POSITION_MS;
+	const rightMs = right ?? NO_POSITION_MS;
+	if (leftMs <= NO_POSITION_MS || rightMs <= NO_POSITION_MS)
+		return leftMs <= NO_POSITION_MS && rightMs <= NO_POSITION_MS;
+	return Math.abs(leftMs - rightMs) <= POSITION_TOLERANCE_MS;
+}
+
+/**
+ * A write is stale when the item's position moved away from what the planner
+ * saw, unless it already holds the target. Overwriting it would lose newer playback.
+ */
+export function isStale(
+	currentMs: number,
+	replaces: number | null,
+	targetMs: number | undefined,
+): boolean {
+	if (targetMs !== undefined && samePosition(currentMs, targetMs)) return false;
+	return !samePosition(currentMs, replaces);
+}
+
+/**
+ * Decides the restore after a mark, from the position read after it. A
+ * cleared position or the scanned one is ours to restore; anything else is
+ * playback that landed during the write and wins.
+ */
+export function restoreAfterMark(
+	markedMs: number,
+	replaces: number | null,
+	resumeAt: number,
+): "write" | "done" | "stale" {
+	if (samePosition(markedMs, resumeAt)) return "done";
+	if (markedMs <= NO_POSITION_MS || samePosition(markedMs, replaces))
+		return "write";
+	return "stale";
+}
+
+/** `replaces` is the position the planner saw; marking clears it, so `resumeAt` is written back. */
+export type WatchedWriteOptions = {
+	replaces: number | null;
+	playedAt?: number;
+	resumeAt?: number;
+};
 export interface PlexProvider {
 	startLogin(): Promise<PlexPin>;
 	pollLogin(pin: Pick<PlexPin, "id" | "code">): Promise<PlexIdentity | null>;
@@ -104,13 +158,14 @@ export interface PlexProvider {
 	markWatched(
 		access: MediaAccess,
 		itemId: string,
-		playedAt?: number,
-	): Promise<void>;
+		options: WatchedWriteOptions,
+	): Promise<WriteResult>;
 	setPosition(
 		access: MediaAccess,
 		itemId: string,
 		positionMs: number,
-	): Promise<void>;
+		replaces: number | null,
+	): Promise<WriteResult>;
 }
 export interface JellyfinProvider {
 	authenticate(credentials: {
@@ -123,13 +178,14 @@ export interface JellyfinProvider {
 	markWatched(
 		access: JellyfinAccess,
 		itemId: string,
-		playedAt?: number,
-	): Promise<void>;
+		options: WatchedWriteOptions,
+	): Promise<WriteResult>;
 	setPosition(
 		access: JellyfinAccess,
 		itemId: string,
 		positionMs: number,
-	): Promise<void>;
+		replaces: number | null,
+	): Promise<WriteResult>;
 }
 export class MediaError extends Error {
 	constructor(

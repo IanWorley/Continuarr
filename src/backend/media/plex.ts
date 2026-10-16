@@ -1,6 +1,9 @@
 import { XMLParser } from "fast-xml-parser";
 import { z } from "zod";
-import { MILLISECONDS_PER_SECOND } from "~/backend/media/constants";
+import {
+	MILLISECONDS_PER_SECOND,
+	NO_POSITION_MS,
+} from "~/backend/media/constants";
 import {
 	type EpisodeSpan,
 	episodeNumbering,
@@ -15,11 +18,15 @@ import {
 } from "~/backend/media/http";
 import {
 	type EpisodeItem,
+	isStale,
 	type MediaAccess,
 	MediaError,
 	type MediaItem,
 	type PlexDirectoryUser,
 	type PlexProvider,
+	restoreAfterMark,
+	samePosition,
+	type WatchedWriteOptions,
 } from "~/backend/media/model";
 import { Secret } from "~/backend/secrets/storage";
 
@@ -29,7 +36,6 @@ const PLEX_PLATFORM = "server";
 const PLEX_VERSION = "1.0.0";
 const PAGE_SIZE = 100;
 const LIBRARY_IDENTIFIER = "com.plexapp.plugins.library";
-const REDUNDANT_POSITION_WRITE_TOLERANCE_MS = 5_000;
 
 const pinSchema = z.object({
 	id: z.number().int(),
@@ -257,6 +263,25 @@ export function createPlexProvider(options: {
 	);
 	const accountUrl = `${plexRoot}/api/v2`;
 	const homeUrl = `${plexRoot}/api`;
+
+	function assertPosition(positionMs: number) {
+		if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
+			throw new MediaError("Invalid Plex resume position.");
+	}
+
+	async function writeProgress(
+		access: MediaAccess,
+		itemId: string,
+		positionMs: number,
+		headers: Headers,
+	) {
+		const url = endpoint(access.url, ":/progress");
+		url.searchParams.set("key", itemId);
+		url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
+		url.searchParams.set("time", String(positionMs));
+		url.searchParams.set("state", "stopped");
+		await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+	}
 
 	async function readItem(access: MediaAccess, itemId: string) {
 		if (!/^\d+$/.test(itemId)) throw new MediaError("Invalid Plex item ID.");
@@ -603,30 +628,46 @@ export function createPlexProvider(options: {
 			});
 		},
 
-		async markWatched(access: MediaAccess, itemId: string) {
+		async markWatched(
+			access: MediaAccess,
+			itemId: string,
+			{ replaces, resumeAt }: WatchedWriteOptions,
+		) {
+			if (resumeAt !== undefined) assertPosition(resumeAt);
 			const { item, headers } = await readItem(access, itemId);
-			if ((item.viewCount ?? 0) > 0) return;
-			const url = endpoint(access.url, ":/scrobble");
-			url.searchParams.set("key", itemId);
-			url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
-			await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+			const current = item.viewOffset ?? NO_POSITION_MS;
+			if (isStale(current, replaces, resumeAt)) return "stale";
+			const watched = (item.viewCount ?? 0) > 0;
+			if (!watched) {
+				const url = endpoint(access.url, ":/scrobble");
+				url.searchParams.set("key", itemId);
+				url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
+				await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+			}
+			if (resumeAt === undefined) return "applied";
+			const marked = watched
+				? current
+				: ((await readItem(access, itemId)).item.viewOffset ?? NO_POSITION_MS);
+			const restore = restoreAfterMark(marked, replaces, resumeAt);
+			if (restore === "stale") return "stale";
+			if (restore === "write")
+				await writeProgress(access, itemId, resumeAt, headers);
+			return "applied";
 		},
 
-		async setPosition(access: MediaAccess, itemId: string, positionMs: number) {
-			if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
-				throw new MediaError("Invalid Plex resume position.");
+		async setPosition(
+			access: MediaAccess,
+			itemId: string,
+			positionMs: number,
+			replaces: number | null,
+		) {
+			assertPosition(positionMs);
 			const { item, headers } = await readItem(access, itemId);
-			if (
-				Math.abs((item.viewOffset ?? 0) - positionMs) <=
-				REDUNDANT_POSITION_WRITE_TOLERANCE_MS
-			)
-				return;
-			const url = endpoint(access.url, ":/progress");
-			url.searchParams.set("key", itemId);
-			url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
-			url.searchParams.set("time", String(positionMs));
-			url.searchParams.set("state", "stopped");
-			await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+			const current = item.viewOffset ?? NO_POSITION_MS;
+			if (samePosition(current, positionMs)) return "applied";
+			if (isStale(current, replaces, positionMs)) return "stale";
+			await writeProgress(access, itemId, positionMs, headers);
+			return "applied";
 		},
 	};
 }
