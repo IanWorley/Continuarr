@@ -64,6 +64,13 @@
       "when": 1792118730508,
       "tag": "0008_add_show_matches",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792122696215,
+      "tag": "0009_add_sync_item_states",
+      "breakpoints": true
     }
   ]
 }

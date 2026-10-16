@@ -210,6 +210,12 @@ function jellyfinItem(index: number) {
 		},
 	};
 }
+/** Plex reports last-viewed times in whole seconds. */
+function plexNow(): number {
+	return (
+		Math.floor(Date.now() / MILLISECONDS_PER_SECOND) * MILLISECONDS_PER_SECOND
+	);
+}
 const server = Bun.serve({
 	port: FIXTURE_PORT,
 	hostname: "127.0.0.1",
@@ -270,15 +276,15 @@ const server = Bun.serve({
 		if (path === "/plex/:/scrobble") {
 			const key = url.searchParams.get("key") ?? "";
 			plexWatched.add(key);
-			// Like Plex, marking an item watched clears its resume position.
+			// Like Plex, marking an item watched clears its resume position and records playback now.
 			plexPositions.delete(key);
+			plexLastPlayedAt.set(key, plexNow());
 			return new Response(null, { status: 200 });
 		}
 		if (path === "/plex/:/progress") {
-			plexPositions.set(
-				url.searchParams.get("key") ?? "",
-				Number(url.searchParams.get("time")),
-			);
+			const key = url.searchParams.get("key") ?? "";
+			plexPositions.set(key, Number(url.searchParams.get("time")));
+			plexLastPlayedAt.set(key, plexNow());
 			return new Response(null, { status: 200 });
 		}
 		if (path === "/jellyfin/System/Info")

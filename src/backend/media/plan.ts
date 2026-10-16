@@ -31,6 +31,52 @@ type CandidateResult =
 	| { kind: "none" | "many" }
 	| { kind: "one"; index: number };
 
+/** Watched state and resume position of one item, without its timestamps. */
+type SideState = { watched: boolean; positionMs: number | null };
+type Sides = Record<Target, SideState>;
+/**
+ * What a run saw for one matched pair and the end state its writes aim for.
+ * A later run resumes this intent while neither item moved past it, because
+ * the run's own writes change last-played times and would mislead a fresh plan.
+ */
+export type ItemState = {
+	plexItemId: string;
+	jellyfinItemId: string;
+	scanned: Sides;
+	target: Sides;
+	playedAt: number | null;
+	positionConflict: boolean;
+};
+export type ItemStateChanges = {
+	save: ItemState[];
+	clear: Pick<ItemState, "plexItemId" | "jellyfinItemId">[];
+};
+
+function itemStateKey(plexItemId: string, jellyfinItemId: string): string {
+	return JSON.stringify([plexItemId, jellyfinItemId]);
+}
+
+function sameSide(left: SideState, right: SideState): boolean {
+	return (
+		left.watched === right.watched &&
+		Math.abs(
+			(left.positionMs ?? NO_POSITION_MS) -
+				(right.positionMs ?? NO_POSITION_MS),
+		) <= POSITION_TOLERANCE_MS
+	);
+}
+
+/** True when the item shows only states this intent's own writes can produce. */
+function untouched(stored: ItemState, side: Target, current: SideState) {
+	const marks = !stored.scanned[side].watched && stored.target[side].watched;
+	return (
+		sameSide(current, stored.scanned[side]) ||
+		sameSide(current, stored.target[side]) ||
+		(marks && sameSide(current, { watched: true, positionMs: null }))
+	);
+}
+
+/** The position both items should end with, or null when none should be written. */
 function resumePosition({
 	plex,
 	jellyfin,
@@ -60,71 +106,150 @@ function resumePosition({
 	};
 }
 
-function decidePair(pair: { plex: MediaItem; jellyfin: MediaItem }): {
-	writes: Write[];
-	positionConflicts: 0 | 1;
-} {
-	const { plex, jellyfin } = pair;
-	const marked: Target | null =
-		plex.watched && !jellyfin.watched
-			? "jellyfin"
-			: jellyfin.watched && !plex.watched
-				? "plex"
-				: null;
-	const { position, positionConflicts } = resumePosition(pair);
+/** Position writes for unmarked items first, then the watched write that keeps its target position. */
+function writesToward(
+	pair: Pair,
+	current: Sides,
+	target: Sides,
+	playedAt: number | null,
+): Write[] {
 	const writes: Write[] = [];
-	for (const [target, item] of [
-		["plex", plex],
-		["jellyfin", jellyfin],
-	] as const) {
-		const current = item.history.positionMs ?? NO_POSITION_MS;
+	let marked: Target | null = null;
+	for (const side of ["plex", "jellyfin"] as const) {
+		if (!current[side].watched && target[side].watched) {
+			marked = side;
+			continue;
+		}
+		const value = target[side].positionMs;
 		if (
-			position === null ||
-			target === marked ||
-			samePosition(position, current)
+			value === null ||
+			sameSide(current[side], { ...current[side], positionMs: value })
 		)
 			continue;
 		writes.push({
 			kind: "position",
-			target,
-			itemId: item.id,
-			title: item.title,
-			value: position,
-			replaces: item.history.positionMs,
+			target: side,
+			itemId: pair[side].id,
+			title: pair[side].title,
+			value,
+			replaces: current[side].positionMs,
 		});
 	}
-	const markedPosition =
-		marked === null ? null : pair[marked].history.positionMs;
-	const keep = position ?? markedPosition;
-	const resumeAt = keep === null ? {} : { resumeAt: keep };
-	if (marked === "jellyfin") {
-		const playedAt = plex.history.lastPlayedAt;
-		const jellyfinPlayedAt = jellyfin.history.lastPlayedAt;
-		writes.push({
-			kind: "watched",
-			target: "jellyfin",
-			itemId: jellyfin.id,
-			title: jellyfin.title,
-			replaces: jellyfin.history.positionMs,
-			...(playedAt !== null &&
-			(jellyfinPlayedAt === null || playedAt >= jellyfinPlayedAt)
-				? { playedAt }
-				: {}),
-			...resumeAt,
-		});
-	} else if (marked === "plex")
-		writes.push({
-			kind: "watched",
-			target: "plex",
-			itemId: plex.id,
-			title: plex.title,
-			replaces: plex.history.positionMs,
-			...resumeAt,
-		});
-	return { writes, positionConflicts };
+	if (marked === null) return writes;
+	const resumeAt = target[marked].positionMs;
+	const keep = resumeAt === null ? {} : { resumeAt };
+	const destination = {
+		itemId: pair[marked].id,
+		title: pair[marked].title,
+		replaces: current[marked].positionMs,
+	};
+	writes.push(
+		marked === "plex"
+			? { kind: "watched", target: "plex", ...destination, ...keep }
+			: {
+					kind: "watched",
+					target: "jellyfin",
+					...destination,
+					...(playedAt === null ? {} : { playedAt }),
+					...keep,
+				},
+	);
+	return writes;
+}
+
+function decidePair(
+	pair: Pair,
+	stored: ItemState | undefined,
+): {
+	writes: Write[];
+	positionConflicts: 0 | 1;
+	change: { kind: "save"; state: ItemState } | { kind: "clear" } | null;
+} {
+	const { plex, jellyfin } = pair;
+	const current: Sides = {
+		plex: { watched: plex.watched, positionMs: plex.history.positionMs },
+		jellyfin: {
+			watched: jellyfin.watched,
+			positionMs: jellyfin.history.positionMs,
+		},
+	};
+	if (
+		stored &&
+		untouched(stored, "plex", current.plex) &&
+		untouched(stored, "jellyfin", current.jellyfin)
+	)
+		return {
+			writes: writesToward(pair, current, stored.target, stored.playedAt),
+			positionConflicts: stored.positionConflict ? 1 : 0,
+			change: null,
+		};
+
+	const { position, positionConflicts } = resumePosition(pair);
+	const watched = plex.watched || jellyfin.watched;
+	const marks = (side: Target) => !current[side].watched && watched;
+	const target: Sides = {
+		plex: { watched, positionMs: current.plex.positionMs },
+		jellyfin: { watched, positionMs: current.jellyfin.positionMs },
+	};
+	// Never clear a position: each item keeps its own unless one is copied to it.
+	if (position !== null)
+		for (const side of ["plex", "jellyfin"] as const)
+			target[side].positionMs = position;
+	const plexPlayedAt = plex.history.lastPlayedAt;
+	const jellyfinPlayedAt = jellyfin.history.lastPlayedAt;
+	// Never move Jellyfin's played date earlier.
+	const playedAt =
+		marks("jellyfin") &&
+		plexPlayedAt !== null &&
+		(jellyfinPlayedAt === null || plexPlayedAt >= jellyfinPlayedAt)
+			? plexPlayedAt
+			: null;
+	const writes = writesToward(pair, current, target, playedAt);
+	return {
+		writes,
+		positionConflicts,
+		change: writes.length
+			? {
+					kind: "save",
+					state: {
+						plexItemId: plex.id,
+						jellyfinItemId: jellyfin.id,
+						scanned: current,
+						target,
+						playedAt,
+						positionConflict: positionConflicts === 1,
+					},
+				}
+			: stored
+				? { kind: "clear" }
+				: null,
+	};
 }
 
 type Pair = { plex: MediaItem; jellyfin: MediaItem };
+type Decisions = {
+	writes: Write[];
+	positionConflicts: number;
+	itemStates: ItemStateChanges;
+};
+
+function decideInto(
+	decisions: Decisions,
+	pair: Pair,
+	stored: Map<string, ItemState>,
+) {
+	const key = { plexItemId: pair.plex.id, jellyfinItemId: pair.jellyfin.id };
+	const decision = decidePair(
+		pair,
+		stored.get(itemStateKey(key.plexItemId, key.jellyfinItemId)),
+	);
+	decisions.writes.push(...decision.writes);
+	decisions.positionConflicts += decision.positionConflicts;
+	if (decision.change?.kind === "save")
+		decisions.itemStates.save.push(decision.change.state);
+	else if (decision.change?.kind === "clear")
+		decisions.itemStates.clear.push(key);
+}
 type Libraries = { plex: MediaItem[]; jellyfin: MediaItem[] };
 
 type MatchRule = {
@@ -326,11 +451,13 @@ function matchByRule(
 function planAutomaticUnion(
 	input: Libraries,
 	identities: Map<MediaItem, SeriesIdentity>,
+	stored: Map<string, ItemState>,
 ): {
 	pairs: PlannedPair[];
 	writes: Write[];
 	matched: number;
 	positionConflicts: number;
+	itemStates: ItemStateChanges;
 } & SkipCounts {
 	const exact = matchByRule(input, exactIdRule);
 	const fallsThrough = (item: MediaItem) =>
@@ -343,13 +470,13 @@ function planAutomaticUnion(
 		seriesNumberRule(identities),
 	);
 	const pairs = [...exact.pairs, ...bySeries.pairs];
-	const writes: Write[] = [];
-	let positionConflicts = 0;
-	for (const pair of pairs) {
-		const decision = decidePair(pair);
-		writes.push(...decision.writes);
-		positionConflicts += decision.positionConflicts;
-	}
+	const decisions: Decisions = {
+		writes: [],
+		positionConflicts: 0,
+		itemStates: { save: [], clear: [] },
+	};
+	for (const pair of pairs) decideInto(decisions, pair, stored);
+	const { writes, positionConflicts, itemStates } = decisions;
 
 	const paired = new Set(
 		pairs.flatMap(({ plex, jellyfin }) => [plex, jellyfin]),
@@ -410,6 +537,7 @@ function planAutomaticUnion(
 		matched: pairs.length,
 		...counts,
 		positionConflicts,
+		itemStates,
 		pairs: [
 			...exact.pairs.map((pair) => plannedPair(pair, "exactIds")),
 			...bySeries.pairs.map((pair) =>
@@ -428,6 +556,7 @@ export function planWatchedUnion(
 	input: Libraries & {
 		manualMatches?: ManualMatch[];
 		showMatches?: ShowMatch[];
+		itemStates?: ItemState[];
 	},
 ): ReturnType<typeof planAutomaticUnion> & {
 	staleManualMatches?: number;
@@ -465,9 +594,18 @@ export function planWatchedUnion(
 			);
 		}
 	}
+	const stored = new Map(
+		(input.itemStates ?? []).map((state) => [
+			itemStateKey(state.plexItemId, state.jellyfinItemId),
+			state,
+		]),
+	);
 	const manual = input.manualMatches ?? [];
 	if (!manual.length)
-		return { ...planAutomaticUnion(input, identities), staleShowMatches };
+		return {
+			...planAutomaticUnion(input, identities, stored),
+			staleShowMatches,
+		};
 	const reservedPlex = new Set(manual.map((match) => match.plexItemId));
 	const reservedJellyfin = new Set(manual.map((match) => match.jellyfinItemId));
 	const plan = planAutomaticUnion(
@@ -476,6 +614,7 @@ export function planWatchedUnion(
 			jellyfin: input.jellyfin.filter((item) => !reservedJellyfin.has(item.id)),
 		},
 		identities,
+		stored,
 	);
 	const plexById = new Map(input.plex.map((item) => [item.id, item]));
 	const jellyfinById = new Map(input.jellyfin.map((item) => [item.id, item]));
@@ -490,9 +629,7 @@ export function planWatchedUnion(
 		}
 		plan.pairs.push(plannedPair({ plex, jellyfin }, "manual"));
 		plan.matched = plan.pairs.length;
-		const decision = decidePair({ plex, jellyfin });
-		plan.writes.push(...decision.writes);
-		plan.positionConflicts += decision.positionConflicts;
+		decideInto(plan, { plex, jellyfin }, stored);
 	}
 	return { ...plan, staleManualMatches, staleShowMatches };
 }

@@ -154,15 +154,17 @@ export function createMediaService({
 			plex.items(plexAccess),
 			jellyfin.items(jellyfinAccess),
 		]);
-		const [matches, showMatches] = await Promise.all([
+		const [matches, showMatches, itemStates] = await Promise.all([
 			repo.manualMatches(id),
 			repo.showMatches(id),
+			repo.itemStates(id),
 		]);
 		const plan = planWatchedUnion({
 			plex: plexItems,
 			jellyfin: jellyfinItems,
 			manualMatches: matches,
 			showMatches,
+			itemStates,
 		});
 		return {
 			matches,
@@ -912,7 +914,8 @@ export function createMediaService({
 		},
 		async preview(id: string) {
 			ensureIdle();
-			return (await snapshot(id)).plan;
+			const { itemStates: _itemStates, ...plan } = (await snapshot(id)).plan;
+			return plan;
 		},
 		async run(id: string) {
 			ensureIdle();
@@ -1001,6 +1004,8 @@ export function createMediaService({
 			recorded = true;
 			const result = await snapshot(id);
 			planned = result.plan.writes.length;
+			// Saved before any write so a failed run can resume the same intent.
+			await repo.saveItemStates(id, result.plan.itemStates);
 			await repo.updateRun(runId, {
 				planned,
 				summary: "Applying updates.",
