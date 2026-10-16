@@ -268,7 +268,10 @@ const server = Bun.serve({
 			});
 		}
 		if (path === "/plex/:/scrobble") {
-			plexWatched.add(url.searchParams.get("key") ?? "");
+			const key = url.searchParams.get("key") ?? "";
+			plexWatched.add(key);
+			// Like Plex, marking an item watched clears its resume position.
+			plexPositions.delete(key);
 			return new Response(null, { status: 200 });
 		}
 		if (path === "/plex/:/progress") {
@@ -343,6 +346,8 @@ const server = Bun.serve({
 		) {
 			const id = path.split("/").at(-1) ?? "";
 			jellyfinWatched.add(id);
+			// Like Jellyfin, marking an item played clears its resume position.
+			jellyfinPositions.delete(id);
 			const datePlayed = url.searchParams.get("datePlayed");
 			if (datePlayed !== null) jellyfinPlayedDates.set(id, datePlayed);
 			return new Response(null, { status: 204 });
