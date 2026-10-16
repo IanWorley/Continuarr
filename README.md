@@ -40,6 +40,8 @@ Use the separate [self-hosting guide](docs/self-hosting.md) to build and run the
 5. On **Users**, preview the pairing, then run sync. A run reads both libraries again and applies the current watched status. Check the run result for completed updates and skipped items.
 6. On **Connections & sync**, configure **Automatic user imports** for both services. One PostgreSQL setting controls the interval and enabled state, defaulting to every 60 minutes. **Refresh all users now** imports both directories immediately. Successful imports preserve user and pairing IDs; failures keep the last successful list. Watched sync remains separate and can be enabled hourly for each pairing.
 
+Continuarr connects one Plex server and one Jellyfin server. To switch servers, disconnect the saved one on **Connections & sync**, then connect the new one. If an earlier version saved more than one server for a service, that page asks you to disconnect the extras. A disconnect keeps users, pairings, manual matches, and sync history, and pauses automatic sync for that server's pairings.
+
 To replace expired Plex credentials, repeat the Plex login and server connection. An expired server selection must be started again. Restarting Continuarr cancels pending login and server selections. Previously saved Plex profiles and pairings remain usable; saving their server through the owner flow adopts their existing IDs and enables automatic user imports.
 
 ### Repair conflicting legacy Jellyfin keys

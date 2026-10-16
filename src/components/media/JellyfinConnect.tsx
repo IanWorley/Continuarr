@@ -28,98 +28,86 @@ export function JellyfinConnect({
 	refresh: () => Promise<void>;
 }) {
 	const action = useAction();
-	const [selectedId, setSelectedId] = useState("");
-	const [url, setUrl] = useState("");
+	// Earlier versions could save several servers, so more than one means cleanup is needed.
+	const saved = servers.length === 1 ? servers[0] : undefined;
+	const [url, setUrl] = useState(saved?.url ?? "");
 	const [apiKey, setApiKey] = useState("");
 	const [message, setMessage] = useState("");
-	const selected = servers.find((server) => server.id === selectedId);
 	useEffect(() => {
-		if (selectedId && !servers.some((server) => server.id === selectedId)) {
-			setSelectedId("");
-			setUrl("");
-			setApiKey("");
-		}
-	}, [selectedId, servers]);
+		setUrl(saved?.url ?? "");
+		setApiKey("");
+	}, [saved?.url]);
 	return (
 		<Panel
 			id="jellyfin-heading"
 			title={<ProviderLabel provider="jellyfin" />}
 			description="Create a server API key in Jellyfin Dashboard → API Keys. One connection imports every user and stores the key encrypted."
 		>
-			<form
-				className="space-y-4"
-				onSubmit={(event) => {
-					event.preventDefault();
-					void action.perform(async () => {
-						const input = selected
-							? {
-									kind: "replace" as const,
-									id: selected.id,
-									revision: selected.revision,
-									url,
-									apiKey,
-								}
-							: { kind: "new" as const, url, apiKey };
-						responseData(await getApi().v1.media.jellyfin.import.post(input));
-						setApiKey("");
-						setMessage("Jellyfin users imported. Open Users to pair people.");
-						await refresh();
-					});
-				}}
-			>
-				{servers.length > 0 && (
-					<Field label="Connection">
-						<select
+			{servers.length > 1 ? (
+				<Notice tone="warning">
+					Continuarr connects one Jellyfin server, and {servers.length} are
+					saved. Disconnect the servers you no longer need.
+				</Notice>
+			) : (
+				<form
+					className="space-y-4"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void action.perform(async () => {
+							const input = saved
+								? {
+										kind: "replace" as const,
+										id: saved.id,
+										revision: saved.revision,
+										url,
+										apiKey,
+									}
+								: { kind: "new" as const, url, apiKey };
+							responseData(await getApi().v1.media.jellyfin.import.post(input));
+							setApiKey("");
+							setMessage("Jellyfin users imported. Open Users to pair people.");
+							await refresh();
+						});
+					}}
+				>
+					{saved && (
+						<p className="text-sm text-muted">
+							Continuarr connects one Jellyfin server. To switch servers,
+							disconnect {saved.name} first.
+						</p>
+					)}
+					<Field label="Server URL">
+						<input
 							className={inputClass}
-							value={selectedId}
-							onChange={(event) => {
-								const id = event.target.value;
-								setSelectedId(id);
-								setUrl(servers.find((server) => server.id === id)?.url ?? "");
-								setApiKey("");
-								setMessage("");
-							}}
-						>
-							<option value="">Add another server</option>
-							{servers.map((server) => (
-								<option key={server.id} value={server.id}>
-									{server.name} · {server.url} (replace key)
-								</option>
-							))}
-						</select>
+							type="url"
+							value={url}
+							required
+							autoComplete="url"
+							placeholder="http://jellyfin.local:8096"
+							onChange={(event) => setUrl(event.target.value)}
+						/>
 					</Field>
-				)}
-				<Field label="Server URL">
-					<input
-						className={inputClass}
-						type="url"
-						value={url}
-						required
-						autoComplete="url"
-						placeholder="http://jellyfin.local:8096"
-						onChange={(event) => setUrl(event.target.value)}
-					/>
-				</Field>
-				<Field label="API key">
-					<input
-						className={inputClass}
-						type="password"
-						value={apiKey}
-						required
-						autoComplete="off"
-						onChange={(event) => setApiKey(event.target.value)}
-					/>
-				</Field>
-				<Button type="submit" variant="primary" disabled={action.busy}>
-					{action.busy
-						? "Importing…"
-						: selected
-							? "Replace key and import users"
-							: "Connect and import users"}
-				</Button>
-				<ErrorMessage message={action.error} />
-				{message && <Notice tone="success">{message}</Notice>}
-			</form>
+					<Field label="API key">
+						<input
+							className={inputClass}
+							type="password"
+							value={apiKey}
+							required
+							autoComplete="off"
+							onChange={(event) => setApiKey(event.target.value)}
+						/>
+					</Field>
+					<Button type="submit" variant="primary" disabled={action.busy}>
+						{action.busy
+							? "Importing…"
+							: saved
+								? "Replace key and import users"
+								: "Connect and import users"}
+					</Button>
+					<ErrorMessage message={action.error} />
+				</form>
+			)}
+			{message && <Notice tone="success">{message}</Notice>}
 			{servers.length > 0 && (
 				<SavedServerList>
 					{servers.map((server) => (
@@ -127,16 +115,11 @@ export function JellyfinConnect({
 							key={server.id}
 							server={server}
 							refresh={refresh}
-							onDisconnect={() => {
-								if (selectedId === server.id) {
-									setSelectedId("");
-									setUrl("");
-									setApiKey("");
-								}
+							onDisconnect={() =>
 								setMessage(
 									`${server.name} disconnected. Mappings and history are preserved. After reconnecting, enable automatic sync again to resume.`,
-								);
-							}}
+								)
+							}
 						/>
 					))}
 				</SavedServerList>

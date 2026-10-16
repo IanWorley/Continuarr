@@ -275,13 +275,9 @@ export function createMediaService({
 							"Jellyfin connections changed. Connect the server again.",
 							409,
 						);
-					if (
-						(await repo.jellyfinServers()).some(
-							(server) => server.externalId === directory.server.id,
-						)
-					)
+					if ((await repo.jellyfinServers()).length > 0)
 						throw new MediaError(
-							"This Jellyfin server is already connected. Replace its key instead.",
+							"A Jellyfin server is already connected. Replace its key, or disconnect it to connect a different server.",
 							409,
 						);
 					const id = randomUUID();
@@ -585,29 +581,29 @@ export function createMediaService({
 					userId,
 					name,
 				})),
-				plexServers: plexServers
-					.filter((server) => server.verified)
-					.map(
-						({
-							id,
-							accountId,
-							externalId,
-							name,
-							url,
-							lastAttemptAt,
-							lastSuccessAt,
-							lastError,
-						}) => ({
-							id,
-							accountId,
-							externalId,
-							name,
-							url,
-							lastAttemptAt,
-							lastSuccessAt,
-							lastError,
-						}),
-					),
+				plexServers: plexServers.map(
+					({
+						id,
+						accountId,
+						externalId,
+						name,
+						url,
+						verified,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}) => ({
+						id,
+						accountId,
+						externalId,
+						name,
+						url,
+						verified,
+						lastAttemptAt,
+						lastSuccessAt,
+						lastError,
+					}),
+				),
 				directoryPolling: {
 					enabled: directoryPolling.enabled,
 					intervalMinutes: directoryPolling.intervalMinutes,
@@ -788,6 +784,15 @@ export function createMediaService({
 				)
 					throw new MediaError(
 						"Server selection expired. Select the Plex server again.",
+						409,
+					);
+				if (
+					(await repo.plexServers()).some(
+						(saved) => saved.externalId !== server.id,
+					)
+				)
+					throw new MediaError(
+						"A Plex server is already connected. Disconnect it to connect a different server.",
 						409,
 					);
 				return repo.connectPlexServer({
