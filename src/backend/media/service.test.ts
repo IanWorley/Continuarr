@@ -1529,6 +1529,55 @@ describe("media account and sync service", () => {
 		expect(state.jellyfin[0].history.positionMs).toBeNull();
 		expect(state.writes).toEqual(["jellyfin:j1 played 200000 resume 1800000"]);
 	});
+	it("settles a finished pair before a later pair fails, so finishing it later is user activity", async () => {
+		const { service, state, pair } = await setup();
+		const pairing = await pair();
+		state.plex = [
+			playedMovie("p1", "1", "Arrival", false, {
+				lastPlayedAt: 100000,
+				positionMs: 1200000,
+			}),
+			playedMovie("p2", "2", "Heat", true, {
+				lastPlayedAt: 100000,
+				positionMs: null,
+			}),
+		];
+		state.jellyfin = [
+			playedMovie("j1", "1", "Arrival", true, {
+				lastPlayedAt: 200000,
+				positionMs: 1800000,
+			}),
+			playedMovie("j2", "2", "Heat", false, {
+				lastPlayedAt: null,
+				positionMs: null,
+			}),
+		];
+		state.failWrite = true;
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "failed",
+			planned: 2,
+			applied: 1,
+		});
+		expect(state.plex[0]).toMatchObject({
+			watched: true,
+			history: { positionMs: 1800000 },
+		});
+		state.failWrite = false;
+		state.plex[0] = playedMovie("p1", "1", "Arrival", true, {
+			lastPlayedAt: 900000,
+			positionMs: null,
+		});
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			planned: 1,
+			applied: 1,
+		});
+		expect(state.plex[0].history.positionMs).toBeNull();
+		expect(state.writes).toEqual([
+			"plex:p1 resume 1800000",
+			"jellyfin:j2 played 100000",
+		]);
+	});
 	it("retries a failed mark-watched write with its position after the copy succeeded", async () => {
 		const { service, state, pair } = await setup();
 		const pairing = await pair();
