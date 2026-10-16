@@ -50,6 +50,13 @@
       "when": 1791738133874,
       "tag": "0006_add_event_inbox_and_delivery_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792114996352,
+      "tag": "0007_remove_event_inbox_and_delivery_outbox",
+      "breakpoints": true
     }
   ]
 }
