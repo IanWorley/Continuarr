@@ -395,6 +395,7 @@ describe("current preview", () => {
 							itemId: "p1",
 							title: "Arrival",
 							value: 2537000,
+							replaces: null,
 						},
 						{
 							kind: "position",
@@ -402,6 +403,7 @@ describe("current preview", () => {
 							itemId: "j2",
 							title: "Heat",
 							value: 6017000,
+							replaces: null,
 						},
 						{
 							kind: "watched",

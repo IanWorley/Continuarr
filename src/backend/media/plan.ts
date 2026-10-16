@@ -26,6 +26,8 @@ type PositionWrite = Destination & {
 	kind: "position";
 	target: Target;
 	value: number;
+	/** The destination position this write expects to overwrite, so a setter can skip it after newer playback. */
+	replaces: number | null;
 };
 export type Write = WatchedWrite | PositionWrite;
 type Candidate = { kind: "one"; index: number } | { kind: "many" };
@@ -74,6 +76,7 @@ function decidePair({
 		return { writes, positionConflicts: 1 };
 
 	const plexIsLater = plexPlayedAt > jellyfinPlayedAt;
+	const source = plexIsLater ? plex : jellyfin;
 	const destination = plexIsLater ? jellyfin : plex;
 	const position = plexIsLater ? plexPosition : jellyfinPosition;
 	if (position <= NO_POSITION_MS) return { writes, positionConflicts: 0 };
@@ -84,6 +87,11 @@ function decidePair({
 		itemId: destination.id,
 		title: destination.title,
 		value: position,
+		// Marking an item watched clears its resume position on both servers.
+		replaces:
+			source.watched && !destination.watched
+				? null
+				: destination.history.positionMs,
 	});
 	return { writes, positionConflicts: 0 };
 }

@@ -525,6 +525,7 @@ describe("watch-history policy", () => {
 					itemId: "j1",
 					title: "j1",
 					value: 30_000,
+					replaces: 10_000,
 				},
 			],
 			matched: 1,
@@ -546,6 +547,7 @@ describe("watch-history policy", () => {
 					itemId: "p1",
 					title: "p1",
 					value: 10_000,
+					replaces: 30_000,
 				},
 			],
 			matched: 1,
@@ -600,6 +602,7 @@ describe("watch-history policy", () => {
 				itemId: "j1",
 				title: "j1",
 				value: 15_001,
+				replaces: 10_000,
 			},
 		]);
 	});
@@ -673,6 +676,7 @@ describe("watch-history policy", () => {
 				itemId: "j1",
 				title: "j1",
 				value: 30_000,
+				replaces: null,
 			},
 		]);
 	});
@@ -731,6 +735,7 @@ describe("watch-history policy", () => {
 					itemId: "p1",
 					title: "p1",
 					value: 10_000,
+					replaces: 30_000,
 				},
 			],
 			matched: 1,

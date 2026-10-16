@@ -9,6 +9,7 @@ import {
 	type PlexPin,
 	type PlexProvider,
 	type PlexServer,
+	type PositionWriteResult,
 	type ShowMatch,
 	serverUrl,
 	showsInLibrary,
@@ -952,6 +953,43 @@ export function createMediaService({
 			return repo.interruptRuns(now());
 		},
 	};
+	async function applyWrite(
+		write: Write,
+		{
+			plexAccess,
+			jellyfinAccess,
+		}: Pick<
+			Awaited<ReturnType<typeof snapshot>>,
+			"plexAccess" | "jellyfinAccess"
+		>,
+	): Promise<PositionWriteResult> {
+		switch (write.kind) {
+			case "watched":
+				if (write.target === "plex")
+					await plex.markWatched(plexAccess, write.itemId);
+				else
+					await jellyfin.markWatched(
+						jellyfinAccess,
+						write.itemId,
+						write.playedAt,
+					);
+				return "applied";
+			case "position":
+				return write.target === "plex"
+					? plex.setPosition(
+							plexAccess,
+							write.itemId,
+							write.value,
+							write.replaces,
+						)
+					: jellyfin.setPosition(
+							jellyfinAccess,
+							write.itemId,
+							write.value,
+							write.replaces,
+						);
+		}
+	}
 	async function executeRun(id: string) {
 		const runId = randomUUID();
 		let applied = 0;
@@ -977,39 +1015,18 @@ export function createMediaService({
 				watched: 0,
 				position: 0,
 			};
+			let stalePositions = 0;
 			for (const write of result.plan.writes) {
-				switch (write.kind) {
-					case "watched":
-						if (write.target === "plex")
-							await plex.markWatched(result.plexAccess, write.itemId);
-						else
-							await jellyfin.markWatched(
-								result.jellyfinAccess,
-								write.itemId,
-								write.playedAt,
-							);
-						break;
-					case "position":
-						if (write.target === "plex")
-							await plex.setPosition(
-								result.plexAccess,
-								write.itemId,
-								write.value,
-							);
-						else
-							await jellyfin.setPosition(
-								result.jellyfinAccess,
-								write.itemId,
-								write.value,
-							);
-						break;
+				if ((await applyWrite(write, result)) === "stale") {
+					stalePositions++;
+					continue;
 				}
 				applied++;
 				appliedByKind[write.kind]++;
 				await repo.updateRun(runId, { applied });
 			}
 			const { plan } = result;
-			const summary = `${applied} updates completed (${appliedByKind.watched} watched, ${appliedByKind.position} positions). ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. ${plan.staleShowMatches} unavailable show matches skipped. ${plan.positionConflicts} position conflicts skipped. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
+			const summary = `${applied} updates completed (${appliedByKind.watched} watched, ${appliedByKind.position} positions). ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. ${plan.staleShowMatches} unavailable show matches skipped. ${plan.positionConflicts} position conflicts skipped. ${stalePositions} positions skipped after newer playback. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
 			await repo.updateRun(runId, {
 				status: "completed",
 				finishedAt: now(),

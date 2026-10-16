@@ -2,13 +2,20 @@
 
 import { afterEach, describe, expect, it } from "bun:test";
 import { z } from "zod";
-import { createJellyfinProvider } from "~/backend/media/jellyfin";
+import {
+	createJellyfinProvider,
+	TICKS_PER_MILLISECOND,
+} from "~/backend/media/jellyfin";
 import type { MediaItem } from "~/backend/media/model";
 import { createPlexProvider } from "~/backend/media/plex";
 import { Secret } from "~/backend/secrets/storage";
 
 const PAGE_SIZE = 100;
 const RESUME_POSITION_MS = 754_000;
+// The scan saw 20:00, the plan copies 30:00, and playback reached 40:00 before the write.
+const SCANNED_POSITION_MS = 1_200_000;
+const PLANNED_POSITION_MS = 1_800_000;
+const ADVANCED_POSITION_MS = 2_400_000;
 const PLEX_IDENTIFIER = "plex-client";
 const JELLYFIN_IDENTIFIER = "jellyfin-client";
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
@@ -57,8 +64,18 @@ describe("Plex provider", () => {
 		});
 		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
 		const access = { url: `${baseUrl}/plex`, token: new Secret("grant-token") };
-		await provider.setPosition(access, "2", RESUME_POSITION_MS);
-		await provider.setPosition(access, "2", RESUME_POSITION_MS);
+		await provider.setPosition(
+			access,
+			"2",
+			RESUME_POSITION_MS,
+			INITIAL_POSITION_MS,
+		);
+		await provider.setPosition(
+			access,
+			"2",
+			RESUME_POSITION_MS,
+			INITIAL_POSITION_MS,
+		);
 		expect(writes).toEqual([
 			{
 				token: "grant-token",
@@ -111,6 +128,7 @@ describe("Plex provider", () => {
 				{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
 				"2",
 				target,
+				currentOffset ?? null,
 			);
 			expect({ currentOffset, target, writes }).toEqual({
 				currentOffset,
@@ -118,6 +136,41 @@ describe("Plex provider", () => {
 				writes: expectedWrites,
 			});
 		}
+	});
+
+	it("skips a stale write after playback moves past the scanned position", async () => {
+		let viewOffset = ADVANCED_POSITION_MS;
+		let writes = 0;
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/plex/library/metadata/2")
+				return json({
+					MediaContainer: { Metadata: [{ ratingKey: "2", viewOffset }] },
+				});
+			if (url.pathname === "/plex/:/progress" && request.method === "PUT") {
+				writes++;
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		const access = { url: `${baseUrl}/plex`, token: new Secret("grant-token") };
+		const write = () =>
+			provider.setPosition(
+				access,
+				"2",
+				PLANNED_POSITION_MS,
+				SCANNED_POSITION_MS,
+			);
+		expect({ result: await write(), writes }).toEqual({
+			result: "stale",
+			writes: 0,
+		});
+		viewOffset = SCANNED_POSITION_MS;
+		expect({ result: await write(), writes }).toEqual({
+			result: "applied",
+			writes: 1,
+		});
 	});
 
 	it("rejects an invalid item ID or position before any request", async () => {
@@ -130,11 +183,11 @@ describe("Plex provider", () => {
 		const access = { url: `${baseUrl}/plex`, token: new Secret("grant-token") };
 		for (const itemId of ["../2", "2?time=0", ""])
 			await expect(
-				provider.setPosition(access, itemId, RESUME_POSITION_MS),
+				provider.setPosition(access, itemId, RESUME_POSITION_MS, null),
 			).rejects.toThrow("Invalid Plex item ID.");
 		for (const positionMs of [0, -1, 1.5])
 			await expect(
-				provider.setPosition(access, "2", positionMs),
+				provider.setPosition(access, "2", positionMs, null),
 			).rejects.toThrow("Invalid Plex resume position.");
 		expect(requests).toBe(0);
 	});
@@ -515,8 +568,19 @@ describe("Jellyfin provider", () => {
 			userId: "user-1",
 			token: new Secret("user-token"),
 		};
-		await provider.setPosition(access, "item-1", RESUME_POSITION_MS);
-		await provider.setPosition(access, "item-1", RESUME_POSITION_MS);
+		const initialPositionMs = INITIAL_POSITION_TICKS / TICKS_PER_MILLISECOND;
+		await provider.setPosition(
+			access,
+			"item-1",
+			RESUME_POSITION_MS,
+			initialPositionMs,
+		);
+		await provider.setPosition(
+			access,
+			"item-1",
+			RESUME_POSITION_MS,
+			initialPositionMs,
+		);
 		expect(writes).toEqual([
 			{
 				Played: true,
@@ -576,6 +640,7 @@ describe("Jellyfin provider", () => {
 				},
 				"item-1",
 				target,
+				currentTicks / TICKS_PER_MILLISECOND,
 			);
 			expect({ currentTicks, target, writes }).toEqual({
 				currentTicks,
@@ -583,6 +648,59 @@ describe("Jellyfin provider", () => {
 				writes: expectedWrites,
 			});
 		}
+	});
+
+	it("skips a stale write after playback moves past the scanned position", async () => {
+		let positionTicks = ADVANCED_POSITION_MS * TICKS_PER_MILLISECOND;
+		let writes = 0;
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/jf/Users/user-1/Items/item-1")
+				return json({
+					Id: "item-1",
+					UserData: {
+						Played: false,
+						LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+						PlayCount: 0,
+						IsFavorite: false,
+						Key: "key-item-1",
+						ItemId: "item-1",
+						PlaybackPositionTicks: positionTicks,
+					},
+				});
+			if (
+				url.pathname === "/jf/Users/user-1/Items/item-1/UserData" &&
+				request.method === "POST"
+			) {
+				writes++;
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		const access = {
+			url: `${baseUrl}/jf`,
+			userId: "user-1",
+			token: new Secret("user-token"),
+		};
+		const write = () =>
+			provider.setPosition(
+				access,
+				"item-1",
+				PLANNED_POSITION_MS,
+				SCANNED_POSITION_MS,
+			);
+		expect({ result: await write(), writes }).toEqual({
+			result: "stale",
+			writes: 0,
+		});
+		positionTicks = SCANNED_POSITION_MS * TICKS_PER_MILLISECOND;
+		expect({ result: await write(), writes }).toEqual({
+			result: "applied",
+			writes: 1,
+		});
 	});
 
 	it("rejects an invalid position or played date before any request", async () => {
@@ -602,7 +720,7 @@ describe("Jellyfin provider", () => {
 		};
 		for (const positionMs of [0, -1, 1.5])
 			await expect(
-				provider.setPosition(access, "item-1", positionMs),
+				provider.setPosition(access, "item-1", positionMs, null),
 			).rejects.toThrow("Invalid Jellyfin resume position.");
 		for (const playedAt of [
 			Number.NaN,

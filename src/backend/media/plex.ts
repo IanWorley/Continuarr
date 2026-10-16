@@ -1,6 +1,10 @@
 import { XMLParser } from "fast-xml-parser";
 import { z } from "zod";
-import { MILLISECONDS_PER_SECOND } from "~/backend/media/constants";
+import {
+	MILLISECONDS_PER_SECOND,
+	NO_POSITION_MS,
+	POSITION_TOLERANCE_MS,
+} from "~/backend/media/constants";
 import {
 	type EpisodeSpan,
 	episodeNumbering,
@@ -29,7 +33,6 @@ const PLEX_PLATFORM = "server";
 const PLEX_VERSION = "1.0.0";
 const PAGE_SIZE = 100;
 const LIBRARY_IDENTIFIER = "com.plexapp.plugins.library";
-const REDUNDANT_POSITION_WRITE_TOLERANCE_MS = 5_000;
 
 const pinSchema = z.object({
 	id: z.number().int(),
@@ -612,21 +615,29 @@ export function createPlexProvider(options: {
 			await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
 		},
 
-		async setPosition(access: MediaAccess, itemId: string, positionMs: number) {
+		async setPosition(
+			access: MediaAccess,
+			itemId: string,
+			positionMs: number,
+			replaces: number | null,
+		) {
 			if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
 				throw new MediaError("Invalid Plex resume position.");
 			const { item, headers } = await readItem(access, itemId);
+			const current = item.viewOffset ?? NO_POSITION_MS;
+			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
+				return "applied";
 			if (
-				Math.abs((item.viewOffset ?? 0) - positionMs) <=
-				REDUNDANT_POSITION_WRITE_TOLERANCE_MS
+				Math.abs(current - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
 			)
-				return;
+				return "stale";
 			const url = endpoint(access.url, ":/progress");
 			url.searchParams.set("key", itemId);
 			url.searchParams.set("identifier", LIBRARY_IDENTIFIER);
 			url.searchParams.set("time", String(positionMs));
 			url.searchParams.set("state", "stopped");
 			await requestEmpty({ fetch: fetcher, url, method: "PUT", headers });
+			return "applied";
 		},
 	};
 }

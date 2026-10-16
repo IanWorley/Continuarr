@@ -88,6 +88,8 @@ export type PlexPin = {
 	expiresIn: number;
 	authorizationUrl: string;
 };
+/** `stale` means the destination position moved since the scan, so nothing was written. */
+export type PositionWriteResult = "applied" | "stale";
 export interface PlexProvider {
 	startLogin(): Promise<PlexPin>;
 	pollLogin(pin: Pick<PlexPin, "id" | "code">): Promise<PlexIdentity | null>;
@@ -110,7 +112,8 @@ export interface PlexProvider {
 		access: MediaAccess,
 		itemId: string,
 		positionMs: number,
-	): Promise<void>;
+		replaces: number | null,
+	): Promise<PositionWriteResult>;
 }
 export interface JellyfinProvider {
 	authenticate(credentials: {
@@ -129,7 +132,8 @@ export interface JellyfinProvider {
 		access: JellyfinAccess,
 		itemId: string,
 		positionMs: number,
-	): Promise<void>;
+		replaces: number | null,
+	): Promise<PositionWriteResult>;
 }
 export class MediaError extends Error {
 	constructor(

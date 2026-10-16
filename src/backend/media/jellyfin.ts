@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { POSITION_TOLERANCE_MS } from "~/backend/media/constants";
+import {
+	NO_POSITION_MS,
+	POSITION_TOLERANCE_MS,
+} from "~/backend/media/constants";
 import {
 	type EpisodeSpan,
 	episodeNumbering,
@@ -383,15 +386,18 @@ export function createJellyfinProvider(options: {
 			access: JellyfinAccess,
 			itemId: string,
 			positionMs: number,
+			replaces: number | null,
 		) {
 			if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
 				throw new MediaError("Invalid Jellyfin resume position.");
 			const { userData, headers } = await readItem(access, itemId);
+			const current = toPositionMs(userData.PlaybackPositionTicks);
+			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
+				return "applied";
 			if (
-				Math.abs(toPositionMs(userData.PlaybackPositionTicks) - positionMs) <=
-				POSITION_TOLERANCE_MS
+				Math.abs(current - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
 			)
-				return;
+				return "stale";
 			await requestEmpty({
 				fetch: fetcher,
 				url: endpoint(
@@ -405,6 +411,7 @@ export function createJellyfinProvider(options: {
 					PlaybackPositionTicks: positionMs * TICKS_PER_MILLISECOND,
 				},
 			});
+			return "applied";
 		},
 	};
 }

@@ -6,6 +6,7 @@ import { createApi } from "~/backend/api";
 import { createSecretStorage, Secret } from "~/backend/secrets/storage";
 import * as schema from "~/db/schema";
 import { setupTestDatabase } from "~/db/test-database";
+import { NO_POSITION_MS, POSITION_TOLERANCE_MS } from "./constants";
 import type { ProviderIds } from "./episode";
 import {
 	type JellyfinDirectory,
@@ -13,6 +14,7 @@ import {
 	MediaError,
 	type MediaItem,
 	type PlexProvider,
+	type PositionWriteResult,
 } from "./model";
 import { createMediaRepository } from "./repo";
 import { createMediaService } from "./service";
@@ -49,6 +51,18 @@ function withPosition(
 			: item,
 	);
 }
+/** Both servers clear the resume position when they mark an item watched. */
+function markItemWatched(items: MediaItem[], id: string): MediaItem[] {
+	return items.map((item) =>
+		item.id === id
+			? {
+					...item,
+					watched: true,
+					history: { ...item.history, positionMs: null },
+				}
+			: item,
+	);
+}
 async function setup(now: () => number = Date.now) {
 	const { db, client } = await createTestDatabase();
 	const repo = createMediaRepository(() => db);
@@ -67,6 +81,28 @@ async function setup(now: () => number = Date.now) {
 		failDirectory: false,
 		writes: [] as string[],
 	};
+	/** Follows the provider contract: skip a write once the destination moved since the scan. */
+	function positionWriter(side: "plex" | "jellyfin") {
+		return async (
+			_access: unknown,
+			id: string,
+			positionMs: number,
+			replaces: number | null,
+		): Promise<PositionWriteResult> => {
+			const current =
+				state[side].find((item) => item.id === id)?.history.positionMs ??
+				NO_POSITION_MS;
+			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
+				return "applied";
+			if (
+				Math.abs(current - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
+			)
+				return "stale";
+			state.writes.push(`${side}:${id} resume ${positionMs}`);
+			state[side] = withPosition(state[side], id, positionMs);
+			return "applied";
+		};
+	}
 	const plex: PlexProvider = {
 		startLogin: async () => ({
 			id: 123,
@@ -108,14 +144,9 @@ async function setup(now: () => number = Date.now) {
 		},
 		markWatched: async (_access, id) => {
 			state.writes.push(`plex:${id}`);
-			state.plex = state.plex.map((item) =>
-				item.id === id ? { ...item, watched: true } : item,
-			);
+			state.plex = markItemWatched(state.plex, id);
 		},
-		setPosition: async (_access, id, positionMs) => {
-			state.writes.push(`plex:${id} resume ${positionMs}`);
-			state.plex = withPosition(state.plex, id, positionMs);
-		},
+		setPosition: positionWriter("plex"),
 	};
 	const jellyfin: JellyfinProvider = {
 		authenticate: async () => {
@@ -148,14 +179,9 @@ async function setup(now: () => number = Date.now) {
 					? `jellyfin:${id}`
 					: `jellyfin:${id} played ${playedAt}`,
 			);
-			state.jellyfin = state.jellyfin.map((item) =>
-				item.id === id ? { ...item, watched: true } : item,
-			);
+			state.jellyfin = markItemWatched(state.jellyfin, id);
 		},
-		setPosition: async (_access, id, positionMs) => {
-			state.writes.push(`jellyfin:${id} resume ${positionMs}`);
-			state.jellyfin = withPosition(state.jellyfin, id, positionMs);
-		},
+		setPosition: positionWriter("jellyfin"),
 	};
 	const service = createMediaService({ repo, secrets, plex, jellyfin, now });
 	async function pair() {
@@ -1099,7 +1125,7 @@ describe("media account and sync service", () => {
 			status: "completed",
 			applied: 2,
 			summary:
-				"2 updates completed (2 watched, 0 positions). 2 matched pairs; 1 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. 0 unavailable show matches skipped. 0 position conflicts skipped. Of the skipped episodes, 1 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
+				"2 updates completed (2 watched, 0 positions). 2 matched pairs; 1 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. 0 unavailable show matches skipped. 0 position conflicts skipped. 0 positions skipped after newer playback. Of the skipped episodes, 1 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
 		});
 		expect(await service.run(pairing.id)).toMatchObject({
 			status: "completed",
@@ -1147,6 +1173,7 @@ describe("media account and sync service", () => {
 				itemId: "j1",
 				title: "Arrival",
 				value: 30000,
+				replaces: 10000,
 			},
 			{
 				kind: "position",
@@ -1154,6 +1181,7 @@ describe("media account and sync service", () => {
 				itemId: "p2",
 				title: "Heat",
 				value: 50000,
+				replaces: null,
 			},
 			{
 				kind: "watched",
@@ -1170,7 +1198,7 @@ describe("media account and sync service", () => {
 			planned: 3,
 			applied: 3,
 			summary:
-				"3 updates completed (1 watched, 2 positions). 3 matched pairs; 0 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. 0 unavailable show matches skipped. 1 position conflicts skipped. Of the skipped episodes, 0 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
+				"3 updates completed (1 watched, 2 positions). 3 matched pairs; 0 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. 0 unavailable show matches skipped. 1 position conflicts skipped. 0 positions skipped after newer playback. Of the skipped episodes, 0 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
 		});
 		expect(state.writes).toEqual([
 			"jellyfin:j1 resume 30000",
@@ -1182,6 +1210,54 @@ describe("media account and sync service", () => {
 			planned: 0,
 			applied: 0,
 		});
+	});
+	it("skips a position write after newer playback, then copies the newer position back", async () => {
+		const SCANNED_POSITION_MS = 1_200_000;
+		const PLANNED_POSITION_MS = 1_800_000;
+		const ADVANCED_POSITION_MS = 2_400_000;
+		const { service, jellyfin, state, pair } = await setup();
+		const pairing = await pair();
+		state.plex = [
+			playedMovie("p1", "1", "Arrival", false, {
+				lastPlayedAt: 200000,
+				positionMs: PLANNED_POSITION_MS,
+			}),
+		];
+		state.jellyfin = [
+			playedMovie("j1", "1", "Arrival", false, {
+				lastPlayedAt: 100000,
+				positionMs: SCANNED_POSITION_MS,
+			}),
+		];
+		const items = jellyfin.items;
+		jellyfin.items = async (access) => {
+			const scanned = await items(access);
+			state.jellyfin = [
+				playedMovie("j1", "1", "Arrival", false, {
+					lastPlayedAt: 500000,
+					positionMs: ADVANCED_POSITION_MS,
+				}),
+			];
+			return scanned;
+		};
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			planned: 1,
+			applied: 0,
+			summary:
+				"0 updates completed (0 watched, 0 positions). 1 matched pairs; 0 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. 0 unavailable show matches skipped. 0 position conflicts skipped. 1 positions skipped after newer playback. Of the skipped episodes, 0 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
+		});
+		expect(state.jellyfin[0].history).toEqual({
+			lastPlayedAt: 500000,
+			positionMs: ADVANCED_POSITION_MS,
+		});
+		jellyfin.items = items;
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			planned: 1,
+			applied: 1,
+		});
+		expect(state.writes).toEqual([`plex:p1 resume ${ADVANCED_POSITION_MS}`]);
 	});
 	it("fails between the watched and position writes, then a retry applies only the position", async () => {
 		const { service, jellyfin, state, pair } = await setup();
