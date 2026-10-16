@@ -216,12 +216,41 @@ function plexNow(): number {
 		Math.floor(Date.now() / MILLISECONDS_PER_SECOND) * MILLISECONDS_PER_SECOND
 	);
 }
+// One-shot faults for verification: playback that lands between the scan and a
+// write, and a failed position write such as the restore after mark-watched.
+const fixtureControlSchema = z.discriminatedUnion("action", [
+	z.object({
+		action: z.literal("fail-next-position-write"),
+		service: z.enum(["plex", "jellyfin"]),
+		id: z.string().min(1),
+	}),
+	z.object({
+		action: z.literal("play-before-next-write"),
+		service: z.enum(["plex", "jellyfin"]),
+		id: z.string().min(1),
+		positionMs: z.number().int().positive(),
+	}),
+]);
+const failNextWrite = new Set<string>();
+const playBeforeWrite = new Map<string, number>();
+function takePlayback(key: string): number | undefined {
+	const positionMs = playBeforeWrite.get(key);
+	playBeforeWrite.delete(key);
+	return positionMs;
+}
 const server = Bun.serve({
 	port: FIXTURE_PORT,
 	hostname: "127.0.0.1",
 	async fetch(request) {
 		const url = new URL(request.url);
 		const path = url.pathname;
+		if (path === "/fixture-control" && request.method === "POST") {
+			const control = fixtureControlSchema.parse(await request.json());
+			const key = `${control.service}:${control.id}`;
+			if (control.action === "fail-next-position-write") failNextWrite.add(key);
+			else playBeforeWrite.set(key, control.positionMs);
+			return new Response(null, { status: 204 });
+		}
 		if (path === "/fixture-state")
 			return Response.json({
 				plex: [...plexWatched],
@@ -265,7 +294,12 @@ const server = Bun.serve({
 				},
 			});
 		if (path.startsWith("/plex/library/metadata/")) {
-			const key = path.split("/").at(-1);
+			const key = path.split("/").at(-1) ?? "";
+			const played = takePlayback(`plex:${key}`);
+			if (played !== undefined) {
+				plexPositions.set(key, played);
+				plexLastPlayedAt.set(key, plexNow());
+			}
 			const show = SHOWS.find(({ plexKey }) => plexKey === key);
 			return Response.json({
 				MediaContainer: {
@@ -283,6 +317,8 @@ const server = Bun.serve({
 		}
 		if (path === "/plex/:/progress") {
 			const key = url.searchParams.get("key") ?? "";
+			if (failNextWrite.delete(`plex:${key}`))
+				return new Response(null, { status: 503 });
 			plexPositions.set(key, Number(url.searchParams.get("time")));
 			plexLastPlayedAt.set(key, plexNow());
 			return new Response(null, { status: 200 });
@@ -333,6 +369,8 @@ const server = Bun.serve({
 			path.endsWith("/UserData") &&
 			request.method === "POST"
 		) {
+			if (failNextWrite.delete(`jellyfin:${path.split("/").at(-2)}`))
+				return new Response(null, { status: 503 });
 			const body = z
 				.object({ PlaybackPositionTicks: z.number().int().nonnegative() })
 				.parse(await request.json());
@@ -341,6 +379,15 @@ const server = Bun.serve({
 				body.PlaybackPositionTicks / TICKS_PER_MILLISECOND,
 			);
 			return new Response(null, { status: 200 });
+		}
+		if (path.startsWith("/jellyfin/Users/alex-id/Items/")) {
+			const id = path.split("/").at(-1) ?? "";
+			const played = takePlayback(`jellyfin:${id}`);
+			if (played !== undefined) {
+				jellyfinPositions.set(id, played);
+				jellyfinLastPlayedAt.set(id, Date.now());
+				jellyfinPlayedDates.delete(id);
+			}
 		}
 		if (path.startsWith("/jellyfin/Users/alex-id/Items/"))
 			return Response.json(
