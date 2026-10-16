@@ -430,6 +430,48 @@ describe("Plex provider", () => {
 });
 
 describe("Jellyfin provider", () => {
+	it("sends datePlayed only when markWatched receives playedAt", async () => {
+		const PLAYED_AT_MS = Date.UTC(2026, 8, 1, 20);
+		const queries: Array<Record<string, string>> = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname.startsWith("/jf/Users/user-1/Items/")) {
+				const id = url.pathname.split("/").at(-1);
+				return json({
+					Id: id,
+					UserData: {
+						Played: false,
+						LastPlayedDate: null,
+						PlayCount: 0,
+						IsFavorite: false,
+						Key: `key-${id}`,
+						ItemId: id,
+						PlaybackPositionTicks: 0,
+					},
+				});
+			}
+			if (
+				url.pathname.startsWith("/jf/Users/user-1/PlayedItems/") &&
+				request.method === "POST"
+			) {
+				queries.push(Object.fromEntries(url.searchParams));
+				return new Response(null, { status: 204 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		const access = {
+			url: `${baseUrl}/jf`,
+			userId: "user-1",
+			token: new Secret("user-token"),
+		};
+		await provider.markWatched(access, "item-1", PLAYED_AT_MS);
+		await provider.markWatched(access, "item-2");
+		expect(queries).toEqual([{ datePlayed: "2026-09-01T20:00:00.000Z" }, {}]);
+	});
+
 	it("keeps the API key on requests, reads every page, and marks once", async () => {
 		let played = false;
 		let marks = 0;

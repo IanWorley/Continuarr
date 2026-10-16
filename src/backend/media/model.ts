@@ -105,7 +105,11 @@ export interface JellyfinProvider {
 	}): Promise<JellyfinAdminConnection>;
 	directory(access: MediaAccess): Promise<JellyfinDirectory>;
 	items(access: JellyfinAccess): Promise<MediaItem[]>;
-	markWatched(access: JellyfinAccess, itemId: string): Promise<void>;
+	markWatched(
+		access: JellyfinAccess,
+		itemId: string,
+		playedAt?: number,
+	): Promise<void>;
 }
 export class MediaError extends Error {
 	constructor(

@@ -267,18 +267,20 @@ export function createJellyfinProvider(options: {
 			return items;
 		},
 
-		async markWatched(access: JellyfinAccess, itemId: string) {
+		async markWatched(
+			access: JellyfinAccess,
+			itemId: string,
+			playedAt?: number,
+		) {
 			const { userData, headers } = await readItem(access, itemId);
 			if (userData.Played) return;
-			await requestEmpty({
-				fetch: fetcher,
-				url: endpoint(
-					access.url,
-					`Users/${encodeURIComponent(access.userId)}/PlayedItems/${encodeURIComponent(itemId)}`,
-				),
-				method: "POST",
-				headers,
-			});
+			const url = endpoint(
+				access.url,
+				`Users/${encodeURIComponent(access.userId)}/PlayedItems/${encodeURIComponent(itemId)}`,
+			);
+			if (playedAt !== undefined)
+				url.searchParams.set("datePlayed", new Date(playedAt).toISOString());
+			await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
 		},
 	};
 }

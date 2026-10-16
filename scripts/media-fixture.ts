@@ -73,6 +73,7 @@ const LAST_PLAYED_AT_MS = Date.UTC(2026, 8, 1, 20);
 const ALEX_LAST_ACTIVE_AT = new Date(Date.UTC(2026, 8, 2, 18)).toISOString();
 const RESUME_POSITION_MS = 754_000;
 const plexPositions = new Map([[plexInProgress, RESUME_POSITION_MS]]);
+const jellyfinPlayedDates = new Map<string, string>();
 const titles = [
 	"Arrival",
 	"The Martian",
@@ -118,6 +119,11 @@ function plexItem(index: number) {
 }
 function jellyfinItem(index: number) {
 	const id = `j${index + 1}`;
+	const lastPlayedDate =
+		jellyfinPlayedDates.get(id) ??
+		(jellyfinWatched.has(id) || id === jellyfinInProgress
+			? new Date(LAST_PLAYED_AT_MS).toISOString()
+			: undefined);
 	return {
 		Id: id,
 		Name: titles[index],
@@ -134,9 +140,9 @@ function jellyfinItem(index: number) {
 		ProviderIds: ids[index] ? { Tmdb: ids[index] } : {},
 		UserData: {
 			Played: jellyfinWatched.has(id),
-			...(jellyfinWatched.has(id) || id === jellyfinInProgress
-				? { LastPlayedDate: new Date(LAST_PLAYED_AT_MS).toISOString() }
-				: {}),
+			...(lastPlayedDate === undefined
+				? {}
+				: { LastPlayedDate: lastPlayedDate }),
 			...(id === jellyfinInProgress
 				? { PlaybackPositionTicks: RESUME_POSITION_MS * TICKS_PER_MILLISECOND }
 				: {}),
@@ -154,6 +160,7 @@ const server = Bun.serve({
 				plex: [...plexWatched],
 				plexPositions: Object.fromEntries(plexPositions),
 				jellyfin: [...jellyfinWatched],
+				jellyfinPlayedDates: Object.fromEntries(jellyfinPlayedDates),
 			});
 		if (
 			path.startsWith("/plex/") &&
@@ -247,7 +254,10 @@ const server = Bun.serve({
 			path.startsWith("/jellyfin/Users/alex-id/PlayedItems/") &&
 			request.method === "POST"
 		) {
-			jellyfinWatched.add(path.split("/").at(-1) ?? "");
+			const id = path.split("/").at(-1) ?? "";
+			jellyfinWatched.add(id);
+			const datePlayed = url.searchParams.get("datePlayed");
+			if (datePlayed !== null) jellyfinPlayedDates.set(id, datePlayed);
 			return new Response(null, { status: 204 });
 		}
 		return new Response("Fixture endpoint not found", { status: 404 });
