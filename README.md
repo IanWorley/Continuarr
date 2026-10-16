@@ -48,7 +48,15 @@ The first start after the directory migration groups existing Jellyfin profiles 
 
 ### What sync transfers
 
-Saved manual matches take priority. Other movies and individual episodes match by an exact shared IMDb, TMDb, or TVDb identifier of the same media type. Continuarr skips missing identifiers, duplicate matches, and conflicting identifiers. It does not guess from a title, filename, or episode number.
+Continuarr pairs items in this order. The first rule that finds one safe counterpart wins.
+
+1. A saved manual match.
+2. An exact shared IMDb, TMDb, or TVDb ID of the same media type, for movies and individual episodes. Conflicting IDs block the match.
+3. For episodes, a shared IMDb, TMDb, or TVDb series ID plus the same season and episode number. The two shows must share at least one series ID and conflict on none. Episodes with conflicting episode IDs never match this way.
+
+Everything else stays manual. Specials (season 0), absolute numbering, multi-episode files, and episodes without numbers never match by number. When the other server has the same show, preview reports them as ambiguous. Two candidates with the same series and numbers are also ambiguous. Continuarr never guesses from a title or filename.
+
+Preview and each run summary break skipped episodes down by reason. An episode whose show has no series ID can match only by an episode ID. An episode whose show has a series ID but no counterpart with the same numbers is reported as missing an episode ID. Refresh the show's metadata on that server or add a manual match.
 
 ### Match content manually
 
@@ -78,7 +86,7 @@ bun run db:check
 bun run build
 ```
 
-For a repeatable browser check, run `bun scripts/media-fixture.ts` and follow its printed startup instructions. It starts an isolated PostgreSQL container with a seeded Plex Home profile and two local media-server fixtures. Import the fixture Jellyfin server on Connections & sync, open Users, create a pairing, and confirm that preview shows two updates and a repeated sync shows zero.
+For a repeatable browser check, run `bun scripts/media-fixture.ts` and follow its printed startup instructions. It starts an isolated PostgreSQL container with a seeded Plex Home profile and two local media-server fixtures. Import the fixture Jellyfin server on Connections & sync, open Users, create a pairing, and confirm that preview shows three updates and a repeated sync shows zero. One fixture show matches its regular episodes by series ID and number and reports its special as ambiguous. The other has no series ID, so its episodes stay unmatched until you match them manually.
 
 Provider tests run local HTTP fixtures for authentication, owner server selection, grant-based directories, paginated inventories, and watched updates. Service tests use migrated PostgreSQL and exercise encrypted persistence, pairing constraints, API authentication, retries, and automatic sync. These tests do not sign in to a real Plex or Jellyfin account.
 

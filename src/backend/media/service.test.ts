@@ -6,6 +6,7 @@ import { createApi } from "~/backend/api";
 import { createSecretStorage, Secret } from "~/backend/secrets/storage";
 import * as schema from "~/db/schema";
 import { setupTestDatabase } from "~/db/test-database";
+import type { ProviderIds } from "./episode";
 import {
 	type JellyfinDirectory,
 	type JellyfinProvider,
@@ -894,6 +895,61 @@ describe("media account and sync service", () => {
 		expect(state.plex[0].watched).toBe(true);
 		expect(state.writes).toEqual(["jellyfin:j1", "plex:p1"]);
 	});
+	it("matches episodes by series ID and numbers, then plans nothing once converged", async () => {
+		const { service, state, pair } = await setup();
+		const pairing = await pair();
+		const episode = (
+			id: string,
+			number: number,
+			watched: boolean,
+			providerIds: ProviderIds,
+		): MediaItem => ({
+			id,
+			kind: "episode",
+			title: `Episode ${number}`,
+			ids: [],
+			watched,
+			history: { lastPlayedAt: null, positionMs: null },
+			episode: {
+				series: { providerIds },
+				numbering: {
+					kind: "season",
+					season: 1,
+					episodes: { first: number, count: 1 },
+				},
+			},
+		});
+		state.plex = [
+			episode("p1", 1, true, { tvdb: "81189" }),
+			episode("p2", 2, false, { tvdb: "81189" }),
+			episode("p3", 3, false, {}),
+		];
+		state.jellyfin = [
+			episode("j1", 1, false, { tvdb: "81189", tmdb: "1396" }),
+			episode("j2", 2, true, { tvdb: "81189", tmdb: "1396" }),
+		];
+		expect(await service.preview(pairing.id)).toMatchObject({
+			writes: [
+				{ target: "jellyfin", itemId: "j1" },
+				{ target: "plex", itemId: "p2" },
+			],
+			matched: 2,
+			unmatched: 1,
+			missingSeriesIds: 1,
+		});
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			applied: 2,
+			summary:
+				"2 updates completed. 2 matched pairs; 1 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped. Of the skipped episodes, 1 have no series ID, 0 have no episode ID, and 0 cannot match by number.",
+		});
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			planned: 0,
+			applied: 0,
+		});
+		expect(state.writes).toEqual(["jellyfin:j1", "plex:p2"]);
+	});
 	it("keeps position-only changes out of preview and recorded runs", async () => {
 		const { service, state, pair } = await setup();
 		const pairing = await pair();
@@ -1238,7 +1294,16 @@ describe("manual library matching", () => {
 	it("validates current existence and content kind before saving", async () => {
 		const { service, repo, state, pair } = await setup();
 		const pairing = await pair();
-		state.jellyfin[0].kind = "episode";
+		state.jellyfin = [
+			{
+				...movie("j1", false),
+				kind: "episode",
+				episode: {
+					series: { providerIds: {} },
+					numbering: { kind: "unnumbered" },
+				},
+			},
+		];
 		const match = {
 			pairingId: pairing.id,
 			plexItemId: "p1",

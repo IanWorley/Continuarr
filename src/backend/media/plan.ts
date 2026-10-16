@@ -1,3 +1,8 @@
+import {
+	type ExternalId,
+	externalIdProviderSchema,
+	SINGLE_EPISODE,
+} from "~/backend/media/episode";
 import type { ManualMatch, MediaItem } from "~/backend/media/model";
 import {
 	NO_POSITION_MS,
@@ -78,19 +83,102 @@ function decidePair({
 	return { writes, positionConflicts: 0 };
 }
 
-function externalIdKey(
-	item: MediaItem,
-	provider: string,
-	value: string,
-): string {
-	return JSON.stringify([item.kind, provider, value]);
+type Pair = { plex: MediaItem; jellyfin: MediaItem };
+type Libraries = { plex: MediaItem[]; jellyfin: MediaItem[] };
+
+type MatchRule = {
+	keys: (item: MediaItem) => string[];
+	conflicts: (pair: Pair) => boolean;
+};
+
+type Skip =
+	| {
+			kind: "unmatched";
+			reason: "missingSeriesIds" | "missingEpisodeIds" | null;
+	  }
+	| { kind: "ambiguous"; reason: "unsupportedNumbering" | null };
+type SkipCounts = Record<Skip["kind"] | NonNullable<Skip["reason"]>, number>;
+
+function idKey({ provider, value }: ExternalId): string {
+	return JSON.stringify([provider, value]);
 }
 
-function indexItems(items: MediaItem[]): Map<string, Candidate> {
+function seriesIds(item: MediaItem): ExternalId[] {
+	if (item.kind !== "episode") return [];
+	return externalIdProviderSchema.options.flatMap((provider) => {
+		const value = item.episode.series.providerIds[provider];
+		return value === undefined ? [] : [{ provider, value }];
+	});
+}
+
+/** Specials, absolute numbers, and multi-episode files stay manual, never matched by number. */
+function regularCoordinates(
+	item: MediaItem,
+): { season: number; episode: number } | null {
+	if (item.kind !== "episode") return null;
+	const { numbering } = item.episode;
+	if (
+		numbering.kind !== "season" ||
+		numbering.episodes.count !== SINGLE_EPISODE
+	)
+		return null;
+	return { season: numbering.season, episode: numbering.episodes.first };
+}
+
+function hasConflictingIds(ids: ExternalId[]): boolean {
+	const byProvider = new Map<string, string>();
+	for (const { provider, value } of ids) {
+		const previous = byProvider.get(provider);
+		if (previous && previous !== value) return true;
+		byProvider.set(provider, value);
+	}
+	return false;
+}
+
+function haveConflictingIds(left: ExternalId[], right: ExternalId[]): boolean {
+	const leftIds = new Map(left.map(({ provider, value }) => [provider, value]));
+	return right.some(({ provider, value }) => {
+		const leftValue = leftIds.get(provider);
+		return leftValue !== undefined && leftValue !== value;
+	});
+}
+
+const exactIdRule: MatchRule = {
+	keys: (item) =>
+		item.ids.map(({ provider, value }) =>
+			JSON.stringify([item.kind, provider, value]),
+		),
+	conflicts: ({ plex, jellyfin }) =>
+		hasConflictingIds(plex.ids) ||
+		hasConflictingIds(jellyfin.ids) ||
+		haveConflictingIds(plex.ids, jellyfin.ids),
+};
+
+const seriesNumberRule: MatchRule = {
+	keys: (item) => {
+		const coordinates = regularCoordinates(item);
+		if (!coordinates) return [];
+		return seriesIds(item).map(({ provider, value }) =>
+			JSON.stringify([
+				provider,
+				value,
+				coordinates.season,
+				coordinates.episode,
+			]),
+		);
+	},
+	conflicts: ({ plex, jellyfin }) =>
+		haveConflictingIds(plex.ids, jellyfin.ids) ||
+		haveConflictingIds(seriesIds(plex), seriesIds(jellyfin)),
+};
+
+function indexItems(
+	items: MediaItem[],
+	rule: MatchRule,
+): Map<string, Candidate> {
 	const index = new Map<string, Candidate>();
 	for (const [position, item] of items.entries()) {
-		for (const { provider, value } of item.ids) {
-			const key = externalIdKey(item, provider, value);
+		for (const key of rule.keys(item)) {
 			const previous = index.get(key);
 			if (!previous) index.set(key, { kind: "one", index: position });
 			else if (previous.kind === "one" && previous.index !== position)
@@ -103,10 +191,11 @@ function indexItems(items: MediaItem[]): Map<string, Candidate> {
 function candidateFor(
 	item: MediaItem,
 	index: Map<string, Candidate>,
+	rule: MatchRule,
 ): CandidateResult {
 	let candidate: CandidateResult = { kind: "none" };
-	for (const { provider, value } of item.ids) {
-		const found = index.get(externalIdKey(item, provider, value));
+	for (const key of rule.keys(item)) {
+		const found = index.get(key);
 		if (!found) continue;
 		if (found.kind === "many") return { kind: "many" };
 		if (candidate.kind === "one" && candidate.index !== found.index)
@@ -116,117 +205,117 @@ function candidateFor(
 	return candidate;
 }
 
-function hasConflictingIds(item: MediaItem): boolean {
-	const byProvider = new Map<string, string>();
-	for (const { provider, value } of item.ids) {
-		const previous = byProvider.get(provider);
-		if (previous && previous !== value) return true;
-		byProvider.set(provider, value);
-	}
-	return false;
-}
-
-function haveConflictingIds(left: MediaItem, right: MediaItem): boolean {
-	const leftIds = new Map(
-		left.ids.map(({ provider, value }) => [provider, value]),
+/** Pairs items whose keys select exactly one counterpart that selects them back. */
+function matchByRule(
+	input: Libraries,
+	rule: MatchRule,
+): { pairs: Pair[]; candidates: Map<MediaItem, CandidateResult["kind"]> } {
+	const plexIndex = indexItems(input.plex, rule);
+	const jellyfinIndex = indexItems(input.jellyfin, rule);
+	const jellyfinCandidates = input.jellyfin.map((item) =>
+		candidateFor(item, plexIndex, rule),
 	);
-	return right.ids.some(({ provider, value }) => {
-		const leftValue = leftIds.get(provider);
-		return leftValue !== undefined && leftValue !== value;
-	});
+	const candidates = new Map<MediaItem, CandidateResult["kind"]>(
+		input.jellyfin.map((item, position) => [
+			item,
+			jellyfinCandidates[position].kind,
+		]),
+	);
+	const pairs: Pair[] = [];
+	for (const [plexPosition, plex] of input.plex.entries()) {
+		const candidate = candidateFor(plex, jellyfinIndex, rule);
+		candidates.set(plex, candidate.kind);
+		if (candidate.kind !== "one") continue;
+		const jellyfin = input.jellyfin[candidate.index];
+		const reverse = jellyfinCandidates[candidate.index];
+		if (
+			jellyfin &&
+			reverse?.kind === "one" &&
+			reverse.index === plexPosition &&
+			!rule.conflicts({ plex, jellyfin })
+		)
+			pairs.push({ plex, jellyfin });
+	}
+	return { pairs, candidates };
 }
 
 /**
- * `matched` counts unique Plex/Jellyfin pairs. `unmatched` and `ambiguous`
- * count individual items, so `2 * matched + unmatched + ambiguous` equals
- * the number of input items. An item is ambiguous when it shares an external
- * ID but cannot form a unique, conflict-free pair, or has conflicting IDs of
- * its own. Items with no shared external ID are unmatched.
+ * `matched` counts unique Plex/Jellyfin pairs. Every other item gets exactly
+ * one `Skip`, so `2 * matched + unmatched + ambiguous` equals the number of
+ * input items. The reason counts break `unmatched` and `ambiguous` down.
+ *
+ * Exact episode and movie IDs match first. Only items that share no exact ID
+ * and carry no conflicting IDs fall through to series identity plus season
+ * and episode number, so numbers never override an ID.
  */
-function planAutomaticUnion(input: {
-	plex: MediaItem[];
-	jellyfin: MediaItem[];
-}): {
+function planAutomaticUnion(input: Libraries): {
 	writes: Write[];
 	matched: number;
-	unmatched: number;
-	ambiguous: number;
 	positionConflicts: number;
-} {
-	const plexIndex = indexItems(input.plex);
-	const jellyfinIndex = indexItems(input.jellyfin);
-	const plexCandidates = input.plex.map((item) =>
-		candidateFor(item, jellyfinIndex),
+} & SkipCounts {
+	const exact = matchByRule(input, exactIdRule);
+	const fallsThrough = (item: MediaItem) =>
+		exact.candidates.get(item) === "none" && !hasConflictingIds(item.ids);
+	const bySeries = matchByRule(
+		{
+			plex: input.plex.filter(fallsThrough),
+			jellyfin: input.jellyfin.filter(fallsThrough),
+		},
+		seriesNumberRule,
 	);
-	const jellyfinCandidates = input.jellyfin.map((item) =>
-		candidateFor(item, plexIndex),
-	);
-	const matchedPlex = new Set<number>();
-	const matchedJellyfin = new Set<number>();
+	const pairs = [...exact.pairs, ...bySeries.pairs];
 	const writes: Write[] = [];
 	let positionConflicts = 0;
-
-	for (const [plexPosition, plex] of input.plex.entries()) {
-		const candidate = plexCandidates[plexPosition];
-		if (candidate.kind !== "one") continue;
-		const jellyfinPosition = candidate.index;
-		const jellyfin = input.jellyfin[jellyfinPosition];
-		const reverse = jellyfinCandidates[jellyfinPosition];
-		if (
-			!jellyfin ||
-			reverse?.kind !== "one" ||
-			reverse.index !== plexPosition ||
-			hasConflictingIds(plex) ||
-			hasConflictingIds(jellyfin) ||
-			haveConflictingIds(plex, jellyfin)
-		)
-			continue;
-
-		matchedPlex.add(plexPosition);
-		matchedJellyfin.add(jellyfinPosition);
-		const decision = decidePair({ plex, jellyfin });
+	for (const pair of pairs) {
+		const decision = decidePair(pair);
 		writes.push(...decision.writes);
 		positionConflicts += decision.positionConflicts;
 	}
 
-	let unmatched = 0;
-	let ambiguous = 0;
-	for (const [position, item] of input.plex.entries()) {
-		if (matchedPlex.has(position)) continue;
-		if (plexCandidates[position]?.kind === "none" && !hasConflictingIds(item))
-			unmatched += 1;
-		else ambiguous += 1;
-	}
-	for (const [position, item] of input.jellyfin.entries()) {
-		if (matchedJellyfin.has(position)) continue;
+	const paired = new Set(
+		pairs.flatMap(({ plex, jellyfin }) => [plex, jellyfin]),
+	);
+	function skipFor(item: MediaItem, otherSeries: Set<string>): Skip {
+		if (!fallsThrough(item) || bySeries.candidates.get(item) !== "none")
+			return { kind: "ambiguous", reason: null };
+		if (item.kind === "movie") return { kind: "unmatched", reason: null };
+		const series = seriesIds(item);
+		if (!series.length)
+			return { kind: "unmatched", reason: "missingSeriesIds" };
 		if (
-			jellyfinCandidates[position]?.kind === "none" &&
-			!hasConflictingIds(item)
+			!regularCoordinates(item) &&
+			series.some((id) => otherSeries.has(idKey(id)))
 		)
-			unmatched += 1;
-		else ambiguous += 1;
+			return { kind: "ambiguous", reason: "unsupportedNumbering" };
+		if (!item.ids.length)
+			return { kind: "unmatched", reason: "missingEpisodeIds" };
+		return { kind: "unmatched", reason: null };
 	}
-	return {
-		writes,
-		matched: matchedPlex.size,
-		unmatched,
-		ambiguous,
-		positionConflicts,
+	const counts: SkipCounts = {
+		unmatched: 0,
+		ambiguous: 0,
+		missingSeriesIds: 0,
+		missingEpisodeIds: 0,
+		unsupportedNumbering: 0,
 	};
+	for (const [items, others] of [
+		[input.plex, input.jellyfin],
+		[input.jellyfin, input.plex],
+	]) {
+		const otherSeries = new Set(others.flatMap(seriesIds).map(idKey));
+		for (const item of items) {
+			if (paired.has(item)) continue;
+			const skip = skipFor(item, otherSeries);
+			counts[skip.kind] += 1;
+			if (skip.reason) counts[skip.reason] += 1;
+		}
+	}
+	return { writes, matched: pairs.length, ...counts, positionConflicts };
 }
 
-export function planWatchedUnion(input: {
-	plex: MediaItem[];
-	jellyfin: MediaItem[];
-	manualMatches?: ManualMatch[];
-}): {
-	writes: Write[];
-	matched: number;
-	unmatched: number;
-	ambiguous: number;
-	positionConflicts: number;
-	staleManualMatches?: number;
-} {
+export function planWatchedUnion(
+	input: Libraries & { manualMatches?: ManualMatch[] },
+): ReturnType<typeof planAutomaticUnion> & { staleManualMatches?: number } {
 	const manual = input.manualMatches ?? [];
 	if (!manual.length) return planAutomaticUnion(input);
 	const reservedPlex = new Set(manual.map((match) => match.plexItemId));

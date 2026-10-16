@@ -1,6 +1,14 @@
 import { z } from "zod";
+import {
+	type EpisodeSpan,
+	episodeNumbering,
+	type ProviderIds,
+	providerIdsFrom,
+	SINGLE_EPISODE,
+} from "~/backend/media/episode";
 import { endpoint, requestEmpty, requestJson } from "~/backend/media/http";
 import {
+	type EpisodeItem,
 	type JellyfinAccess,
 	type JellyfinProvider,
 	jsonObjectSchema,
@@ -53,6 +61,7 @@ const itemSchema = z.object({
 	SeriesName: z.string().nullish(),
 	ParentIndexNumber: z.number().int().nonnegative().nullish(),
 	IndexNumber: z.number().int().nonnegative().nullish(),
+	IndexNumberEnd: z.number().int().nonnegative().nullish(),
 	Type: z.enum(["Movie", "Episode"]),
 	ProviderIds: providerIdsSchema.optional(),
 	UserData: z.object({
@@ -65,6 +74,14 @@ const pageSchema = z.object({
 	Items: z.array(itemSchema),
 	TotalRecordCount: z.number().int().nonnegative(),
 });
+const seriesPageSchema = z.object({
+	Items: z.array(
+		z.object({
+			Id: z.string().min(1),
+			ProviderIds: providerIdsSchema.optional(),
+		}),
+	),
+});
 const targetSchema = z.object({
 	Id: z.string().min(1),
 	UserData: z.object({ Played: z.boolean() }),
@@ -76,17 +93,36 @@ function jellyfinHeaders(clientIdentifier: string, token?: string): Headers {
 	});
 }
 
-function toMediaItem(item: z.infer<typeof itemSchema>): MediaItem {
+type Item = z.infer<typeof itemSchema>;
+
+function externalIds(
+	providerIds: z.infer<typeof providerIdsSchema> = {},
+): MediaItem["ids"] {
 	const ids: MediaItem["ids"] = [];
-	for (const [key, value] of Object.entries(item.ProviderIds ?? {})) {
+	for (const [key, value] of Object.entries(providerIds)) {
 		const provider = key.toLowerCase();
 		if (provider === "imdb" || provider === "tmdb" || provider === "tvdb") {
 			if (value) ids.push({ provider, value });
 		}
 	}
+	return ids;
+}
+
+/** Jellyfin reports a multi-episode file as one item ending at `IndexNumberEnd`. */
+function episodeSpan(item: Item): EpisodeSpan | undefined {
+	const first = item.IndexNumber;
+	if (first == null) return undefined;
+	const last = Math.max(item.IndexNumberEnd ?? first, first);
+	return { first, count: last - first + SINGLE_EPISODE };
+}
+
+function toMediaItem(
+	item: Item,
+	episode: EpisodeItem["episode"] | null,
+): MediaItem {
 	const details: NonNullable<MediaItem["details"]> = {
 		paths: item.Path ? [item.Path] : undefined,
-		...(item.Type === "Episode"
+		...(episode
 			? {
 					showId: item.SeriesId ?? undefined,
 					showTitle: item.SeriesName ?? undefined,
@@ -99,11 +135,10 @@ function toMediaItem(item: z.infer<typeof itemSchema>): MediaItem {
 	const positionMs = Math.floor(
 		(PlaybackPositionTicks ?? 0) / TICKS_PER_MILLISECOND,
 	);
-	return {
+	const mediaItem = {
 		id: item.Id,
-		kind: item.Type === "Movie" ? "movie" : "episode",
 		title: item.Name,
-		ids,
+		ids: externalIds(item.ProviderIds),
 		watched: item.UserData.Played,
 		history: {
 			lastPlayedAt: LastPlayedDate ? Date.parse(LastPlayedDate) : null,
@@ -113,6 +148,9 @@ function toMediaItem(item: z.infer<typeof itemSchema>): MediaItem {
 			? { details }
 			: {}),
 	};
+	return episode
+		? { ...mediaItem, kind: "episode", episode }
+		: { ...mediaItem, kind: "movie" };
 }
 
 export function createJellyfinProvider(options: {
@@ -128,6 +166,29 @@ export function createJellyfinProvider(options: {
 			headers: jellyfinHeaders(options.clientIdentifier, token.reveal()),
 		});
 		return { id: info.Id, name: info.ServerName };
+	}
+
+	async function readSeriesIds(
+		access: JellyfinAccess,
+		headers: Headers,
+		seriesId: string,
+	): Promise<ProviderIds> {
+		const url = endpoint(
+			access.url,
+			`Users/${encodeURIComponent(access.userId)}/Items`,
+		);
+		url.searchParams.set("Ids", seriesId);
+		url.searchParams.set("Fields", "ProviderIds");
+		const { Items } = await requestJson({
+			fetch: fetcher,
+			url,
+			schema: seriesPageSchema,
+			headers,
+		});
+		const [series] = Items;
+		if (Items.length !== 1 || series?.Id !== seriesId)
+			throw new MediaError("Jellyfin returned a different series.", 502);
+		return providerIdsFrom(externalIds(series.ProviderIds));
 	}
 
 	return {
@@ -201,7 +262,7 @@ export function createJellyfinProvider(options: {
 				options.clientIdentifier,
 				access.token.reveal(),
 			);
-			const items: MediaItem[] = [];
+			const entries: Item[] = [];
 			const seen = new Set<string>();
 			let offset = 0;
 			let total: number | undefined;
@@ -236,7 +297,7 @@ export function createJellyfinProvider(options: {
 					if (seen.has(item.Id))
 						throw new MediaError("Jellyfin returned a duplicate item.", 502);
 					seen.add(item.Id);
-					items.push(toMediaItem(item));
+					entries.push(item);
 				}
 				offset += page.Items.length;
 				if (offset > total || (offset < total && page.Items.length < PAGE_SIZE))
@@ -245,7 +306,27 @@ export function createJellyfinProvider(options: {
 						502,
 					);
 			} while (offset < total);
-			return items;
+			const seriesIds = new Map<string, ProviderIds>();
+			for (const { Type, SeriesId } of entries) {
+				if (Type === "Episode" && SeriesId && !seriesIds.has(SeriesId))
+					seriesIds.set(
+						SeriesId,
+						await readSeriesIds(access, headers, SeriesId),
+					);
+			}
+			return entries.map((item) => {
+				if (item.Type === "Movie") return toMediaItem(item, null);
+				const providerIds = item.SeriesId
+					? seriesIds.get(item.SeriesId)
+					: undefined;
+				return toMediaItem(item, {
+					series: { providerIds: providerIds ?? {} },
+					numbering: episodeNumbering(
+						item.ParentIndexNumber ?? undefined,
+						episodeSpan(item),
+					),
+				});
+			});
 		},
 
 		async markWatched(access: JellyfinAccess, itemId: string) {
