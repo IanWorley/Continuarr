@@ -38,6 +38,7 @@ export function createMediaRepository(
 		syncPairings,
 		syncRuns,
 		manualMatches,
+		showMatches,
 	} = schema;
 	async function reconcileUsers(
 		transaction: MediaTransaction,
@@ -151,6 +152,30 @@ export function createMediaRepository(
 		addManualMatch: async (row: typeof manualMatches.$inferInsert) => {
 			const [inserted] = await database()
 				.insert(manualMatches)
+				.values(row)
+				.onConflictDoNothing()
+				.returning();
+			return inserted;
+		},
+		showMatches: async (pairingId: string) =>
+			await database()
+				.select()
+				.from(showMatches)
+				.where(eq(showMatches.pairingId, pairingId)),
+		removeShowMatch: async (row: typeof showMatches.$inferInsert) =>
+			await database()
+				.delete(showMatches)
+				.where(
+					and(
+						eq(showMatches.pairingId, row.pairingId),
+						eq(showMatches.plexShowId, row.plexShowId),
+						eq(showMatches.jellyfinShowId, row.jellyfinShowId),
+					),
+				)
+				.execute(),
+		addShowMatch: async (row: typeof showMatches.$inferInsert) => {
+			const [inserted] = await database()
+				.insert(showMatches)
 				.values(row)
 				.onConflictDoNothing()
 				.returning();
