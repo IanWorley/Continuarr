@@ -929,7 +929,8 @@ export function createMediaService({
 				applied++;
 				await repo.updateRun(runId, { applied });
 			}
-			const summary = `${applied} updates completed. ${result.plan.matched} matched pairs; ${result.plan.unmatched} unmatched items; ${result.plan.ambiguous} ambiguous items skipped. ${result.plan.staleManualMatches ?? 0} unavailable manual matches skipped.`;
+			const { plan } = result;
+			const summary = `${applied} updates completed. ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
 			await repo.updateRun(runId, {
 				status: "completed",
 				finishedAt: now(),

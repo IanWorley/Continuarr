@@ -2,12 +2,19 @@ import { XMLParser } from "fast-xml-parser";
 import { z } from "zod";
 import { MILLISECONDS_PER_SECOND } from "~/backend/media/constants";
 import {
+	type EpisodeSpan,
+	episodeNumbering,
+	type ProviderIds,
+	providerIdsFrom,
+} from "~/backend/media/episode";
+import {
 	endpoint,
 	requestEmpty,
 	requestJson,
 	requestText,
 } from "~/backend/media/http";
 import {
+	type EpisodeItem,
 	type MediaAccess,
 	MediaError,
 	type MediaItem,
@@ -144,9 +151,9 @@ function plexHeaders(clientIdentifier: string, token?: string): Headers {
 	return headers;
 }
 
-function externalIds(
-	metadata: z.infer<typeof metadataSchema>,
-): MediaItem["ids"] {
+type Metadata = z.infer<typeof metadataSchema>;
+
+function externalIds(metadata: Metadata): MediaItem["ids"] {
 	const ids: MediaItem["ids"] = [];
 	for (const guid of [
 		...(metadata.Guid ?? []).map((item) => item.id),
@@ -166,16 +173,50 @@ function externalIds(
 	return ids;
 }
 
+function filePaths(metadata: Metadata): string[] | undefined {
+	return metadata.Media?.flatMap(
+		(media) =>
+			media.Part?.flatMap((part) => (part.file ? [part.file] : [])) ?? [],
+	);
+}
+
+/**
+ * Plex lists each episode of a multi-episode file as its own item, so episodes
+ * sharing a file all report the file's whole span.
+ */
+function episodeSpans(episodes: Metadata[]): Map<string, EpisodeSpan> {
+	const indexesByFile = new Map<string, number[]>();
+	for (const episode of episodes) {
+		if (episode.index === undefined) continue;
+		for (const path of new Set(filePaths(episode))) {
+			const indexes = indexesByFile.get(path) ?? [];
+			indexes.push(episode.index);
+			indexesByFile.set(path, indexes);
+		}
+	}
+	const spans = new Map<string, EpisodeSpan>();
+	for (const episode of episodes) {
+		if (episode.index === undefined) continue;
+		let indexes = [episode.index];
+		for (const path of filePaths(episode) ?? []) {
+			const shared = indexesByFile.get(path) ?? [];
+			if (shared.length > indexes.length) indexes = shared;
+		}
+		spans.set(episode.ratingKey, {
+			first: Math.min(...indexes),
+			count: indexes.length,
+		});
+	}
+	return spans;
+}
+
 function toMediaItem(
-	metadata: z.infer<typeof metadataSchema>,
-	kind: MediaItem["kind"],
+	metadata: Metadata,
+	episode: EpisodeItem["episode"] | null,
 ): MediaItem {
 	const details: NonNullable<MediaItem["details"]> = {
-		paths: metadata.Media?.flatMap(
-			(media) =>
-				media.Part?.flatMap((part) => (part.file ? [part.file] : [])) ?? [],
-		),
-		...(kind === "episode"
+		paths: filePaths(metadata),
+		...(episode
 			? {
 					showId: metadata.grandparentRatingKey,
 					showTitle: metadata.grandparentTitle,
@@ -184,9 +225,8 @@ function toMediaItem(
 				}
 			: {}),
 	};
-	return {
+	const item = {
 		id: metadata.ratingKey,
-		kind,
 		title: metadata.title,
 		ids: externalIds(metadata),
 		...(Object.values(details).some((value) => value !== undefined)
@@ -201,6 +241,9 @@ function toMediaItem(
 			positionMs: metadata.viewOffset || null,
 		},
 	};
+	return episode
+		? { ...item, kind: "episode", episode }
+		: { ...item, kind: "movie" };
 }
 
 export function createPlexProvider(options: {
@@ -232,6 +275,27 @@ export function createPlexProvider(options: {
 		if (!item || item.ratingKey !== itemId)
 			throw new MediaError("Plex item was not found.", 404);
 		return { item, headers };
+	}
+
+	async function readShowIds(
+		access: MediaAccess,
+		headers: Headers,
+		showKey: string,
+	): Promise<ProviderIds> {
+		if (!/^\d+$/.test(showKey))
+			throw new MediaError("Plex returned an invalid show.", 502);
+		const url = endpoint(access.url, `library/metadata/${showKey}`);
+		url.searchParams.set("includeGuids", "1");
+		const response = await requestJson({
+			fetch: fetcher,
+			url,
+			schema: metadataItemSchema,
+			headers,
+		});
+		const [show] = response.MediaContainer.Metadata;
+		if (!show || show.ratingKey !== showKey)
+			throw new MediaError("Plex returned a different show.", 502);
+		return providerIdsFrom(externalIds(show));
 	}
 
 	return {
@@ -450,7 +514,8 @@ export function createPlexProvider(options: {
 				schema: sectionsSchema,
 				headers,
 			});
-			const items: MediaItem[] = [];
+			const library: Array<{ metadata: Metadata; kind: MediaItem["kind"] }> =
+				[];
 			const seen = new Set<string>();
 			for (const section of sections.MediaContainer.Directory ?? []) {
 				const kind =
@@ -502,7 +567,7 @@ export function createPlexProvider(options: {
 						if (seen.has(entry.ratingKey))
 							throw new MediaError("Plex returned a duplicate item.", 502);
 						seen.add(entry.ratingKey);
-						items.push(toMediaItem(entry, kind));
+						library.push({ metadata: entry, kind });
 					}
 					offset += entries.length;
 					if (offset > total || (offset < total && entries.length < PAGE_SIZE))
@@ -512,7 +577,30 @@ export function createPlexProvider(options: {
 						);
 				} while (offset < total);
 			}
-			return items;
+			const episodes = library.flatMap(({ metadata, kind }) =>
+				kind === "episode" ? [metadata] : [],
+			);
+			// Plex episode metadata has no show GUIDs, so each show is read once.
+			const showIds = new Map<string, ProviderIds>();
+			for (const { grandparentRatingKey: showKey } of episodes) {
+				if (showKey !== undefined && !showIds.has(showKey))
+					showIds.set(showKey, await readShowIds(access, headers, showKey));
+			}
+			const spans = episodeSpans(episodes);
+			return library.map(({ metadata, kind }) => {
+				if (kind === "movie") return toMediaItem(metadata, null);
+				const showKey = metadata.grandparentRatingKey;
+				return toMediaItem(metadata, {
+					series: {
+						providerIds:
+							(showKey === undefined ? undefined : showIds.get(showKey)) ?? {},
+					},
+					numbering: episodeNumbering(
+						metadata.parentIndex,
+						spans.get(metadata.ratingKey),
+					),
+				});
+			});
 		},
 
 		async markWatched(access: MediaAccess, itemId: string) {

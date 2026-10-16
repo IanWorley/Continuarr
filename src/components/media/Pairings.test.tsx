@@ -58,6 +58,9 @@ function preview(overrides: Partial<Preview> = {}): Preview {
 		matched: 0,
 		unmatched: 0,
 		ambiguous: 0,
+		missingSeriesIds: 0,
+		missingEpisodeIds: 0,
+		unsupportedNumbering: 0,
 		staleManualMatches: 0,
 		positionConflicts: 0,
 		...overrides,
@@ -297,6 +300,9 @@ describe("current preview", () => {
 					matched: 4,
 					unmatched: 6,
 					ambiguous: 2,
+					missingSeriesIds: 5,
+					missingEpisodeIds: 1,
+					unsupportedNumbering: 9,
 					staleManualMatches: 3,
 					positionConflicts: 17,
 				})}
@@ -312,6 +318,12 @@ describe("current preview", () => {
 		expect(html).toContain("6 items");
 		expect(html).toContain("2 items");
 		expect(html).toContain("3 saved matches");
+		expect(html).toContain("Episodes without a series ID");
+		expect(html).toContain("5 episodes");
+		expect(html).toContain("Episodes without an episode ID");
+		expect(html).toContain("1 episodes");
+		expect(html).toContain("Episodes that cannot match by number");
+		expect(html).toContain("9 episodes");
 		expect(html).toContain("Ambiguous or conflicting metadata");
 		expect(html).toContain("Multiple candidates or conflicting identifiers");
 		expect(html).toContain(
@@ -338,6 +350,11 @@ describe("current preview", () => {
 		expect(html).toContain("Unmatched items");
 		expect(html).toContain("Ambiguous or conflicting metadata");
 		expect(html.match(/0 items/g)).toEqual(["0 items", "0 items"]);
+		expect(html.match(/0 episodes/g)).toEqual([
+			"0 episodes",
+			"0 episodes",
+			"0 episodes",
+		]);
 		expect(html).toContain("0 saved matches");
 		expect(html).toContain(
 			"No watched updates are needed for the items that match.",
