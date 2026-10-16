@@ -11,7 +11,6 @@ const NO_HISTORY: MediaItem["history"] = {
 	lastPlayedAt: null,
 	positionMs: null,
 };
-/** Matching tests compare the plan without the item states a run would save. */
 function planMatches(input: Parameters<typeof planWatchedUnion>[0]) {
 	const { itemStates: _itemStates, ...plan } = planWatchedUnion(input);
 	return plan;
@@ -1119,7 +1118,6 @@ describe("saved item state", () => {
 		playedAt: 160_001,
 		positionConflict: false,
 	};
-	// The Jellyfin mark took Plex's date, so a fresh plan would see a conflict.
 	const afterMark = {
 		plex: [
 			movie("p1", true, ids, "p1", {

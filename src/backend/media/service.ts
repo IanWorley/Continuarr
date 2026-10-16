@@ -1004,7 +1004,6 @@ export function createMediaService({
 			recorded = true;
 			const result = await snapshot(id);
 			planned = result.plan.writes.length;
-			// Saved before any write so a failed run can resume the same intent.
 			await repo.saveItemStates(id, result.plan.itemStates);
 			const { writePairs } = result.plan.itemStates;
 			await repo.updateRun(runId, {
@@ -1033,8 +1032,6 @@ export function createMediaService({
 					next.jellyfinItemId === pair.jellyfinItemId
 				)
 					continue;
-				// A pair's writes are contiguous. Settle it as soon as they all land,
-				// so a later failure or crash cannot leave it resumable.
 				if (pairComplete) await repo.settleItemStates(id, [pair]);
 				pairComplete = true;
 			}

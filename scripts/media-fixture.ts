@@ -216,8 +216,6 @@ function plexNow(): number {
 		Math.floor(Date.now() / MILLISECONDS_PER_SECOND) * MILLISECONDS_PER_SECOND
 	);
 }
-// One-shot faults for verification: playback that lands between the scan and a
-// write, and a failed position write such as the restore after mark-watched.
 const fixtureControlSchema = z.discriminatedUnion("action", [
 	z.object({
 		action: z.literal("fail-next-position-write"),

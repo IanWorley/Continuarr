@@ -119,7 +119,6 @@ async function setup(now: () => number = Date.now) {
 				: item,
 		);
 	}
-	/** Marking clears the position and moves the played date, then `resumeAt` is written back. */
 	function watchedWriter(side: "plex" | "jellyfin") {
 		return async (
 			_access: unknown,

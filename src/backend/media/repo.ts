@@ -219,7 +219,6 @@ export function createMediaRepository(
 				playedAt: row.jellyfinPlayedAt,
 				positionConflict: row.positionConflict,
 			})),
-		/** Marks intents whose writes all landed, so only their target counts as untouched. */
 		settleItemStates: (pairingId: string, keys: ItemKey[]) =>
 			database().transaction(async (transaction) => {
 				for (const key of keys)

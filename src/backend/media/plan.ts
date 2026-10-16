@@ -31,7 +31,6 @@ type CandidateResult =
 	| { kind: "none" | "many" }
 	| { kind: "one"; index: number };
 
-/** Watched state and resume position of one item, without its timestamps. */
 type SideState = { watched: boolean; positionMs: number | null };
 type Sides = Record<Target, SideState>;
 /**
@@ -51,7 +50,6 @@ export type ItemKey = Pick<ItemState, "plexItemId" | "jellyfinItemId">;
 export type ItemStateChanges = {
 	save: ItemState[];
 	clear: ItemKey[];
-	/** The pair each planned write belongs to, by write index. */
 	writePairs: ItemKey[];
 };
 
@@ -66,10 +64,6 @@ function sameSide(left: SideState, right: SideState): boolean {
 	);
 }
 
-/**
- * True when the item shows only states this intent's own writes can produce.
- * A settled intent has scanned equal to target, so only the target counts.
- */
 function untouched(stored: ItemState, side: Target, current: SideState) {
 	const marks = !stored.scanned[side].watched && stored.target[side].watched;
 	return (
@@ -79,7 +73,6 @@ function untouched(stored: ItemState, side: Target, current: SideState) {
 	);
 }
 
-/** The position both items should end with, or null when none should be written. */
 function resumePosition({
 	plex,
 	jellyfin,
@@ -109,7 +102,6 @@ function resumePosition({
 	};
 }
 
-/** Position writes for unmarked items first, then the watched write that keeps its target position. */
 function writesToward(
 	pair: Pair,
 	current: Sides,
@@ -188,7 +180,6 @@ function decidePair(
 		return {
 			writes,
 			positionConflicts: stored.positionConflict ? 1 : 0,
-			// Its writes already landed, so settle it now.
 			change:
 				writes.length || settled
 					? null
@@ -203,13 +194,11 @@ function decidePair(
 		plex: { watched, positionMs: current.plex.positionMs },
 		jellyfin: { watched, positionMs: current.jellyfin.positionMs },
 	};
-	// Never clear a position: each item keeps its own unless one is copied to it.
 	if (position !== null)
 		for (const side of ["plex", "jellyfin"] as const)
 			target[side].positionMs = position;
 	const plexPlayedAt = plex.history.lastPlayedAt;
 	const jellyfinPlayedAt = jellyfin.history.lastPlayedAt;
-	// Never move Jellyfin's played date earlier.
 	const playedAt =
 		marks("jellyfin") &&
 		plexPlayedAt !== null &&

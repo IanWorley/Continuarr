@@ -214,7 +214,6 @@ export const manualMatches = pgTable(
 	],
 );
 
-/** What the last sync saw and aimed for per matched pair, so a retry can resume it. */
 export const syncItemStates = pgTable(
 	"sync_item_states",
 	{
