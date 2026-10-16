@@ -1154,6 +1154,53 @@ describe("saved item state", () => {
 		});
 	});
 
+	it("restores a short position that an interrupted mark cleared", () => {
+		const SHORT_POSITION_MS = 3_000;
+		const first = planWatchedUnion({
+			plex: [
+				movie("p1", true, ids, "p1", {
+					lastPlayedAt: 160_001,
+					positionMs: SHORT_POSITION_MS,
+				}),
+			],
+			jellyfin: [
+				movie("j1", false, ids, "j1", {
+					lastPlayedAt: 100_000,
+					positionMs: SHORT_POSITION_MS,
+				}),
+			],
+		});
+		expect(first.writes).toMatchObject([
+			{ kind: "watched", target: "jellyfin", resumeAt: SHORT_POSITION_MS },
+		]);
+		const retry = planWatchedUnion({
+			plex: [
+				movie("p1", true, ids, "p1", {
+					lastPlayedAt: 160_001,
+					positionMs: SHORT_POSITION_MS,
+				}),
+			],
+			jellyfin: [
+				movie("j1", true, ids, "j1", {
+					lastPlayedAt: 160_001,
+					positionMs: null,
+				}),
+			],
+			itemStates: first.itemStates.save,
+		});
+		expect(retry.writes).toEqual([
+			{
+				kind: "position",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				value: SHORT_POSITION_MS,
+				replaces: null,
+			},
+		]);
+		expect(retry.itemStates.save).toEqual([]);
+	});
+
 	it("settles a resumed intent whose writes already landed", () => {
 		const landed = {
 			plex: afterMark.plex,

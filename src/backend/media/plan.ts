@@ -62,10 +62,7 @@ function itemStateKey(plexItemId: string, jellyfinItemId: string): string {
 function sameSide(left: SideState, right: SideState): boolean {
 	return (
 		left.watched === right.watched &&
-		Math.abs(
-			(left.positionMs ?? NO_POSITION_MS) -
-				(right.positionMs ?? NO_POSITION_MS),
-		) <= POSITION_TOLERANCE_MS
+		samePosition(left.positionMs, right.positionMs)
 	);
 }
 
