@@ -3,12 +3,20 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { Pairings } from "~/components/media/Pairings";
 import {
-	buttonClass,
 	ErrorMessage,
-	fieldClass,
 	responseData,
 	useAction,
 } from "~/components/media/shared";
+import {
+	Button,
+	cardClass,
+	Field,
+	inputClass,
+	linkClass,
+	Page,
+	Panel,
+	Section,
+} from "~/components/ui";
 import { getApi } from "~/routes/api.$";
 
 const DIRECTORY_KEY = ["jellyfin-directory"];
@@ -54,49 +62,42 @@ function Users() {
 		directory.data?.servers.find((server) => server.id === id)?.name ??
 		"Jellyfin server";
 	return (
-		<main
-			id="main-content"
-			tabIndex={-1}
-			className="mx-auto min-h-screen max-w-6xl px-5 py-8 sm:px-8 sm:py-12"
+		<Page
+			title="Users"
+			description="Review imported Plex and Jellyfin users, pair the same person, and sync their watched status."
 		>
-			<header className="mb-8 border-b border-slate-800 pb-6">
-				<h1 className="text-3xl font-semibold">Users</h1>
-				<p className="mt-2 text-sm text-slate-400">
-					Review imported Plex and Jellyfin users, pair the same person, and
-					sync their watched status.
-				</p>
-			</header>
 			{(directory.isPending || state.isPending) && (
-				<p role="status">Loading users…</p>
+				<p role="status" className="text-sm text-muted">
+					Loading users…
+				</p>
 			)}
 			<ErrorMessage
 				message={directory.error?.message ?? state.error?.message ?? ""}
 			/>
 			{directory.data && state.data && (
-				<div className="space-y-8">
-					<section
-						className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6"
-						aria-labelledby="pair-heading"
+				<>
+					<Panel
+						id="pair-heading"
+						title="Pair people"
+						description={
+							<>
+								Connect Plex and Jellyfin on the{" "}
+								<Link to="/" className={linkClass}>
+									connections page
+								</Link>
+								, then choose the same person below.
+							</>
+						}
 					>
-						<h2 id="pair-heading" className="text-xl font-semibold">
-							Pair people
-						</h2>
-						<p className="mt-2 text-sm text-slate-400">
-							Connect Plex and Jellyfin on the{" "}
-							<Link to="/" className="text-cyan-300 underline">
-								connections page
-							</Link>
-							, then choose the same person below.
-						</p>
 						{availablePlex.length === 0 || availableJellyfin.length === 0 ? (
-							<p className="mt-4 text-sm text-slate-400">
+							<p className="text-sm text-muted">
 								{state.data.pairings.length
 									? "No unpaired users are available on both services. Connect or refresh your servers to import more users."
 									: "Connect Plex and Jellyfin servers to import users for pairing."}
 							</p>
 						) : (
 							<form
-								className="mt-5 grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+								className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
 								onSubmit={(event) => {
 									event.preventDefault();
 									void action.perform(async () => {
@@ -112,10 +113,9 @@ function Users() {
 									});
 								}}
 							>
-								<label className="text-sm text-slate-300">
-									Plex user
+								<Field label="Plex user">
 									<select
-										className={fieldClass}
+										className={inputClass}
 										value={plexId}
 										required
 										onChange={(event) => setPlexId(event.target.value)}
@@ -127,11 +127,10 @@ function Users() {
 											</option>
 										))}
 									</select>
-								</label>
-								<label className="text-sm text-slate-300">
-									Jellyfin user
+								</Field>
+								<Field label="Jellyfin user">
 									<select
-										className={fieldClass}
+										className={inputClass}
 										value={jellyfinId}
 										required
 										onChange={(event) => setJellyfinId(event.target.value)}
@@ -143,27 +142,27 @@ function Users() {
 											</option>
 										))}
 									</select>
-								</label>
-								<button
-									className={buttonClass}
+								</Field>
+								<Button
 									type="submit"
+									variant="primary"
 									disabled={
 										action.busy || state.data.running || !plexId || !jellyfinId
 									}
 								>
 									Create pairing
-								</button>
+								</Button>
 							</form>
 						)}
 						<ErrorMessage message={action.error} />
-					</section>
+					</Panel>
 					<Pairings state={state.data} refresh={refresh} />
-					<section aria-labelledby="plex-users-heading">
-						<h2 id="plex-users-heading" className="mb-4 text-xl font-semibold">
-							Plex users ({state.data.plexProfiles.length})
-						</h2>
+					<Section
+						id="plex-users-heading"
+						title={`Plex users (${state.data.plexProfiles.length})`}
+					>
 						{state.data.plexProfiles.length === 0 && (
-							<p className="text-sm text-slate-400">
+							<p className="text-sm text-muted">
 								Connect a Plex server to import its users.
 							</p>
 						)}
@@ -171,13 +170,13 @@ function Users() {
 							{state.data.plexProfiles.map((user) => (
 								<article
 									key={user.id}
-									className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+									className={`${cardClass} space-y-2 p-5 text-sm`}
 								>
-									<h3 className="font-semibold">{user.name}</h3>
-									<p className="mt-1 text-xs text-slate-500">
-										{user.serverName}
-									</p>
-									<p className="mt-1 text-sm text-slate-400">
+									<div>
+										<h3 className="font-semibold">{user.name}</h3>
+										<p className="text-xs text-faint">{user.serverName}</p>
+									</div>
+									<p className="text-muted">
 										{user.presence === "missing"
 											? "Missing from latest import"
 											: user.accessStatus === "unavailable"
@@ -191,30 +190,28 @@ function Users() {
 											: "Unpaired"}
 									</p>
 									{user.accessStatus === "unavailable" && (
-										<p className="mt-2 text-sm text-slate-400">
+										<p className="text-muted">
 											Plex has not granted access to this user's watched status
 											on this server.
 										</p>
 									)}
 									{!user.connectionId && (
-										<p className="mt-2 text-sm text-slate-400">
+										<p className="text-muted">
 											Previously saved user. Save this server from its owner
 											account to enable automatic user imports.
 										</p>
 									)}
-									<p className="mt-2 text-xs text-slate-500">
-										User ID {user.userId}
-									</p>
+									<p className="text-xs text-faint">User ID {user.userId}</p>
 								</article>
 							))}
 						</div>
-					</section>
-					<section aria-labelledby="users-heading">
-						<h2 id="users-heading" className="mb-4 text-xl font-semibold">
-							Imported Jellyfin users ({directory.data.users.length})
-						</h2>
+					</Section>
+					<Section
+						id="users-heading"
+						title={`Imported Jellyfin users (${directory.data.users.length})`}
+					>
 						{directory.data.users.length === 0 && (
-							<p className="text-sm text-slate-400">
+							<p className="text-sm text-muted">
 								No users have been imported yet.
 							</p>
 						)}
@@ -222,13 +219,15 @@ function Users() {
 							{directory.data.users.map((user) => (
 								<article
 									key={user.id}
-									className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+									className={`${cardClass} space-y-2 p-5 text-sm`}
 								>
-									<h3 className="font-semibold">{user.name}</h3>
-									<p className="mt-1 text-xs text-slate-500">
-										{serverName(user.serverId)}
-									</p>
-									<p className="mt-1 text-sm text-slate-400">
+									<div>
+										<h3 className="font-semibold">{user.name}</h3>
+										<p className="text-xs text-faint">
+											{serverName(user.serverId)}
+										</p>
+									</div>
+									<p className="text-muted">
 										{user.presence === "present"
 											? user.disabled
 												? "Disabled"
@@ -238,40 +237,43 @@ function Users() {
 												: "Awaiting first import"}{" "}
 										· {user.pairingId ? "Paired" : "Unpaired"}
 									</p>
-									<p className="mt-2 text-xs text-slate-500">
-										User ID {user.userId}
-									</p>
+									<p className="text-xs text-faint">User ID {user.userId}</p>
 									{user.userDetails ? (
 										<>
-											<p className="mt-2 text-sm text-slate-300">
-												Administrator: {user.administrator ? "Yes" : "No"}
-											</p>
-											<p className="text-sm text-slate-300">
-												Last activity: {user.lastActivityDate ?? "Never"}
-											</p>
-											<p className="text-sm text-slate-300">
-												Last login: {user.lastLoginDate ?? "Never"}
-											</p>
-											<details className="mt-3">
-												<summary className="cursor-pointer text-sm text-cyan-300">
+											<dl className="grid grid-cols-[auto_1fr] gap-x-3 text-muted">
+												<dt>Administrator</dt>
+												<dd className="text-ink">
+													{user.administrator ? "Yes" : "No"}
+												</dd>
+												<dt>Last activity</dt>
+												<dd className="text-ink">
+													{user.lastActivityDate ?? "Never"}
+												</dd>
+												<dt>Last login</dt>
+												<dd className="text-ink">
+													{user.lastLoginDate ?? "Never"}
+												</dd>
+											</dl>
+											<details>
+												<summary className="cursor-pointer text-muted transition hover:text-ink">
 													All Jellyfin user details
 												</summary>
-												<pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+												<pre className="mt-2 max-h-72 overflow-auto rounded-md border border-line bg-canvas p-3 text-xs text-muted">
 													{JSON.stringify(user.userDetails, null, 2)}
 												</pre>
 											</details>
 										</>
 									) : (
-										<p className="mt-2 text-sm text-slate-400">
+										<p className="text-muted">
 											Refresh this server to load details.
 										</p>
 									)}
 								</article>
 							))}
 						</div>
-					</section>
-				</div>
+					</Section>
+				</>
 			)}
-		</main>
+		</Page>
 	);
 }

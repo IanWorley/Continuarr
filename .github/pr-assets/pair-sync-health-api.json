@@ -1,0 +1,61 @@
+{
+  "readEndpoint": "GET /api/v1/media/state after fixture-only UI actions in T3 preview",
+  "initialPreview": {
+    "updates": 2,
+    "matchedPairs": 2,
+    "unmatchedItems": 6,
+    "ambiguousItems": 0,
+    "unavailableManualMatches": 0,
+    "watchedStateUnchanged": true
+  },
+  "healthy": {
+    "status": "completed",
+    "startedAt": 1791839043275,
+    "finishedAt": 1791839043309,
+    "planned": 2,
+    "applied": 2,
+    "summary": "2 updates completed. 2 matched pairs; 6 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped."
+  },
+  "failed": {
+    "status": "failed",
+    "startedAt": 1791839114773,
+    "finishedAt": 1791839129782,
+    "planned": 0,
+    "applied": 0,
+    "summary": "0 of 0 updates completed. The media server did not respond in time. A retry reads current watched status first."
+  },
+  "retry": {
+    "status": "completed",
+    "startedAt": 1791839192767,
+    "finishedAt": 1791839192779,
+    "planned": 0,
+    "applied": 0,
+    "summary": "0 updates completed. 2 matched pairs; 6 unmatched items; 0 ambiguous items skipped. 0 unavailable manual matches skipped."
+  },
+  "fixtureWatchedBefore": {
+    "plex": [
+      "1",
+      "3"
+    ],
+    "jellyfin": [
+      "j2"
+    ]
+  },
+  "fixtureWatchedAfter": {
+    "plex": [
+      "1",
+      "3",
+      "2"
+    ],
+    "jellyfin": [
+      "j2",
+      "j1"
+    ]
+  },
+  "uiChecks": [
+    "PASS failure persists across reload",
+    "PASS keyboard disclosures; one latest-run live announcement",
+    "PASS 1280 px desktop and 375 px mobile; no horizontal overflow"
+  ],
+  "limitations": "Existing global 50-run history cap; historical skips remain in summaries; category reasons only, no item-level records. Positive ambiguous and unavailable counts verified by focused tests."
+}
