@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { POSITION_TOLERANCE_MS } from "~/backend/media/constants";
 import {
 	type EpisodeSpan,
 	episodeNumbering,
@@ -82,10 +83,20 @@ const seriesPageSchema = z.object({
 		}),
 	),
 });
+const userDataSchema = z
+	.object({
+		Played: z.boolean(),
+		PlaybackPositionTicks: z.number().int().nonnegative().nullish(),
+	})
+	.catchall(z.json());
 const targetSchema = z.object({
 	Id: z.string().min(1),
-	UserData: z.object({ Played: z.boolean() }),
+	UserData: userDataSchema,
 });
+
+function toPositionMs(ticks: number | null | undefined): number {
+	return Math.floor((ticks ?? 0) / TICKS_PER_MILLISECOND);
+}
 
 function jellyfinHeaders(clientIdentifier: string, token?: string): Headers {
 	return new Headers({
@@ -132,9 +143,7 @@ function toMediaItem(
 			: {}),
 	};
 	const { LastPlayedDate, PlaybackPositionTicks } = item.UserData;
-	const positionMs = Math.floor(
-		(PlaybackPositionTicks ?? 0) / TICKS_PER_MILLISECOND,
-	);
+	const positionMs = toPositionMs(PlaybackPositionTicks);
 	const mediaItem = {
 		id: item.Id,
 		title: item.Name,
@@ -158,6 +167,25 @@ export function createJellyfinProvider(options: {
 	fetch?: typeof globalThis.fetch;
 }): JellyfinProvider {
 	const fetcher = options.fetch ?? globalThis.fetch;
+	async function readItem(access: JellyfinAccess, itemId: string) {
+		const headers = jellyfinHeaders(
+			options.clientIdentifier,
+			access.token.reveal(),
+		);
+		const target = await requestJson({
+			fetch: fetcher,
+			url: endpoint(
+				access.url,
+				`Users/${encodeURIComponent(access.userId)}/Items/${encodeURIComponent(itemId)}`,
+			),
+			schema: targetSchema,
+			headers,
+		});
+		if (target.Id !== itemId)
+			throw new MediaError("Jellyfin returned a different item.", 502);
+		return { userData: target.UserData, headers };
+	}
+
 	async function server({ url, token }: MediaAccess) {
 		const info = await requestJson({
 			fetch: fetcher,
@@ -329,29 +357,51 @@ export function createJellyfinProvider(options: {
 			});
 		},
 
-		async markWatched(access: JellyfinAccess, itemId: string) {
-			const headers = jellyfinHeaders(
-				options.clientIdentifier,
-				access.token.reveal(),
+		async markWatched(
+			access: JellyfinAccess,
+			itemId: string,
+			playedAt?: number,
+		) {
+			const datePlayed =
+				playedAt === undefined ? undefined : new Date(playedAt);
+			if (datePlayed && Number.isNaN(datePlayed.getTime()))
+				throw new MediaError("Invalid Jellyfin played date.");
+			const { userData, headers } = await readItem(access, itemId);
+			if (userData.Played) return;
+			const url = endpoint(
+				access.url,
+				`Users/${encodeURIComponent(access.userId)}/PlayedItems/${encodeURIComponent(itemId)}`,
 			);
-			const path = `Users/${encodeURIComponent(access.userId)}/Items/${encodeURIComponent(itemId)}`;
-			const target = await requestJson({
-				fetch: fetcher,
-				url: endpoint(access.url, path),
-				schema: targetSchema,
-				headers,
-			});
-			if (target.Id !== itemId)
-				throw new MediaError("Jellyfin returned a different item.", 502);
-			if (target.UserData.Played) return;
+			if (datePlayed)
+				url.searchParams.set("datePlayed", datePlayed.toISOString());
+			await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
+		},
+
+		async setPosition(
+			access: JellyfinAccess,
+			itemId: string,
+			positionMs: number,
+		) {
+			if (!Number.isSafeInteger(positionMs) || positionMs <= 0)
+				throw new MediaError("Invalid Jellyfin resume position.");
+			const { userData, headers } = await readItem(access, itemId);
+			if (
+				Math.abs(toPositionMs(userData.PlaybackPositionTicks) - positionMs) <=
+				POSITION_TOLERANCE_MS
+			)
+				return;
 			await requestEmpty({
 				fetch: fetcher,
 				url: endpoint(
 					access.url,
-					`Users/${encodeURIComponent(access.userId)}/PlayedItems/${encodeURIComponent(itemId)}`,
+					`Users/${encodeURIComponent(access.userId)}/Items/${encodeURIComponent(itemId)}/UserData`,
 				),
 				method: "POST",
 				headers,
+				body: {
+					...userData,
+					PlaybackPositionTicks: positionMs * TICKS_PER_MILLISECOND,
+				},
 			});
 		},
 	};

@@ -48,6 +48,7 @@ export async function requestEmpty(input: {
 	url: URL;
 	method: "POST" | "PUT";
 	headers?: HeadersInit;
+	body?: unknown;
 }): Promise<void> {
 	await request(input);
 }
