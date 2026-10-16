@@ -5,8 +5,8 @@ Start with [the session skill](../SKILL.md). Each recipe assumes a dedicated fix
 | Feature | Entry points | Proof |
 | --- | --- | --- |
 | [Owner](owner.md) | `/sign-in`, Sign out | Session survives reload; logout removes access |
-| [Connections](connections.md) | `/`, Connections & sync | Saved servers, imported users, persisted shared schedule |
+| [Connections](connections.md) | `/`, Connections & sync | Saved servers, imported users, persisted shared schedule, safe disconnect |
 | [Users](users.md) | `/users`, Users | One-to-one pairing, preview without writes, repeatable watched sync |
 | [Manual matching](matching.md) | `/matches`, Manual matching | Saved item and show matches survive reload and control the preview |
 
-Capture actions and results, with an API or fixture-state read for side effects. Do not mark a real Plex OAuth flow verified by the seeded Plex profile. Mark unreachable entry points blocked with the unmet precondition. The fixture starts with two automatic media matches and deliberately unmatched episodes for manual matching.
+Capture actions and results, with an API or fixture-state read for side effects. Do not mark a real Plex OAuth flow verified by the seeded Plex profile. Mark unreachable entry points blocked with the unmet precondition. The fixture starts with four automatic matched pairs (two movies by ID, two Northern Lights episodes by series ID and number) and deliberately unmatched Expedition episodes for manual matching.

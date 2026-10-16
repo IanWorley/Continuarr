@@ -55,7 +55,7 @@ On the first browser load, Vite optimizes dependencies and reloads the page. The
 
 Use T3 Code's collaborative preview when available. Call `preview_status`, then `preview_open` if needed. Open a separate tab for a separate fixture run. Use `preview_snapshot` before interaction, `preview_type` with `clear:true` for labelled inputs and `preview_click` for buttons. For native selects, focus the select and use `preview_press` keys, or set its DOM value and dispatch a bubbling `change` event through `preview_evaluate`. Discover tool schemas in the current session; do not guess argument shapes. Prefer roles and accessible names from snapshots.
 
-Navigation links render twice: in the desktop sidebar and in the collapsed mobile menu. Scope link clicks to `nav[aria-label='Main navigation']`. **Sign out** sits in the sidebar footer (`aside`), outside that nav. Password inputs have no `textbox` role, so target them as `input[type=password]` scoped to their form or card.
+Navigation links render twice: in the desktop sidebar and in the collapsed mobile menu. Scope link clicks to `nav[aria-label='Main navigation']`. **Sign out** also renders twice: on desktop it sits in the sidebar footer (`aside`), outside that nav; below 768px it is inside `nav[aria-label='Mobile navigation']` after opening **Navigation menu**. Password inputs have no `textbox` role, so target them as `input[type=password]` scoped to their form or card.
 
 If `preview_snapshot` fails while navigation, typing, clicking, and evaluation still work, keep driving with locators. Read headings, `[role=status]` text, form values, and API results with `preview_evaluate`. Save those reads as evidence and record that screenshots were unavailable.
 
