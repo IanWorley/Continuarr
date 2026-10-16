@@ -4,6 +4,7 @@ import {
 	externalIdProviderSchema,
 } from "~/backend/media/episode";
 import type { Secret } from "~/backend/secrets/storage";
+import { NO_POSITION_MS, POSITION_TOLERANCE_MS } from "./constants";
 
 const mediaItemBaseSchema = z.object({
 	id: z.string().min(1),
@@ -88,8 +89,32 @@ export type PlexPin = {
 	expiresIn: number;
 	authorizationUrl: string;
 };
-/** `stale` means the destination position moved since the scan, so nothing was written. */
-export type PositionWriteResult = "applied" | "stale";
+/** `stale` means the item's position moved since the scan, so nothing was written. */
+export type WriteResult = "applied" | "stale";
+/**
+ * A write is stale when the item's position moved away from what the planner
+ * saw, unless it already holds the target. Overwriting it would lose newer playback.
+ */
+export function isStale(
+	currentMs: number,
+	replaces: number | null,
+	targetMs: number | undefined,
+): boolean {
+	if (
+		targetMs !== undefined &&
+		Math.abs(currentMs - targetMs) <= POSITION_TOLERANCE_MS
+	)
+		return false;
+	return (
+		Math.abs(currentMs - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
+	);
+}
+/** `replaces` is the position the planner saw; marking clears it, so `resumeAt` is written back. */
+export type WatchedWriteOptions = {
+	replaces: number | null;
+	playedAt?: number;
+	resumeAt?: number;
+};
 export interface PlexProvider {
 	startLogin(): Promise<PlexPin>;
 	pollLogin(pin: Pick<PlexPin, "id" | "code">): Promise<PlexIdentity | null>;
@@ -103,19 +128,17 @@ export interface PlexProvider {
 	verifyServer(access: MediaAccess, serverId: string): Promise<void>;
 	items(access: MediaAccess): Promise<MediaItem[]>;
 	// Plex has no API for a dated scrobble, so the Plex provider ignores playedAt.
-	/** Marking clears the resume position, so the provider writes `resumeAt` back afterwards. */
 	markWatched(
 		access: MediaAccess,
 		itemId: string,
-		playedAt?: number,
-		resumeAt?: number,
-	): Promise<void>;
+		options: WatchedWriteOptions,
+	): Promise<WriteResult>;
 	setPosition(
 		access: MediaAccess,
 		itemId: string,
 		positionMs: number,
 		replaces: number | null,
-	): Promise<PositionWriteResult>;
+	): Promise<WriteResult>;
 }
 export interface JellyfinProvider {
 	authenticate(credentials: {
@@ -125,19 +148,17 @@ export interface JellyfinProvider {
 	}): Promise<JellyfinAdminConnection>;
 	directory(access: MediaAccess): Promise<JellyfinDirectory>;
 	items(access: JellyfinAccess): Promise<MediaItem[]>;
-	/** Marking clears the resume position, so the provider writes `resumeAt` back afterwards. */
 	markWatched(
 		access: JellyfinAccess,
 		itemId: string,
-		playedAt?: number,
-		resumeAt?: number,
-	): Promise<void>;
+		options: WatchedWriteOptions,
+	): Promise<WriteResult>;
 	setPosition(
 		access: JellyfinAccess,
 		itemId: string,
 		positionMs: number,
 		replaces: number | null,
-	): Promise<PositionWriteResult>;
+	): Promise<WriteResult>;
 }
 export class MediaError extends Error {
 	constructor(

@@ -210,7 +210,7 @@ describe("Plex provider", () => {
 		await provider.markWatched(
 			{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
 			"1",
-			Date.UTC(2026, 8, 1, 20),
+			{ replaces: null, playedAt: Date.UTC(2026, 8, 1, 20) },
 		);
 		expect(scrobbles).toEqual([
 			{ key: "1", identifier: "com.plexapp.plugins.library" },
@@ -235,10 +235,44 @@ describe("Plex provider", () => {
 		await provider.markWatched(
 			{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
 			"1",
-			undefined,
-			RESUME_POSITION_MS,
+			{ replaces: null, resumeAt: RESUME_POSITION_MS },
 		);
 		expect(requests).toEqual(["/plex/:/scrobble ", "/plex/:/progress 754000"]);
+	});
+
+	it("skips marking watched after playback moves past the scanned position", async () => {
+		let viewOffset = ADVANCED_POSITION_MS;
+		const requests: string[] = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/plex/library/metadata/1")
+				return json({
+					MediaContainer: {
+						Metadata: [{ ratingKey: "1", viewCount: 0, viewOffset }],
+					},
+				});
+			if (request.method === "PUT") {
+				requests.push(url.pathname);
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		const mark = () =>
+			provider.markWatched(
+				{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
+				"1",
+				{ replaces: SCANNED_POSITION_MS, resumeAt: PLANNED_POSITION_MS },
+			);
+		expect({ result: await mark(), requests }).toEqual({
+			result: "stale",
+			requests: [],
+		});
+		viewOffset = SCANNED_POSITION_MS;
+		expect({ result: await mark(), requests }).toEqual({
+			result: "applied",
+			requests: ["/plex/:/scrobble", "/plex/:/progress"],
+		});
 	});
 
 	it("offers only owned servers and prefers a grant for a protected Home member", async () => {
@@ -392,8 +426,8 @@ describe("Plex provider", () => {
 		if (grant?.kind !== "shared_grant") throw new Error("Missing grant");
 		const access = { url: `${baseUrl}/plex`, token: grant.token };
 		expect((await provider.items(access))[0]?.watched).toBe(false);
-		await provider.markWatched(access, "1");
-		await provider.markWatched(access, "1");
+		await provider.markWatched(access, "1", { replaces: null });
+		await provider.markWatched(access, "1", { replaces: null });
 		expect(scrobbles).toBe(1);
 		expect(usedTokens.slice(1)).toEqual(["grant-token", "grant-token"]);
 	});
@@ -550,8 +584,11 @@ describe("Jellyfin provider", () => {
 			userId: "user-1",
 			token: new Secret("user-token"),
 		};
-		await provider.markWatched(access, "item-1", PLAYED_AT_MS);
-		await provider.markWatched(access, "item-2");
+		await provider.markWatched(access, "item-1", {
+			replaces: null,
+			playedAt: PLAYED_AT_MS,
+		});
+		await provider.markWatched(access, "item-2", { replaces: null });
 		expect(queries).toEqual([{ datePlayed: "2026-09-01T20:00:00.000Z" }, {}]);
 	});
 
@@ -602,8 +639,7 @@ describe("Jellyfin provider", () => {
 				token: new Secret("user-token"),
 			},
 			"item-1",
-			undefined,
-			RESUME_POSITION_MS,
+			{ replaces: RESUME_POSITION_MS, resumeAt: RESUME_POSITION_MS },
 		);
 		expect(posts).toEqual([
 			"PlayedItems",
@@ -617,6 +653,57 @@ describe("Jellyfin provider", () => {
 				PlaybackPositionTicks: 7_540_000_000,
 			},
 		]);
+	});
+
+	it("skips marking watched after playback moves past the scanned position, even when already played", async () => {
+		const userData = {
+			Played: false,
+			LastPlayedDate: "2026-09-01T20:00:00.0000000Z",
+			PlayCount: 0,
+			IsFavorite: false,
+			Key: "key-item-1",
+			ItemId: "item-1",
+			PlaybackPositionTicks: ADVANCED_POSITION_MS * TICKS_PER_MILLISECOND,
+		};
+		const posts: string[] = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/jf/Users/user-1/Items/item-1")
+				return json({ Id: "item-1", UserData: userData });
+			if (request.method === "POST") {
+				posts.push(url.pathname);
+				return new Response(null, { status: 204 });
+			}
+			return json({}, 404);
+		});
+		const provider = createJellyfinProvider({
+			clientIdentifier: JELLYFIN_IDENTIFIER,
+		});
+		const mark = () =>
+			provider.markWatched(
+				{
+					url: `${baseUrl}/jf`,
+					userId: "user-1",
+					token: new Secret("user-token"),
+				},
+				"item-1",
+				{ replaces: SCANNED_POSITION_MS, resumeAt: PLANNED_POSITION_MS },
+			);
+		expect({ result: await mark(), posts }).toEqual({
+			result: "stale",
+			posts: [],
+		});
+		userData.Played = true;
+		expect({ result: await mark(), posts }).toEqual({
+			result: "stale",
+			posts: [],
+		});
+		userData.PlaybackPositionTicks =
+			SCANNED_POSITION_MS * TICKS_PER_MILLISECOND;
+		expect({ result: await mark(), posts }).toEqual({
+			result: "applied",
+			posts: ["/jf/Users/user-1/Items/item-1/UserData"],
+		});
 	});
 
 	it("writes UserData with only the position replaced and skips the identical repeat", async () => {
@@ -816,7 +903,7 @@ describe("Jellyfin provider", () => {
 			LATEST_DATE_MS + 1,
 		])
 			await expect(
-				provider.markWatched(access, "item-1", playedAt),
+				provider.markWatched(access, "item-1", { replaces: null, playedAt }),
 			).rejects.toThrow("Invalid Jellyfin played date.");
 		expect(requests).toBe(0);
 	});
@@ -910,8 +997,8 @@ describe("Jellyfin provider", () => {
 			history: { lastPlayedAt: null, positionMs: null },
 		});
 		expect(starts).toEqual([0, PAGE_SIZE]);
-		await provider.markWatched(access, "item-1");
-		await provider.markWatched(access, "item-1");
+		await provider.markWatched(access, "item-1", { replaces: null });
+		await provider.markWatched(access, "item-1", { replaces: null });
 		expect(marks).toBe(1);
 	});
 

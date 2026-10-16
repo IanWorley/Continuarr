@@ -9,10 +9,10 @@ import {
 	type PlexPin,
 	type PlexProvider,
 	type PlexServer,
-	type PositionWriteResult,
 	type ShowMatch,
 	serverUrl,
 	showsInLibrary,
+	type WriteResult,
 } from "./model";
 import { planWatchedUnion, type Write } from "./plan";
 import type { MediaRepository } from "./repo";
@@ -962,24 +962,12 @@ export function createMediaService({
 			Awaited<ReturnType<typeof snapshot>>,
 			"plexAccess" | "jellyfinAccess"
 		>,
-	): Promise<PositionWriteResult> {
+	): Promise<WriteResult> {
 		switch (write.kind) {
 			case "watched":
-				if (write.target === "plex")
-					await plex.markWatched(
-						plexAccess,
-						write.itemId,
-						undefined,
-						write.resumeAt,
-					);
-				else
-					await jellyfin.markWatched(
-						jellyfinAccess,
-						write.itemId,
-						write.playedAt,
-						write.resumeAt,
-					);
-				return "applied";
+				return write.target === "plex"
+					? plex.markWatched(plexAccess, write.itemId, write)
+					: jellyfin.markWatched(jellyfinAccess, write.itemId, write);
 			case "position":
 				return write.target === "plex"
 					? plex.setPosition(
@@ -1021,10 +1009,10 @@ export function createMediaService({
 				watched: 0,
 				position: 0,
 			};
-			let stalePositions = 0;
+			let staleWrites = 0;
 			for (const write of result.plan.writes) {
 				if ((await applyWrite(write, result)) === "stale") {
-					stalePositions++;
+					staleWrites++;
 					continue;
 				}
 				applied++;
@@ -1032,7 +1020,7 @@ export function createMediaService({
 				await repo.updateRun(runId, { applied });
 			}
 			const { plan } = result;
-			const summary = `${applied} updates completed (${appliedByKind.watched} watched, ${appliedByKind.position} positions). ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. ${plan.staleShowMatches} unavailable show matches skipped. ${plan.positionConflicts} position conflicts skipped. ${stalePositions} positions skipped after newer playback. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
+			const summary = `${applied} updates completed (${appliedByKind.watched} watched, ${appliedByKind.position} positions). ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. ${plan.staleShowMatches} unavailable show matches skipped. ${plan.positionConflicts} position conflicts skipped. ${staleWrites} updates skipped after newer playback. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
 			await repo.updateRun(runId, {
 				status: "completed",
 				finishedAt: now(),

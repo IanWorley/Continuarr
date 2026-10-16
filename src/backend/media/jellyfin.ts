@@ -1,8 +1,5 @@
 import { z } from "zod";
-import {
-	NO_POSITION_MS,
-	POSITION_TOLERANCE_MS,
-} from "~/backend/media/constants";
+import { POSITION_TOLERANCE_MS } from "~/backend/media/constants";
 import {
 	type EpisodeSpan,
 	episodeNumbering,
@@ -13,6 +10,7 @@ import {
 import { endpoint, requestEmpty, requestJson } from "~/backend/media/http";
 import {
 	type EpisodeItem,
+	isStale,
 	type JellyfinAccess,
 	type JellyfinProvider,
 	jsonObjectSchema,
@@ -20,6 +18,7 @@ import {
 	MediaError,
 	type MediaItem,
 	serverUrl,
+	type WatchedWriteOptions,
 } from "~/backend/media/model";
 import { Secret } from "~/backend/secrets/storage";
 
@@ -392,8 +391,7 @@ export function createJellyfinProvider(options: {
 		async markWatched(
 			access: JellyfinAccess,
 			itemId: string,
-			playedAt?: number,
-			resumeAt?: number,
+			{ replaces, playedAt, resumeAt }: WatchedWriteOptions,
 		) {
 			const datePlayed =
 				playedAt === undefined ? undefined : new Date(playedAt);
@@ -401,6 +399,8 @@ export function createJellyfinProvider(options: {
 				throw new MediaError("Invalid Jellyfin played date.");
 			if (resumeAt !== undefined) assertPosition(resumeAt);
 			const { userData, headers } = await readItem(access, itemId);
+			const current = toPositionMs(userData.PlaybackPositionTicks);
+			if (isStale(current, replaces, resumeAt)) return "stale";
 			if (!userData.Played) {
 				const url = endpoint(
 					access.url,
@@ -410,7 +410,7 @@ export function createJellyfinProvider(options: {
 					url.searchParams.set("datePlayed", datePlayed.toISOString());
 				await requestEmpty({ fetch: fetcher, url, method: "POST", headers });
 			}
-			if (resumeAt === undefined) return;
+			if (resumeAt === undefined) return "applied";
 			// Re-read so the position write keeps the new Played state and date.
 			const marked = userData.Played
 				? userData
@@ -420,6 +420,7 @@ export function createJellyfinProvider(options: {
 				POSITION_TOLERANCE_MS
 			)
 				await writePosition(access, itemId, marked, resumeAt, headers);
+			return "applied";
 		},
 
 		async setPosition(
@@ -433,10 +434,7 @@ export function createJellyfinProvider(options: {
 			const current = toPositionMs(userData.PlaybackPositionTicks);
 			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
 				return "applied";
-			if (
-				Math.abs(current - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
-			)
-				return "stale";
+			if (isStale(current, replaces, positionMs)) return "stale";
 			await writePosition(access, itemId, userData, positionMs, headers);
 			return "applied";
 		},

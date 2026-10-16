@@ -17,11 +17,16 @@ import {
 
 type Target = "plex" | "jellyfin";
 type Destination = { itemId: string; title: string };
-/** Marking an item watched clears its resume position, so `resumeAt` is the position the item keeps afterwards. */
-type WatchedWrite = Destination & { kind: "watched"; resumeAt?: number } & (
-		| { target: "plex" }
-		| { target: "jellyfin"; playedAt?: number }
-	);
+/**
+ * Marking an item watched clears its resume position, so `resumeAt` is the
+ * position the item keeps afterwards. `replaces` is the item's position the
+ * planner saw, so the provider can skip the write after newer playback.
+ */
+type WatchedWrite = Destination & {
+	kind: "watched";
+	replaces: number | null;
+	resumeAt?: number;
+} & ({ target: "plex" } | { target: "jellyfin"; playedAt?: number });
 type PositionWrite = Destination & {
 	kind: "position";
 	target: Target;
@@ -107,6 +112,7 @@ function decidePair(pair: { plex: MediaItem; jellyfin: MediaItem }): {
 			target: "jellyfin",
 			itemId: jellyfin.id,
 			title: jellyfin.title,
+			replaces: jellyfin.history.positionMs,
 			// Never move Jellyfin's played date earlier.
 			...(playedAt !== null &&
 			(jellyfinPlayedAt === null || playedAt >= jellyfinPlayedAt)
@@ -120,6 +126,7 @@ function decidePair(pair: { plex: MediaItem; jellyfin: MediaItem }): {
 			target: "plex",
 			itemId: plex.id,
 			title: plex.title,
+			replaces: plex.history.positionMs,
 			...resumeAt,
 		});
 	return { writes, positionConflicts };

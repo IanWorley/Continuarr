@@ -372,6 +372,7 @@ describe("current preview", () => {
 						target: "jellyfin",
 						itemId: `item-${index}`,
 						title: `Movie ${index}`,
+						replaces: null,
 					})),
 				})}
 			/>,
@@ -410,6 +411,7 @@ describe("current preview", () => {
 							target: "jellyfin",
 							itemId: "j3",
 							title: "Alien",
+							replaces: null,
 							playedAt: Date.parse("2024-03-02T12:00:00.000Z"),
 						},
 						{
@@ -417,6 +419,7 @@ describe("current preview", () => {
 							target: "plex",
 							itemId: "p4",
 							title: "Heat",
+							replaces: null,
 							resumeAt: 754000,
 						},
 					],

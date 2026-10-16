@@ -19,11 +19,13 @@ import {
 } from "~/backend/media/http";
 import {
 	type EpisodeItem,
+	isStale,
 	type MediaAccess,
 	MediaError,
 	type MediaItem,
 	type PlexDirectoryUser,
 	type PlexProvider,
+	type WatchedWriteOptions,
 } from "~/backend/media/model";
 import { Secret } from "~/backend/secrets/storage";
 
@@ -628,11 +630,12 @@ export function createPlexProvider(options: {
 		async markWatched(
 			access: MediaAccess,
 			itemId: string,
-			_playedAt?: number,
-			resumeAt?: number,
+			{ replaces, resumeAt }: WatchedWriteOptions,
 		) {
 			if (resumeAt !== undefined) assertPosition(resumeAt);
 			const { item, headers } = await readItem(access, itemId);
+			const current = item.viewOffset ?? NO_POSITION_MS;
+			if (isStale(current, replaces, resumeAt)) return "stale";
 			const watched = (item.viewCount ?? 0) > 0;
 			if (!watched) {
 				const url = endpoint(access.url, ":/scrobble");
@@ -642,11 +645,10 @@ export function createPlexProvider(options: {
 			}
 			if (
 				resumeAt !== undefined &&
-				(!watched ||
-					Math.abs((item.viewOffset ?? NO_POSITION_MS) - resumeAt) >
-						POSITION_TOLERANCE_MS)
+				(!watched || Math.abs(current - resumeAt) > POSITION_TOLERANCE_MS)
 			)
 				await writeProgress(access, itemId, resumeAt, headers);
+			return "applied";
 		},
 
 		async setPosition(
@@ -660,10 +662,7 @@ export function createPlexProvider(options: {
 			const current = item.viewOffset ?? NO_POSITION_MS;
 			if (Math.abs(current - positionMs) <= POSITION_TOLERANCE_MS)
 				return "applied";
-			if (
-				Math.abs(current - (replaces ?? NO_POSITION_MS)) > POSITION_TOLERANCE_MS
-			)
-				return "stale";
+			if (isStale(current, replaces, positionMs)) return "stale";
 			await writeProgress(access, itemId, positionMs, headers);
 			return "applied";
 		},

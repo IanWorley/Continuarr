@@ -84,7 +84,13 @@ describe("planWatchedUnion", () => {
 			}),
 		).toEqual({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j1", title: "Film" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "Film",
+					replaces: null,
+				},
 			],
 			matched: 1,
 			unmatched: 0,
@@ -101,7 +107,15 @@ describe("planWatchedUnion", () => {
 				plex: [episode("p1", false, [{ provider: "tvdb", value: "10" }])],
 				jellyfin: [episode("j1", true, [{ provider: "tvdb", value: "10" }])],
 			}).writes,
-		).toEqual([{ kind: "watched", target: "plex", itemId: "p1", title: "p1" }]);
+		).toEqual([
+			{
+				kind: "watched",
+				target: "plex",
+				itemId: "p1",
+				title: "p1",
+				replaces: null,
+			},
+		]);
 	});
 
 	it("plans no write when watched states already agree", () => {
@@ -221,7 +235,13 @@ describe("series and episode number matching", () => {
 			}),
 		).toEqual({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "j1",
+					replaces: null,
+				},
 			],
 			matched: 2,
 			unmatched: 0,
@@ -352,7 +372,13 @@ describe("series and episode number matching", () => {
 			}),
 		).toEqual({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j1",
+					title: "j1",
+					replaces: null,
+				},
 			],
 			matched: 1,
 			unmatched: 2,
@@ -437,7 +463,13 @@ describe("series and episode number matching", () => {
 			}),
 		).toMatchObject({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j2", title: "j2" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j2",
+					title: "j2",
+					replaces: null,
+				},
 			],
 			matched: 1,
 			unmatched: 1,
@@ -459,7 +491,13 @@ describe("manual watched-union matches", () => {
 			}),
 		).toEqual({
 			writes: [
-				{ kind: "watched", target: "jellyfin", itemId: "j2", title: "j2" },
+				{
+					kind: "watched",
+					target: "jellyfin",
+					itemId: "j2",
+					title: "j2",
+					replaces: null,
+				},
 			],
 			matched: 1,
 			unmatched: 2,
@@ -631,6 +669,7 @@ describe("watch-history policy", () => {
 				target: "jellyfin",
 				itemId: "j1",
 				title: "j1",
+				replaces: null,
 				playedAt: 160_001,
 			},
 		]);
@@ -641,7 +680,13 @@ describe("watch-history policy", () => {
 			planHistory({ plex: NO_HISTORY, jellyfin: NO_HISTORY, plexWatched: true })
 				.writes,
 		).toEqual([
-			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				replaces: null,
+			},
 		]);
 	});
 
@@ -652,7 +697,15 @@ describe("watch-history policy", () => {
 				jellyfin: { lastPlayedAt: 160_001, positionMs: null },
 				jellyfinWatched: true,
 			}).writes,
-		).toEqual([{ kind: "watched", target: "plex", itemId: "p1", title: "p1" }]);
+		).toEqual([
+			{
+				kind: "watched",
+				target: "plex",
+				itemId: "p1",
+				title: "p1",
+				replaces: null,
+			},
+		]);
 	});
 
 	it("carries the later position on the watched write to the item it marks", () => {
@@ -668,6 +721,7 @@ describe("watch-history policy", () => {
 				target: "jellyfin",
 				itemId: "j1",
 				title: "j1",
+				replaces: 10_000,
 				playedAt: 160_001,
 				resumeAt: 30_000,
 			},
@@ -695,6 +749,7 @@ describe("watch-history policy", () => {
 				target: "jellyfin",
 				itemId: "j1",
 				title: "j1",
+				replaces: 20_000,
 				resumeAt: 20_000,
 			},
 		]);
@@ -714,6 +769,7 @@ describe("watch-history policy", () => {
 					target: "jellyfin",
 					itemId: "j1",
 					title: "j1",
+					replaces: 20_000,
 					playedAt: 100_000,
 				},
 			],
@@ -776,6 +832,7 @@ describe("watch-history policy", () => {
 					target: "jellyfin",
 					itemId: "j1",
 					title: "j1",
+					replaces: 10_000,
 					resumeAt: 10_000,
 				},
 			],
@@ -813,7 +870,13 @@ describe("saved show numbering", () => {
 			showMatches,
 		});
 		expect(plan.writes).toEqual([
-			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				replaces: null,
+			},
 		]);
 		expect(plan.matched).toBe(1);
 		expect(plan.pairs).toEqual([
@@ -837,7 +900,13 @@ describe("saved show numbering", () => {
 			{ plexItemId: "p1", jellyfinItemId: "j2", source: "manual" },
 		]);
 		expect(plan.writes).toEqual([
-			{ kind: "watched", target: "jellyfin", itemId: "j2", title: "j2" },
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j2",
+				title: "j2",
+				replaces: null,
+			},
 		]);
 	});
 
@@ -852,7 +921,13 @@ describe("saved show numbering", () => {
 			{ plexItemId: "p1", jellyfinItemId: "j1", source: "seriesNumber" },
 		]);
 		expect(plan.writes).toEqual([
-			{ kind: "watched", target: "jellyfin", itemId: "j1", title: "j1" },
+			{
+				kind: "watched",
+				target: "jellyfin",
+				itemId: "j1",
+				title: "j1",
+				replaces: null,
+			},
 		]);
 	});
 
