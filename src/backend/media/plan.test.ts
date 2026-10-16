@@ -1154,6 +1154,47 @@ describe("saved item state", () => {
 		});
 	});
 
+	it("settles a resumed intent whose writes already landed", () => {
+		const landed = {
+			plex: afterMark.plex,
+			jellyfin: [
+				movie("j1", true, ids, "j1", {
+					lastPlayedAt: 160_001,
+					positionMs: 30_000,
+				}),
+			],
+		};
+		expect(
+			planWatchedUnion({ ...landed, itemStates: [stored] }).itemStates,
+		).toEqual({
+			save: [{ ...stored, scanned: stored.target }],
+			clear: [],
+			writePairs: [],
+		});
+	});
+
+	it("treats finishing a settled item as user activity, not an interrupted mark", () => {
+		const finished = {
+			plex: afterMark.plex,
+			jellyfin: [
+				movie("j1", true, ids, "j1", {
+					lastPlayedAt: 400_000,
+					positionMs: null,
+				}),
+			],
+		};
+		const settled = { ...stored, scanned: stored.target };
+		expect(
+			planWatchedUnion({ ...finished, itemStates: [settled] }),
+		).toMatchObject({
+			writes: [],
+			itemStates: {
+				save: [],
+				clear: [{ plexItemId: "p1", jellyfinItemId: "j1" }],
+			},
+		});
+	});
+
 	it("plans from live state and replaces the saved intent after newer playback", () => {
 		const played = {
 			plex: afterMark.plex,

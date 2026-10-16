@@ -47,9 +47,12 @@ export type ItemState = {
 	playedAt: number | null;
 	positionConflict: boolean;
 };
+export type ItemKey = Pick<ItemState, "plexItemId" | "jellyfinItemId">;
 export type ItemStateChanges = {
 	save: ItemState[];
-	clear: Pick<ItemState, "plexItemId" | "jellyfinItemId">[];
+	clear: ItemKey[];
+	/** The pair each planned write belongs to, by write index. */
+	writePairs: ItemKey[];
 };
 
 function itemStateKey(plexItemId: string, jellyfinItemId: string): string {
@@ -66,7 +69,10 @@ function sameSide(left: SideState, right: SideState): boolean {
 	);
 }
 
-/** True when the item shows only states this intent's own writes can produce. */
+/**
+ * True when the item shows only states this intent's own writes can produce.
+ * A settled intent has scanned equal to target, so only the target counts.
+ */
 function untouched(stored: ItemState, side: Target, current: SideState) {
 	const marks = !stored.scanned[side].watched && stored.target[side].watched;
 	return (
@@ -177,12 +183,21 @@ function decidePair(
 		stored &&
 		untouched(stored, "plex", current.plex) &&
 		untouched(stored, "jellyfin", current.jellyfin)
-	)
+	) {
+		const writes = writesToward(pair, current, stored.target, stored.playedAt);
+		const settled =
+			sameSide(stored.scanned.plex, stored.target.plex) &&
+			sameSide(stored.scanned.jellyfin, stored.target.jellyfin);
 		return {
-			writes: writesToward(pair, current, stored.target, stored.playedAt),
+			writes,
 			positionConflicts: stored.positionConflict ? 1 : 0,
-			change: null,
+			// Its writes already landed, so settle it now.
+			change:
+				writes.length || settled
+					? null
+					: { kind: "save", state: { ...stored, scanned: stored.target } },
 		};
+	}
 
 	const { position, positionConflicts } = resumePosition(pair);
 	const watched = plex.watched || jellyfin.watched;
@@ -244,6 +259,7 @@ function decideInto(
 		stored.get(itemStateKey(key.plexItemId, key.jellyfinItemId)),
 	);
 	decisions.writes.push(...decision.writes);
+	decisions.itemStates.writePairs.push(...decision.writes.map(() => key));
 	decisions.positionConflicts += decision.positionConflicts;
 	if (decision.change?.kind === "save")
 		decisions.itemStates.save.push(decision.change.state);
@@ -473,7 +489,7 @@ function planAutomaticUnion(
 	const decisions: Decisions = {
 		writes: [],
 		positionConflicts: 0,
-		itemStates: { save: [], clear: [] },
+		itemStates: { save: [], clear: [], writePairs: [] },
 	};
 	for (const pair of pairs) decideInto(decisions, pair, stored);
 	const { writes, positionConflicts, itemStates } = decisions;

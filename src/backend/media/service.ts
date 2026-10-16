@@ -14,7 +14,7 @@ import {
 	showsInLibrary,
 	type WriteResult,
 } from "./model";
-import { planWatchedUnion, type Write } from "./plan";
+import { type ItemKey, planWatchedUnion, type Write } from "./plan";
 import type { MediaRepository } from "./repo";
 
 export const SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -992,6 +992,23 @@ export function createMediaService({
 		let applied = 0;
 		let planned = 0;
 		let recorded = false;
+		let writePairs: ItemKey[] = [];
+		const outcomes: WriteResult[] = [];
+		/** Pairs whose planned writes all landed in this run. */
+		function completedPairs(): ItemKey[] {
+			const pairs = new Map<string, { key: ItemKey; complete: boolean }>();
+			for (const [index, key] of writePairs.entries()) {
+				const id = JSON.stringify([key.plexItemId, key.jellyfinItemId]);
+				pairs.set(id, {
+					key,
+					complete:
+						(pairs.get(id)?.complete ?? true) && outcomes[index] === "applied",
+				});
+			}
+			return [...pairs.values()]
+				.filter((pair) => pair.complete)
+				.map((pair) => pair.key);
+		}
 		try {
 			await repo.attempted(id, now());
 			await repo.startRun({
@@ -1006,6 +1023,7 @@ export function createMediaService({
 			planned = result.plan.writes.length;
 			// Saved before any write so a failed run can resume the same intent.
 			await repo.saveItemStates(id, result.plan.itemStates);
+			writePairs = result.plan.itemStates.writePairs;
 			await repo.updateRun(runId, {
 				planned,
 				summary: "Applying updates.",
@@ -1015,8 +1033,9 @@ export function createMediaService({
 				position: 0,
 			};
 			let staleWrites = 0;
-			for (const write of result.plan.writes) {
-				if ((await applyWrite(write, result)) === "stale") {
+			for (const [index, write] of result.plan.writes.entries()) {
+				outcomes[index] = await applyWrite(write, result);
+				if (outcomes[index] === "stale") {
 					staleWrites++;
 					continue;
 				}
@@ -1024,6 +1043,7 @@ export function createMediaService({
 				appliedByKind[write.kind]++;
 				await repo.updateRun(runId, { applied });
 			}
+			await repo.settleItemStates(id, completedPairs());
 			const { plan } = result;
 			const summary = `${applied} updates completed (${appliedByKind.watched} watched, ${appliedByKind.position} positions). ${plan.matched} matched pairs; ${plan.unmatched} unmatched items; ${plan.ambiguous} ambiguous items skipped. ${plan.staleManualMatches ?? 0} unavailable manual matches skipped. ${plan.staleShowMatches} unavailable show matches skipped. ${plan.positionConflicts} position conflicts skipped. ${staleWrites} updates skipped after newer playback. Of the skipped episodes, ${plan.missingSeriesIds} have no series ID, ${plan.missingEpisodeIds} have no episode ID, and ${plan.unsupportedNumbering} cannot match by number.`;
 			await repo.updateRun(runId, {
@@ -1045,6 +1065,11 @@ export function createMediaService({
 					? error.message
 					: "Unable to complete sync. Check the connections and try again.";
 			const summary = `${applied} of ${planned} updates completed. ${detail} A retry reads both libraries again first.`;
+			try {
+				await repo.settleItemStates(id, completedPairs());
+			} catch {
+				// An unsettled intent stays resumable, and the next run settles it.
+			}
 			await repo.updateRun(runId, {
 				status: "failed",
 				finishedAt: now(),

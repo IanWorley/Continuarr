@@ -4,7 +4,11 @@ import type {
 	JellyfinDirectory,
 	PlexDirectoryUser,
 } from "~/backend/media/model";
-import type { ItemState, ItemStateChanges } from "~/backend/media/plan";
+import type {
+	ItemKey,
+	ItemState,
+	ItemStateChanges,
+} from "~/backend/media/plan";
 import { type createSecretStorage, Secret } from "~/backend/secrets/storage";
 import {
 	findApplicationSetting,
@@ -215,6 +219,26 @@ export function createMediaRepository(
 				playedAt: row.jellyfinPlayedAt,
 				positionConflict: row.positionConflict,
 			})),
+		/** Marks intents whose writes all landed, so only their target counts as untouched. */
+		settleItemStates: (pairingId: string, keys: ItemKey[]) =>
+			database().transaction(async (transaction) => {
+				for (const key of keys)
+					await transaction
+						.update(syncItemStates)
+						.set({
+							scannedPlexWatched: sql`${syncItemStates.targetPlexWatched}`,
+							scannedPlexPositionMs: sql`${syncItemStates.targetPlexPositionMs}`,
+							scannedJellyfinWatched: sql`${syncItemStates.targetJellyfinWatched}`,
+							scannedJellyfinPositionMs: sql`${syncItemStates.targetJellyfinPositionMs}`,
+						})
+						.where(
+							and(
+								eq(syncItemStates.pairingId, pairingId),
+								eq(syncItemStates.plexItemId, key.plexItemId),
+								eq(syncItemStates.jellyfinItemId, key.jellyfinItemId),
+							),
+						);
+			}),
 		saveItemStates: (pairingId: string, changes: ItemStateChanges) =>
 			database().transaction(async (transaction) => {
 				for (const key of changes.clear)

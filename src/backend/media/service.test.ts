@@ -1496,6 +1496,39 @@ describe("media account and sync service", () => {
 		expect(state.jellyfin[0].history.positionMs).toBe(20000);
 		expect(state.writes).toEqual(["plex:p1 resume 50000"]);
 	});
+	it("does not restore a position after the user finishes a synced item", async () => {
+		const { service, state, pair } = await setup();
+		const pairing = await pair();
+		state.plex = [
+			playedMovie("p1", "1", "Arrival", true, {
+				lastPlayedAt: 200000,
+				positionMs: 1800000,
+			}),
+		];
+		state.jellyfin = [
+			playedMovie("j1", "1", "Arrival", false, {
+				lastPlayedAt: 100000,
+				positionMs: 1200000,
+			}),
+		];
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			applied: 1,
+		});
+		expect(state.jellyfin[0].history.positionMs).toBe(1800000);
+		state.jellyfin = [
+			playedMovie("j1", "1", "Arrival", true, {
+				lastPlayedAt: 900000,
+				positionMs: null,
+			}),
+		];
+		expect(await service.run(pairing.id)).toMatchObject({
+			status: "completed",
+			planned: 0,
+		});
+		expect(state.jellyfin[0].history.positionMs).toBeNull();
+		expect(state.writes).toEqual(["jellyfin:j1 played 200000 resume 1800000"]);
+	});
 	it("retries a failed mark-watched write with its position after the copy succeeded", async () => {
 		const { service, state, pair } = await setup();
 		const pairing = await pair();
