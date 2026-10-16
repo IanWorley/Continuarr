@@ -6,6 +6,7 @@ import { createPlexProvider } from "~/backend/media/plex";
 import { Secret } from "~/backend/secrets/storage";
 
 const PAGE_SIZE = 100;
+const RESUME_POSITION_MS = 754_000;
 const PLEX_IDENTIFIER = "plex-client";
 const JELLYFIN_IDENTIFIER = "jellyfin-client";
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
@@ -25,6 +26,138 @@ afterEach(() => {
 });
 
 describe("Plex provider", () => {
+	it("writes the resume position once and skips the identical repeat", async () => {
+		const INITIAL_POSITION_MS = 100_000;
+		let viewOffset = INITIAL_POSITION_MS;
+		const writes: Array<{
+			token: string | null;
+			query: Record<string, string>;
+		}> = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/plex/library/metadata/2")
+				return json({
+					MediaContainer: { Metadata: [{ ratingKey: "2", viewOffset }] },
+				});
+			if (url.pathname === "/plex/:/progress" && request.method === "PUT") {
+				writes.push({
+					token: request.headers.get("x-plex-token"),
+					query: Object.fromEntries(url.searchParams),
+				});
+				viewOffset = Number(url.searchParams.get("time"));
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		const access = { url: `${baseUrl}/plex`, token: new Secret("grant-token") };
+		await provider.setPosition(access, "2", RESUME_POSITION_MS);
+		await provider.setPosition(access, "2", RESUME_POSITION_MS);
+		expect(writes).toEqual([
+			{
+				token: "grant-token",
+				query: {
+					key: "2",
+					identifier: "com.plexapp.plugins.library",
+					time: "754000",
+					state: "stopped",
+				},
+			},
+		]);
+	});
+
+	it("skips a write within 5 seconds of the current offset", async () => {
+		const cases: Array<[number | undefined, number, number]> = [
+			[749_000, RESUME_POSITION_MS, 0],
+			[759_000, RESUME_POSITION_MS, 0],
+			[748_999, RESUME_POSITION_MS, 1],
+			[759_001, RESUME_POSITION_MS, 1],
+			[undefined, 5_000, 0],
+			[undefined, 5_001, 1],
+		];
+		for (const [currentOffset, target, expectedWrites] of cases) {
+			let writes = 0;
+			const baseUrl = serve((request) => {
+				const url = new URL(request.url);
+				if (url.pathname === "/plex/library/metadata/2")
+					return json({
+						MediaContainer: {
+							Metadata: [
+								{
+									ratingKey: "2",
+									...(currentOffset === undefined
+										? {}
+										: { viewOffset: currentOffset }),
+								},
+							],
+						},
+					});
+				if (url.pathname === "/plex/:/progress" && request.method === "PUT") {
+					writes++;
+					return new Response(null, { status: 200 });
+				}
+				return json({}, 404);
+			});
+			const provider = createPlexProvider({
+				clientIdentifier: PLEX_IDENTIFIER,
+			});
+			await provider.setPosition(
+				{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
+				"2",
+				target,
+			);
+			expect({ currentOffset, target, writes }).toEqual({
+				currentOffset,
+				target,
+				writes: expectedWrites,
+			});
+		}
+	});
+
+	it("rejects an invalid item ID or position before any request", async () => {
+		let requests = 0;
+		const baseUrl = serve(() => {
+			requests++;
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		const access = { url: `${baseUrl}/plex`, token: new Secret("grant-token") };
+		for (const itemId of ["../2", "2?time=0", ""])
+			await expect(
+				provider.setPosition(access, itemId, RESUME_POSITION_MS),
+			).rejects.toThrow("Invalid Plex item ID.");
+		for (const positionMs of [0, -1, 1.5])
+			await expect(
+				provider.setPosition(access, "2", positionMs),
+			).rejects.toThrow("Invalid Plex resume position.");
+		expect(requests).toBe(0);
+	});
+
+	it("sends an undated scrobble when markWatched receives playedAt", async () => {
+		const scrobbles: Array<Record<string, string>> = [];
+		const baseUrl = serve((request) => {
+			const url = new URL(request.url);
+			if (url.pathname === "/plex/library/metadata/1")
+				return json({
+					MediaContainer: { Metadata: [{ ratingKey: "1", viewCount: 0 }] },
+				});
+			if (url.pathname === "/plex/:/scrobble" && request.method === "PUT") {
+				scrobbles.push(Object.fromEntries(url.searchParams));
+				return new Response(null, { status: 200 });
+			}
+			return json({}, 404);
+		});
+		const provider = createPlexProvider({ clientIdentifier: PLEX_IDENTIFIER });
+		await provider.markWatched(
+			{ url: `${baseUrl}/plex`, token: new Secret("grant-token") },
+			"1",
+			Date.UTC(2026, 8, 1, 20),
+		);
+		expect(scrobbles).toEqual([
+			{ key: "1", identifier: "com.plexapp.plugins.library" },
+		]);
+	});
+
 	it("offers only owned servers and prefers a grant for a protected Home member", async () => {
 		const baseUrl = serve((request) => {
 			const path = new URL(request.url).pathname;

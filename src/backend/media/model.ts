@@ -85,7 +85,17 @@ export interface PlexProvider {
 	servers(token: Secret): Promise<PlexServer[]>;
 	verifyServer(access: MediaAccess, serverId: string): Promise<void>;
 	items(access: MediaAccess): Promise<MediaItem[]>;
-	markWatched(access: MediaAccess, itemId: string): Promise<void>;
+	// Plex has no API for a dated scrobble, so the Plex provider ignores playedAt.
+	markWatched(
+		access: MediaAccess,
+		itemId: string,
+		playedAt?: number,
+	): Promise<void>;
+	setPosition(
+		access: MediaAccess,
+		itemId: string,
+		positionMs: number,
+	): Promise<void>;
 }
 export interface JellyfinProvider {
 	authenticate(credentials: {
