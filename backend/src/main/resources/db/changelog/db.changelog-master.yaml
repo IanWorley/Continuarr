@@ -1,0 +1,6 @@
+# Changesets are written in Liquibase formatted SQL. List each file explicitly so
+# the apply order is visible here and never depends on filename sorting.
+databaseChangeLog:
+  - include:
+      file: changes/0001-event-publication.sql
+      relativeToChangelogFile: true
