@@ -183,7 +183,9 @@ Single sync mode setting:
 ## Security
 
 - Single admin; username and bcrypt password hash from env vars.
-- Form login with session cookie; SPA-friendly CSRF protection.
+- Form login with session cookie; SPA CSRF via `csrf.spa()` (Spring Security 7.0+): the SPA reads
+  the `XSRF-TOKEN` cookie and sends it back in the `X-XSRF-TOKEN` header. The Kotlin DSL has no
+  `spa()` as of 7.1, so call `http.csrf { it.spa() }` outside the `http { }` block.
 - Plex tokens and PINs encrypted with Spring Security Crypto; key from env var or Docker secret.
 - Everything requires authentication except the Actuator health endpoint (Docker healthcheck).
 
@@ -387,5 +389,5 @@ first depends on them.
 | 2 | Whether both servers return file paths usable for relative-path matching | Phases 1–2 |
 | 3 | Plex Home token switching, including PIN-protected users | Phase 2 |
 | 4 | Whether either server drops very short resume positions | Phase 5 |
-| 5 | The exact Spring Security SPA CSRF API for the version in use | Phase 0 |
+| 5 | The exact Spring Security SPA CSRF API for the version in use | Phase 0 — resolved, see [Security](#security) |
 | 6 | Whether server APIs report changes precisely enough for the conflict window | Phase 5 |
