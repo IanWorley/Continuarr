@@ -1,3 +1,5 @@
 spring:
   application:
     name: continuarr
+  jpa:
+    open-in-view: false
