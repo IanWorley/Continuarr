@@ -1,0 +1,42 @@
+# Runs the app as it ships. Values come from .env; copy .env.example to start.
+name: continuarr
+
+services:
+  postgres:
+    # Same image as TestcontainersConfiguration, so Compose and tests don't drift.
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes:
+      # Postgres 18 keeps PGDATA in a versioned subdirectory of this path.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      CONTINUARR_ADMIN_USERNAME: ${CONTINUARR_ADMIN_USERNAME:?set in .env}
+      CONTINUARR_ADMIN_PASSWORD_HASH: ${CONTINUARR_ADMIN_PASSWORD_HASH:?set in .env}
+    ports:
+      - "${CONTINUARR_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  postgres-data:
