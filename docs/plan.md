@@ -246,6 +246,7 @@ and matches live in the database and are edited in the admin UI.
 - `./gradlew test` — tests against Testcontainers Postgres and WireMock.
 - Frontend dev server proxies API calls to the backend.
 - `docker compose up` — runs the full app as it ships.
+- CI (`.github/workflows/backend.yml`) runs `./gradlew test` on every PR and push to `main`.
 
 ## Milestones and phases
 
