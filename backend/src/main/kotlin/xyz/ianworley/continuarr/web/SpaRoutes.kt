@@ -5,6 +5,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.io.ClassPathResource
 import org.springframework.http.HttpMethod
+import org.springframework.http.server.PathContainer
+import org.springframework.http.server.RequestPath
 import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.servlet.function.RequestPredicate
 import org.springframework.web.servlet.function.router
@@ -22,7 +24,6 @@ private const val SPA_INDEX_RESOURCE = "static/index.html"
 // springdoc's /v3/api-docs.
 private val SERVER_SEGMENTS = setOf("api", "actuator", "error", "v3")
 
-private const val PATH_SEPARATOR = '/'
 private const val FILE_EXTENSION_SEPARATOR = '.'
 
 /**
@@ -32,8 +33,11 @@ private const val FILE_EXTENSION_SEPARATOR = '.'
 object SpaRouteMatcher : RequestMatcher {
 	override fun matches(request: HttpServletRequest): Boolean {
 		if (request.method != HttpMethod.GET.name()) return false
-		val segments = request.requestURI.removePrefix(request.contextPath)
-			.split(PATH_SEPARATOR)
+		// Decoded, as Spring MVC matches them, so an encoded "/%763/..." can't slip past SERVER_SEGMENTS.
+		val segments = RequestPath.parse(request.requestURI, request.contextPath).pathWithinApplication()
+			.elements()
+			.filterIsInstance<PathContainer.PathSegment>()
+			.map { it.valueToMatch() }
 			.filter { it.isNotEmpty() }
 		return segments.firstOrNull() !in SERVER_SEGMENTS &&
 			segments.lastOrNull()?.contains(FILE_EXTENSION_SEPARATOR) != true

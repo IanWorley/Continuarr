@@ -10,6 +10,7 @@ import org.springframework.security.test.context.support.WithMockUser
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import xyz.ianworley.continuarr.TestcontainersConfiguration
+import java.net.URI
 import kotlin.test.Test
 
 // Matches the title in src/test/resources/static/index.html.
@@ -19,6 +20,9 @@ private const val DEEP_LINK = "/people/123"
 private const val MISSING_ASSET = "/assets/missing.js"
 private const val UNKNOWN_API_PATH = "/api/v1/unknown"
 private const val API_DOCS_PATH = "/v3/api-docs"
+
+// "/v3/api-docs" with the "v" percent-encoded; Spring MVC decodes it to the same endpoint.
+private const val ENCODED_API_DOCS_PATH = "/%763/api-docs"
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -48,5 +52,10 @@ class SpaRoutesTest(@Autowired private val mockMvc: MockMvc) {
 	@Test
 	fun `the OpenAPI spec still requires login`() {
 		mockMvc.get(API_DOCS_PATH).andExpect { status { isUnauthorized() } }
+	}
+
+	@Test
+	fun `an encoded server path still requires login`() {
+		mockMvc.get(URI(ENCODED_API_DOCS_PATH)).andExpect { status { isUnauthorized() } }
 	}
 }
