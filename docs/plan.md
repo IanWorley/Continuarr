@@ -211,7 +211,7 @@ Single sync mode setting:
 ### Prerequisites
 
 - JDK (current LTS supported by Spring Boot 4)
-- Node.js (current LTS)
+- Node.js (current LTS, pinned in `frontend/.nvmrc`) and npm
 - Docker (Testcontainers, Compose)
 - A Plex server (admin token) and a Jellyfin server (admin API key) to point at
 
@@ -244,9 +244,11 @@ and matches live in the database and are edited in the admin UI.
 
 - `./gradlew bootTestRun` — runs the backend with Postgres started by Testcontainers.
 - `./gradlew test` — tests against Testcontainers Postgres and WireMock.
-- Frontend dev server proxies API calls to the backend.
+- `npm run dev` in `frontend/` — Vite dev server; forwards `/api` to the backend on port 8080.
+- `npm run typecheck`, `npm run lint`, `npm run build` in `frontend/` — the checks CI runs.
 - `docker compose up` — runs the full app as it ships.
-- CI (`.github/workflows/backend.yml`) runs `./gradlew test` on every PR and push to `main`.
+- CI runs on every PR and push to `main`: `.github/workflows/backend.yml` runs `./gradlew test`;
+  `.github/workflows/frontend.yml` runs install, typecheck, lint, and build.
 
 ## Milestones and phases
 
