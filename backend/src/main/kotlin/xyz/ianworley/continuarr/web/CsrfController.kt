@@ -1,5 +1,6 @@
 package xyz.ianworley.continuarr.web
 
+import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.http.HttpStatus
 import org.springframework.security.web.csrf.CsrfToken
 import org.springframework.web.bind.annotation.GetMapping
@@ -15,7 +16,8 @@ class CsrfController {
 
 	@GetMapping(CSRF_PATH)
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	fun csrf(token: CsrfToken) {
+	// Resolved by Spring Security, not sent by the client, so it stays out of the OpenAPI spec.
+	fun csrf(@Parameter(hidden = true) token: CsrfToken) {
 		token.token
 	}
 }
