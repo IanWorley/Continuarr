@@ -24,8 +24,17 @@
           "required" : true
         },
         "responses" : {
-          "200" : {
-            "description" : "OK"
+          "204" : {
+            "description" : "Admin created"
+          },
+          "400" : {
+            "description" : "Blank username or password length out of range"
+          },
+          "403" : {
+            "description" : "Wrong setup token"
+          },
+          "409" : {
+            "description" : "An admin already exists"
           }
         }
       }
