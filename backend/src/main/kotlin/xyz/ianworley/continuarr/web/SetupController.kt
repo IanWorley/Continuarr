@@ -16,8 +16,6 @@ private const val MIN_PASSWORD_LENGTH = 8
 // bcrypt ignores everything past 72 bytes, so Spring Security refuses longer passwords.
 private const val MAX_PASSWORD_BYTES = 72
 
-data class SetupRequest(val token: String, val username: String, val password: String)
-
 // First-run setup: creates the single admin, once, for whoever holds the logged setup token.
 @RestController
 class SetupController(

@@ -5,7 +5,6 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
-import org.springframework.data.repository.CrudRepository
 
 // A login account; v1 has exactly one, the admin. See 0002-app-user.sql.
 @Entity
@@ -17,8 +16,3 @@ class User(
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	var id: Long? = null,
 )
-
-interface UserRepository : CrudRepository<User, Long> {
-
-	fun findByUsername(username: String): User?
-}
