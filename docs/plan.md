@@ -255,6 +255,10 @@ and matches live in the database and are edited in the admin UI.
 - `./gradlew test` — tests against Testcontainers Postgres and WireMock.
 - `npm run dev` in `frontend/` — Vite dev server; forwards `/api` to the backend on port 8080.
 - `npm run typecheck`, `npm run lint`, `npm run build` in `frontend/` — the checks CI runs.
+- API types: `backend/openapi.json` is the committed spec (springdoc, behind login). `OpenApiSpecTest`
+  fails when it no longer matches the API; copy `build/openapi.json` over it. The frontend's `dev`,
+  `typecheck`, and `build` scripts generate `src/api/schema.d.ts` from it, so a breaking API change
+  fails the frontend typecheck.
 - `docker compose up` — runs the full app as it ships.
 - CI runs on every PR and push to `main`: `.github/workflows/backend.yml` runs `./gradlew test`;
   `.github/workflows/frontend.yml` runs install, typecheck, lint, and build.

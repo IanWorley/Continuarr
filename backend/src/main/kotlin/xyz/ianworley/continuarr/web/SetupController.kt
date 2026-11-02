@@ -1,5 +1,6 @@
 package xyz.ianworley.continuarr.web
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -26,6 +27,11 @@ class SetupController(
 ) {
 
 	@PostMapping(SETUP_PATH)
+	// Answers with bare status codes, which springdoc can't infer from ResponseEntity<Void>.
+	@ApiResponse(responseCode = "204", description = "Admin created")
+	@ApiResponse(responseCode = "400", description = "Blank username or password length out of range")
+	@ApiResponse(responseCode = "403", description = "Wrong setup token")
+	@ApiResponse(responseCode = "409", description = "An admin already exists")
 	fun setUp(@RequestBody request: SetupRequest): ResponseEntity<Void> {
 		if (users.count() > 0) return status(HttpStatus.CONFLICT)
 		if (!setupToken.matches(request.token)) return status(HttpStatus.FORBIDDEN)

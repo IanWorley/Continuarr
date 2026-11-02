@@ -1,0 +1,73 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "servers" : [ {
+    "url" : "http://localhost",
+    "description" : "Generated server url"
+  } ],
+  "paths" : {
+    "/api/setup" : {
+      "post" : {
+        "tags" : [ "setup-controller" ],
+        "operationId" : "setUp",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SetupRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "Admin created"
+          },
+          "400" : {
+            "description" : "Blank username or password length out of range"
+          },
+          "403" : {
+            "description" : "Wrong setup token"
+          },
+          "409" : {
+            "description" : "An admin already exists"
+          }
+        }
+      }
+    },
+    "/api/csrf" : {
+      "get" : {
+        "tags" : [ "csrf-controller" ],
+        "operationId" : "csrf",
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "SetupRequest" : {
+        "type" : "object",
+        "properties" : {
+          "token" : {
+            "type" : "string"
+          },
+          "username" : {
+            "type" : "string"
+          },
+          "password" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "password", "token", "username" ]
+      }
+    }
+  }
+}
