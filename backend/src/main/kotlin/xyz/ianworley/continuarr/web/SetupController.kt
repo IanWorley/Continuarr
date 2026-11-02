@@ -1,6 +1,6 @@
 package xyz.ianworley.continuarr.web
 
-import org.springframework.dao.DuplicateKeyException
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -20,14 +20,14 @@ data class SetupRequest(val token: String, val username: String, val password: S
 // First-run setup: creates the single admin, once, for whoever holds the logged setup token.
 @RestController
 class SetupController(
-	private val adminAccounts: AdminAccountRepository,
+	private val users: UserRepository,
 	private val setupToken: SetupToken,
 	private val passwordEncoder: PasswordEncoder,
 ) {
 
 	@PostMapping(SETUP_PATH)
 	fun setUp(@RequestBody request: SetupRequest): ResponseEntity<Void> {
-		if (adminAccounts.exists()) return status(HttpStatus.CONFLICT)
+		if (users.count() > 0) return status(HttpStatus.CONFLICT)
 		if (!setupToken.matches(request.token)) return status(HttpStatus.FORBIDDEN)
 
 		val username = request.username.trim()
@@ -37,10 +37,10 @@ class SetupController(
 		}
 
 		return try {
-			adminAccounts.create(AdminAccount(username, passwordEncoder.encode(request.password)!!))
+			users.save(User(username, passwordEncoder.encode(request.password)!!))
 			status(HttpStatus.NO_CONTENT)
-		} catch (_: DuplicateKeyException) {
-			// Another setup request won the race.
+		} catch (_: DataIntegrityViolationException) {
+			// Another setup request won the race to app_user's single row.
 			status(HttpStatus.CONFLICT)
 		}
 	}

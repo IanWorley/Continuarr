@@ -19,7 +19,7 @@ private val log = LoggerFactory.getLogger(SetupToken::class.java)
  * setup prints a new token.
  */
 @Component
-class SetupToken(private val adminAccounts: AdminAccountRepository) {
+class SetupToken(private val users: UserRepository) {
 
 	internal val value: String = HexFormat.of().formatHex(ByteArray(SETUP_TOKEN_BYTES).also(SecureRandom()::nextBytes))
 
@@ -27,7 +27,7 @@ class SetupToken(private val adminAccounts: AdminAccountRepository) {
 
 	@EventListener(ApplicationReadyEvent::class)
 	fun logIfSetupPending() {
-		if (!adminAccounts.exists()) {
+		if (users.count() == 0L) {
 			log.warn("No admin account yet. Create one with POST {} using setup token {}", SETUP_PATH, value)
 		}
 	}

@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
-import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated
@@ -28,15 +27,14 @@ private const val PROTECTED_PATH = "/api/v1/anything"
 @Import(TestcontainersConfiguration::class)
 class SecurityConfigTest(
 	@Autowired private val mockMvc: MockMvc,
-	@Autowired private val jdbcClient: JdbcClient,
-	@Autowired private val adminAccounts: AdminAccountRepository,
+	@Autowired private val users: UserRepository,
 	@Autowired private val passwordEncoder: PasswordEncoder,
 ) {
 
 	@BeforeTest
 	fun createAdmin() {
-		jdbcClient.sql("delete from admin_account").update()
-		adminAccounts.create(AdminAccount(ADMIN_USERNAME, passwordEncoder.encode(ADMIN_PASSWORD)!!))
+		users.deleteAll()
+		users.save(User(ADMIN_USERNAME, passwordEncoder.encode(ADMIN_PASSWORD)!!))
 	}
 
 	@Test

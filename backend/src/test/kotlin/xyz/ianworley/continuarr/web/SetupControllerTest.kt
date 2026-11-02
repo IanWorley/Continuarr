@@ -5,7 +5,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
-import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
@@ -13,7 +12,7 @@ import tools.jackson.databind.json.JsonMapper
 import xyz.ianworley.continuarr.TestcontainersConfiguration
 import kotlin.test.BeforeTest
 import kotlin.test.Test
-import kotlin.test.assertFalse
+import kotlin.test.assertEquals
 
 private const val ADMIN_USERNAME = "admin"
 private const val ADMIN_PASSWORD = "correct-horse-battery"
@@ -26,15 +25,14 @@ private const val WRONG_TOKEN = "not-the-setup-token"
 @Import(TestcontainersConfiguration::class)
 class SetupControllerTest(
 	@Autowired private val mockMvc: MockMvc,
-	@Autowired private val jdbcClient: JdbcClient,
-	@Autowired private val adminAccounts: AdminAccountRepository,
+	@Autowired private val users: UserRepository,
 	@Autowired private val setupToken: SetupToken,
 	@Autowired private val jsonMapper: JsonMapper,
 ) {
 
 	@BeforeTest
 	fun startWithoutAdmin() {
-		jdbcClient.sql("delete from admin_account").update()
+		users.deleteAll()
 	}
 
 	@Test
@@ -48,7 +46,7 @@ class SetupControllerTest(
 	fun `setup with the wrong token is forbidden and creates nothing`() {
 		setUp(SetupRequest(WRONG_TOKEN, ADMIN_USERNAME, ADMIN_PASSWORD)).andExpect { status { isForbidden() } }
 
-		assertFalse(adminAccounts.exists())
+		assertEquals(0, users.count())
 	}
 
 	@Test

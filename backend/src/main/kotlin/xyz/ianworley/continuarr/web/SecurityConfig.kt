@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.invoke
-import org.springframework.security.core.userdetails.User
+import org.springframework.security.core.userdetails.User as SecurityUser
 import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.security.core.userdetails.UsernameNotFoundException
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
@@ -33,9 +33,9 @@ class SecurityConfig {
 	fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
 
 	@Bean
-	fun userDetailsService(adminAccounts: AdminAccountRepository) = UserDetailsService { username ->
-		val admin = adminAccounts.findByUsername(username) ?: throw UsernameNotFoundException("Unknown admin")
-		User.withUsername(admin.username).password(admin.passwordHash).build()
+	fun userDetailsService(users: UserRepository) = UserDetailsService { username ->
+		val user = users.findByUsername(username) ?: throw UsernameNotFoundException("Unknown user")
+		SecurityUser.withUsername(user.username).password(user.passwordHash).build()
 	}
 
 	@Bean

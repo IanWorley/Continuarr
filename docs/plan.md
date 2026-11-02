@@ -140,6 +140,7 @@ Match sources: `id`, `path`, `suggested` (does not sync), `manual`.
 | Table | Purpose |
 |---|---|
 | `users` | A Continuarr person |
+| `app_user` | Login accounts; v1 has exactly one, the admin |
 | `server_accounts` | Person ↔ Plex/Jellyfin account; encrypted Plex token/PIN |
 | `library_pairs` | Plex library ↔ Jellyfin library |
 | `media_items` | Thin canonical item: kind, IMDb/TVDb/TMDb IDs (union), edition, parent show, season/episode, display title |
@@ -186,9 +187,9 @@ Single sync mode setting:
 
 ## Security
 
-- Single admin, created by first-run setup and stored in `admin_account` with a bcrypt hash.
-  Until then, each start logs a one-time setup token; `POST /api/setup` with that token creates
-  the admin, and only works while none exists.
+- Single admin, created by first-run setup and stored as a `User` (table `app_user`) with a
+  bcrypt hash. Until then, each start logs a one-time setup token; `POST /api/setup` with that
+  token creates the admin, and only works while none exists.
 - Form login (`POST /api/login`) with session cookie, answered with status codes (204/401) instead
   of redirects. Unauthenticated requests get 401.
 - SPA CSRF via `csrf.spa()` (Spring Security 7.0+): the SPA calls `GET /api/csrf` to get the
