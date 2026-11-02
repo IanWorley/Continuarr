@@ -63,6 +63,9 @@ plex, jellyfin ──implement──▶ server (MediaServer interface, shared ty
 | `people` | People, server accounts, merging |
 | `web` | REST API, security, serving the SPA |
 
+REST endpoints are versioned under `/api/v1/...`. Only the security endpoints stay unversioned at
+`/api/...`: login, logout, first-run setup, and CSRF (see [Security](#security)).
+
 Events are used only where async, retryable behavior is wanted — mainly `history → sync`,
 via the Modulith Event Publication Registry. Calls inside the ingestion path are plain
 method calls.

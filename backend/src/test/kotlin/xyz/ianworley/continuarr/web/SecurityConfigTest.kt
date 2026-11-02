@@ -20,6 +20,9 @@ private const val ADMIN_USERNAME = "admin"
 private const val ADMIN_PASSWORD = "correct-horse-battery"
 private const val WRONG_PASSWORD = "wrong-password"
 
+// Any versioned API route; nothing needs to be mapped there for security to answer first.
+private const val PROTECTED_PATH = "/api/v1/anything"
+
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
@@ -43,7 +46,7 @@ class SecurityConfigTest(
 
 	@Test
 	fun `unauthenticated requests get 401 instead of a redirect`() {
-		mockMvc.get("/api/anything").andExpect { status { isUnauthorized() } }
+		mockMvc.get(PROTECTED_PATH).andExpect { status { isUnauthorized() } }
 	}
 
 	@Test
