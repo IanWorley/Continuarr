@@ -6,6 +6,7 @@ import org.springframework.boot.health.actuate.endpoint.HealthEndpoint
 import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.invoke
@@ -48,6 +49,10 @@ class SecurityConfig {
 				authorize(EndpointRequest.to(HealthEndpoint::class.java), permitAll)
 				authorize(CSRF_PATH, permitAll)
 				authorize(SETUP_PATH, permitAll)
+				// The frontend must load before login so it can show the login and setup pages.
+				authorize(SpaRouteMatcher, permitAll)
+				authorize(HttpMethod.GET, SPA_INDEX_PATH, permitAll)
+				authorize(HttpMethod.GET, SPA_ASSETS_PATH, permitAll)
 				// Lets Boot's error page send statuses like 400 as-is instead of turning them into 401s.
 				authorize(DispatcherTypeRequestMatcher(DispatcherType.ERROR), permitAll)
 				authorize(anyRequest, authenticated)

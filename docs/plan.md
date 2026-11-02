@@ -198,7 +198,13 @@ Single sync mode setting:
   outside the `http { }` block.
 - Plex tokens and PINs encrypted with Spring Security Crypto; key from env var or Docker secret.
 - Everything requires authentication except the Actuator health endpoint (Docker healthcheck),
-  `GET /api/csrf`, and `POST /api/setup`.
+  `GET /api/csrf`, `POST /api/setup`, and the SPA itself: `index.html`, `/assets/**`, and client-side
+  routes (GETs with no file extension outside `/api`, `/actuator`, `/error`, and springdoc's `/v3`).
+  The SPA has to load before login to show the login and setup pages; all data comes from `/api`,
+  which stays protected. A new server path outside those prefixes would be public, so REST stays
+  under `/api`.
+- Client-side routes like `/people/123` serve `index.html`; missing assets and unknown `/api` paths
+  get 404.
 
 ## Frontend
 
@@ -259,7 +265,11 @@ and matches live in the database and are edited in the admin UI.
   fails when it no longer matches the API; copy `build/openapi.json` over it. The frontend's `dev`,
   `typecheck`, and `build` scripts generate `src/api/schema.d.ts` from it, so a breaking API change
   fails the frontend typecheck.
-- `docker compose up` — runs the full app as it ships.
+- `docker compose up` — runs the full app as it ships. The root `Dockerfile` builds the frontend in
+  a Node stage and packages it into the jar.
+- `./gradlew bootJar` packages `frontend/dist` as static resources, so run `npm run build` in
+  `frontend/` first; it fails if there is no build. Gradle never runs Node, so `test` and
+  `bootTestRun` don't need it (tests use a stand-in `index.html`).
 - CI runs on every PR and push to `main`: `.github/workflows/backend.yml` runs `./gradlew test`;
   `.github/workflows/frontend.yml` runs install, typecheck, lint, and build.
 

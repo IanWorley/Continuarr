@@ -19,7 +19,7 @@ services:
       retries: 10
 
   app:
-    build: ./backend
+    build: .
     depends_on:
       postgres:
         condition: service_healthy
