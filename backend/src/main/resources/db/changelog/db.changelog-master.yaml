@@ -4,3 +4,6 @@ databaseChangeLog:
   - include:
       file: changes/0001-event-publication.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0002-app-user.sql
+      relativeToChangelogFile: true

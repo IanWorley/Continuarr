@@ -17,6 +17,7 @@ positions, and unwatches between them.
 - Webhooks (polling only)
 - Emby or other servers
 - Per-user logins (admin only)
+- Admin password recovery
 - Trakt integration
 - Notifications
 - A permanent sync ignore list
@@ -61,6 +62,9 @@ plex, jellyfin ──implement──▶ server (MediaServer interface, shared ty
 | `sync` | State resolution, sync mode, echo suppression, write planning and execution |
 | `people` | People, server accounts, merging |
 | `web` | REST API, security, serving the SPA |
+
+REST endpoints are versioned under `/api/v1/...`. Only the security endpoints stay unversioned at
+`/api/...`: login, logout, first-run setup, and CSRF (see [Security](#security)).
 
 Events are used only where async, retryable behavior is wanted — mainly `history → sync`,
 via the Modulith Event Publication Registry. Calls inside the ingestion path are plain
@@ -136,6 +140,7 @@ Match sources: `id`, `path`, `suggested` (does not sync), `manual`.
 | Table | Purpose |
 |---|---|
 | `users` | A Continuarr person |
+| `app_user` | Login accounts; v1 has exactly one, the admin |
 | `server_accounts` | Person ↔ Plex/Jellyfin account; encrypted Plex token/PIN |
 | `library_pairs` | Plex library ↔ Jellyfin library |
 | `media_items` | Thin canonical item: kind, IMDb/TVDb/TMDb IDs (union), edition, parent show, season/episode, display title |
@@ -182,12 +187,18 @@ Single sync mode setting:
 
 ## Security
 
-- Single admin; username and bcrypt password hash from env vars.
-- Form login with session cookie; SPA CSRF via `csrf.spa()` (Spring Security 7.0+): the SPA reads
-  the `XSRF-TOKEN` cookie and sends it back in the `X-XSRF-TOKEN` header. The Kotlin DSL has no
-  `spa()` as of 7.1, so call `http.csrf { it.spa() }` outside the `http { }` block.
+- Single admin, created by first-run setup and stored as a `User` (table `app_user`) with a
+  bcrypt hash. Until then, each start logs a one-time setup token; `POST /api/setup` with that
+  token creates the admin, and only works while none exists.
+- Form login (`POST /api/login`) with session cookie, answered with status codes (204/401) instead
+  of redirects. Unauthenticated requests get 401.
+- SPA CSRF via `csrf.spa()` (Spring Security 7.0+): the SPA calls `GET /api/csrf` to get the
+  `XSRF-TOKEN` cookie (the token is deferred, so nothing else writes it), then sends it back in the
+  `X-XSRF-TOKEN` header. The Kotlin DSL has no `spa()` as of 7.1, so call `http.csrf { it.spa() }`
+  outside the `http { }` block.
 - Plex tokens and PINs encrypted with Spring Security Crypto; key from env var or Docker secret.
-- Everything requires authentication except the Actuator health endpoint (Docker healthcheck).
+- Everything requires authentication except the Actuator health endpoint (Docker healthcheck),
+  `GET /api/csrf`, and `POST /api/setup`.
 
 ## Frontend
 
@@ -232,8 +243,6 @@ and matches live in the database and are edited in the admin UI.
 
 | Variable | Purpose |
 |---|---|
-| `CONTINUARR_ADMIN_USERNAME` | Admin login |
-| `CONTINUARR_ADMIN_PASSWORD_HASH` | Admin bcrypt password hash |
 | `CONTINUARR_ENCRYPTION_KEY` | Key for encrypting Plex tokens and PINs |
 | `CONTINUARR_MAX_SYNC_MODE` | Hard ceiling on sync mode (`OFF`, `DRY_RUN`, `LIVE`) |
 | `CONTINUARR_PLEX_URL` / `CONTINUARR_PLEX_TOKEN` | Plex server and admin token |
@@ -272,7 +281,7 @@ first depends on them.
 - Gradle Kotlin DSL, Spring Boot 4, Spring Modulith, `ApplicationModules.verify()` test
 - Liquibase with the first changelog (including `event_publication`)
 - Testcontainers for tests and `bootTestRun`
-- Spring Security: admin form login, SPA CSRF, health endpoint open
+- Spring Security: first-run admin setup, form login, SPA CSRF, health endpoint open
 - springdoc OpenAPI → `openapi-typescript` generation
 - Vite + React + TanStack Query/Router shell with a login page
 - Spring Boot serves the built SPA; Compose file
