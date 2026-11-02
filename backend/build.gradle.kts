@@ -67,3 +67,16 @@ tasks.withType<Test> {
 	// OpenApiSpecTest compares against it, so editing it must rerun the tests.
 	inputs.file("openapi.json")
 }
+
+// The jar ships the built frontend as static resources. Gradle doesn't run Node, so tests and
+// bootTestRun stay Node-free: build frontend/ first (the Dockerfile does), then bootJar.
+val frontendDist = layout.projectDirectory.dir("../frontend/dist")
+
+tasks.bootJar {
+	from(frontendDist) { into("BOOT-INF/classes/static") }
+	doFirst {
+		check(frontendDist.file("index.html").asFile.exists()) {
+			"No frontend build in ${frontendDist.asFile}; run `npm ci && npm run build` in frontend/ first."
+		}
+	}
+}
