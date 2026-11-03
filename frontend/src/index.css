@@ -1,0 +1,35 @@
+@import 'tailwindcss';
+
+/* Dark-first palette tuned to sit beside Sonarr, Radarr, Plex, and Jellyfin. */
+@theme {
+  --color-ink-950: #07090f;
+  --color-ink-900: #0d111b;
+  --color-ink-800: #151b29;
+  --color-ink-700: #263047;
+  --color-ink-400: #8f99ae;
+  --color-ink-100: #e7eaf1;
+
+  /* Amber nods to Plex, violet to Jellyfin; amber is the action color. */
+  --color-accent: #f5a524;
+  --color-accent-hover: #ffbb4d;
+  --color-accent-ink: #1a1203;
+  --color-sync: #8b5cf6;
+  --color-danger: #fca5a5;
+  --color-danger-surface: #2a1215;
+
+  --animate-sync-travel: sync-travel 2.4s ease-in-out infinite;
+
+  @keyframes sync-travel {
+    0%,
+    100% {
+      left: 0%;
+    }
+    50% {
+      left: 100%;
+    }
+  }
+}
+
+:root {
+  color-scheme: dark;
+}
