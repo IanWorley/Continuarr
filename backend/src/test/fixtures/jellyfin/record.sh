@@ -11,6 +11,8 @@ usage() {
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+BACKEND_DIR="$(cd "$FIXTURES_DIR/../../../.." && pwd)"
+readonly BACKEND_DIR
 readonly MAPPINGS_DIR="$BACKEND_DIR/src/test/resources/wiremock/jellyfin/mappings"
 readonly REQUESTS_FILE="$FIXTURES_DIR/requests.txt"
 readonly WIREMOCK_CONTAINER_PORT=8080
@@ -28,27 +30,6 @@ readonly PLACEHOLDERS='{
 # 10/8, 172.16/12, and 192.168/16 become 192.0.2.1, an address reserved for documentation.
 readonly PRIVATE_IPV4='\b(10(\.[0-9]{1,3}){3}|172\.(1[6-9]|2[0-9]|3[01])(\.[0-9]{1,3}){2}|192\.168(\.[0-9]{1,3}){2})\b'
 readonly DOCUMENTATION_IPV4=192.0.2.1
-
-# Keeps only what a test can rely on: the request to match, and the status, content type, and body.
-# Dropping Date and timing headers means a re-record changes a fixture only when Jellyfin's answer changes.
-# shellcheck disable=SC2016
-readonly NORMALIZE='
-	def scrub:
-		walk(if type == "string" then
-			(reduce $secrets[] as $secret (.; split($secret.real) | join($secret.placeholder)))
-			| gsub($private_ipv4; $documentation_ipv4)
-		else . end);
-
-	.mappings[]
-	| .response |= (
-		{status, headers: ((.headers // {}) | with_entries(select(.key == "Content-Type"))), body, base64Body}
-		| if .body != null and (.headers["Content-Type"] // "" | startswith("application/json"))
-			then .jsonBody = (.body | fromjson) | del(.body)
-			else . end
-		| with_entries(select(.value != null)))
-	| {request, response}
-	| scrub
-'
 
 record() {
 	local wiremock="$1" auth line
@@ -68,7 +49,7 @@ write_mappings() {
 		'[to_entries[] | select(.value != "") | {real: .value, placeholder: $placeholders[.key]}]' "$SECRETS_FILE")"
 	rm -rf "$MAPPINGS_DIR"
 	mkdir -p "$MAPPINGS_DIR"
-	jq -c --argjson secrets "$secrets" --arg private_ipv4 "$PRIVATE_IPV4" --arg documentation_ipv4 "$DOCUMENTATION_IPV4" "$NORMALIZE" |
+	jq -c --argjson secrets "$secrets" --arg private_ipv4 "$PRIVATE_IPV4" --arg documentation_ipv4 "$DOCUMENTATION_IPV4" -f "$FIXTURES_DIR/normalize.jq" |
 		while IFS= read -r mapping; do
 			name="$(jq -r '"\(.request.method) \(.request.url)" | ascii_downcase | gsub("[^a-z0-9]+"; "-") | gsub("^-|-$"; "")' <<<"$mapping")"
 			if [ -e "$MAPPINGS_DIR/$name.json" ]; then
@@ -84,4 +65,4 @@ trap 'compose --profile record rm --stop --force wiremock >/dev/null 2>&1' EXIT
 compose --profile record up --detach --wait wiremock
 record "http://$(compose port wiremock "$WIREMOCK_CONTAINER_PORT")" | write_mappings
 echo "Recorded $(find "$MAPPINGS_DIR" -name '*.json' | wc -l | tr -d ' ') mapping(s) into $MAPPINGS_DIR"
-(cd "$BACKEND_DIR" && ./gradlew test --tests "$LEAK_TEST")
+(cd "$BACKEND_DIR" && ./gradlew test --tests "$LEAK_TEST" --rerun)

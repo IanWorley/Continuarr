@@ -32,6 +32,22 @@ readonly TICKS_PER_SECOND=10000000
 readonly POLL_SECONDS=1
 readonly SCAN_TIMEOUT_SECONDS=120
 
+jellyfin_url() {
+	echo "http://$(compose port jellyfin "$JELLYFIN_CONTAINER_PORT")"
+}
+
+# api <method> <endpoint> [json-body]: calls JELLYFIN_URL with the seed's API key and prints the response.
+api() {
+	local method="$1" endpoint="$2" body="${3:-}"
+	local auth
+	auth="$(token_header "$(jq -r .apiKey "$SECRETS_FILE")")"
+	if [ -n "$body" ]; then
+		curl -fsS -X "$method" -H "$auth" -H 'Content-Type: application/json' -d "$body" "$JELLYFIN_URL$endpoint"
+	else
+		curl -fsS -X "$method" -H "$auth" "$JELLYFIN_URL$endpoint"
+	fi
+}
+
 generate_media() {
 	find "$FIXTURES_DIR/media" -type f ! -name '*.nfo' -delete
 	local kind size file
@@ -175,8 +191,7 @@ check_seed_cases() {
 	check "Multi-episode file (S01E02-E03)" \
 		'any(.items[]; .Type == "Episode" and .IndexNumberEnd != null and .IndexNumberEnd > .IndexNumber)'
 	check "Episode with a TVDb ID that disagrees with the show + S/E" \
-		'(.items[] | select(.Name == "Conflicting Id Episode") | .ProviderIds.Tvdb) as $id
-			| any(.items[]; .Name == "Normal Episode" and .ProviderIds.Tvdb == $id)'
+		'[.items[] | select(.Name == "Conflicting Id Episode" or .Name == "Normal Episode") | .ProviderIds.Tvdb] | unique | length == 1'
 	check "One library with two root locations" \
 		'any(.folders[]; (.Locations | length) > 1)'
 	check "A music library" \
