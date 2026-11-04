@@ -227,6 +227,9 @@ Single sync mode setting:
 
 ## Setup
 
+To go from a clone to signing in locally, and for the frontend's toolchain and checks, see
+[`frontend/README.md`](../frontend/README.md).
+
 ### Prerequisites
 
 - JDK (current LTS supported by Spring Boot 4)
