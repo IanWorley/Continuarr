@@ -28,12 +28,23 @@ private val KEY_IN_TEXT = Regex("""(?i)(?:api_?key|token)\W{1,4}([0-9a-f]{32})""
 // Written apart from record.sh's pattern, so a private range the scrub misses still fails here.
 private val PRIVATE_ADDRESS = Regex(
 	"""(?i)\b(?:10(?:\.\d{1,3}){3}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}""" +
-		"""|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}""" +
-		"""|f[cd][0-9a-f]{2}:[0-9a-f:]*:[0-9a-f]{1,4}|fe[89ab][0-9a-f]:[0-9a-f:]*:[0-9a-f]{1,4})\b""",
+		"""|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2})\b""" +
+		"""|\b(?:f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):[0-9a-f:]*:[0-9a-f]{0,4}""",
 )
 
 /** A string in a fixture, with the property names that lead to it from the root. */
 private class FixtureString(val path: List<String>, val value: String)
+
+// A string body can hold JSON. It stays as text and gains its parsed value, so both get checked.
+private fun withEmbeddedJson(json: Any?): Any? = when (json) {
+	is Map<*, *> -> json.mapValues { withEmbeddedJson(it.value) }
+	is List<*> -> json.map(::withEmbeddedJson)
+	is String -> embeddedJson(json)?.let { listOf(json, withEmbeddedJson(it)) } ?: json
+	else -> json
+}
+
+private fun embeddedJson(text: String): Any? = text.trimStart().takeIf { it.startsWith("{") || it.startsWith("[") }
+	?.let { runCatching { JsonMapper().readValue<Any>(it) }.getOrNull() }
 
 private fun strings(json: Any?, path: List<String> = emptyList()): Sequence<FixtureString> = when (json) {
 	is Map<*, *> -> json.asSequence().flatMap { (key, value) -> strings(value, path + key.toString()) }
@@ -84,7 +95,7 @@ class JellyfinFixtureSecretsTest {
 		val placeholders = readStrings(PLACEHOLDERS)
 
 		val leaks = fixtures.flatMap { (file, text) ->
-			val json = JsonMapper().readValue<Any>(text)
+			val json = withEmbeddedJson(JsonMapper().readValue<Any>(text))
 			val strings = strings(json).toList()
 			val keyLeaks = strings.flatMap(::apiKeys)
 				.filter { it != placeholders.getValue("apiKey") }

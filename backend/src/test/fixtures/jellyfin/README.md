@@ -46,9 +46,9 @@ Change the `jellyfin` image tag in `compose.yaml`, then run `./record.sh`. Revie
 
 ## Check the fixtures for secrets
 
-`JellyfinFixtureSecretsTest` runs with `./gradlew test`. It fails when a fixture holds one of these:
+`JellyfinFixtureSecretsTest` runs with `./gradlew test`. It reads each fixture as JSON, and a string body that holds JSON gets the same checks as `jsonBody`. It fails when a fixture holds one of these:
 
-- An API key that isn't the placeholder in `placeholders.json`. The test counts a 32-character hex value as a key when it sits under a property whose name contains `apikey`, `api_key`, `token`, or `authorization`, such as a header matcher. It also counts one that follows `api_key` or `token` inside a string, such as a URL or a string body.
+- An API key that isn't the placeholder in `placeholders.json`. The test counts a 32-character hex value as a key when it sits under a property whose name contains `apikey`, `api_key`, `token`, or `authorization`, such as a header matcher. It also counts one that follows `api_key` or `token` inside a string, such as a URL.
 - A `ServerId`, `ServerName`, or `LocalAddress` that isn't its value in `placeholders.json`. The `Id` of the system info object, the one with `LocalAddress`, must be the server ID placeholder too.
 - A private IPv4 address in 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, or 100.64.0.0/10, or a private IPv6 address in fc00::/7 or fe80::/10. The scrub replaces only 10.0.0.0/8, 172.16.0.0/12, and 192.168.0.0/16, so a recording that holds any other private address fails here until the scrub covers it.
 - Any value from `.seed/secrets.json`. Only a machine that ran `seed.sh` has that file, so CI skips this check.
