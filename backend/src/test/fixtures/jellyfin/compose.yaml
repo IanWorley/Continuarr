@@ -1,9 +1,7 @@
-# Disposable Jellyfin for recording WireMock fixtures. seed.sh deletes its volumes on every run.
 name: continuarr-jellyfin-seed
 
 services:
   jellyfin:
-    # The minimum Jellyfin version Continuarr supports. Re-record after changing it.
     image: jellyfin/jellyfin:12.0.20260908-012347
     ports:
       - "127.0.0.1:8097:8096"
@@ -16,7 +14,6 @@ services:
       interval: 2s
       start_period: 60s
 
-  # Records only while record.sh runs it.
   wiremock:
     image: wiremock/wiremock:3.13.2
     profiles: [record]

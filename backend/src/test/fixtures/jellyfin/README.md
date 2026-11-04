@@ -35,18 +35,10 @@ The script runs `seed.sh` first, so every recording starts from the same server 
 1. It sends each path in `requests.txt` through the WireMock recorder with the API key.
 2. It deletes the old mappings and writes one file per request, named from the method and path, such as `get-system-info.json`.
 3. It keeps the method and URL to match on, and the status, `Content-Type`, and body to return. The recorder doesn't save request headers, so matching ignores `Authorization` and no fixture holds the key. The script drops `Date` and timing headers, so a re-record changes a file only when Jellyfin's answer changes.
-4. It replaces the seed server's real values with the placeholders below.
+4. It replaces the seed server's real API key, server ID, server name, and local address with the values in `placeholders.json`. It replaces any other private IPv4 address with `192.0.2.1`, an address reserved for documentation.
 5. It runs `JellyfinFixtureSecretsTest`.
 
-| Real value | Placeholder |
-|---|---|
-| API key | `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` |
-| Server ID | `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb` |
-| Server name | `Seed Server` |
-| Local address | `http://192.0.2.1:8096` |
-| Any other private IPv4 address | `192.0.2.1` |
-
-To record another endpoint, add its path to `requests.txt` and run `./record.sh`. The script sends each path as written. User IDs change on every seed, so a path that needs one needs a lookup in `record.sh` first.
+To record another endpoint, add its path to `requests.txt` and run `./record.sh`. The script sends each path as written and skips blank lines and lines that start with `#`. User IDs change on every seed, so a path that needs one needs a lookup in `record.sh` first.
 
 ## Re-record after a Jellyfin upgrade
 
@@ -56,7 +48,7 @@ Change the `jellyfin` image tag in `compose.yaml`, then run `./record.sh`. Revie
 
 `JellyfinFixtureSecretsTest` runs with `./gradlew test`. It fails when a fixture holds one of these:
 
-- A 32-character hex value after an API key or token name, or a `ServerId`, `ServerName`, or `LocalAddress` that isn't its placeholder.
+- A 32-character hex value after an API key or token name, or a `ServerId`, `ServerName`, or `LocalAddress` that isn't its value in `placeholders.json`.
 - A private IPv4 address in 10.0.0.0/8, 172.16.0.0/12, or 192.168.0.0/16.
 - Any value from `.seed/secrets.json`. Only a machine that ran `seed.sh` has that file, so CI skips this check.
 

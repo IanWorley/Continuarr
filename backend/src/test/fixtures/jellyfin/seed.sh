@@ -11,7 +11,7 @@ usage() {
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
-# The server listens on loopback only and is deleted on every run, so these aren't secrets.
+# compose.yaml binds the server to loopback, and every run deletes it, so this password isn't a secret.
 readonly ADMIN_USER=admin
 readonly SEED_PASSWORD=seed-password
 readonly USER_A=user-a
@@ -36,7 +36,6 @@ jellyfin_url() {
 	echo "http://$(compose port jellyfin "$JELLYFIN_CONTAINER_PORT")"
 }
 
-# api <method> <endpoint> [json-body]: calls JELLYFIN_URL with the seed's API key and prints the response.
 api() {
 	local method="$1" endpoint="$2" body="${3:-}"
 	local auth
@@ -59,7 +58,6 @@ generate_media() {
 			input=(-f lavfi -i "testsrc2=size=$size:rate=$CLIP_FRAME_RATE:duration=$CLIP_SECONDS" "${input[@]}")
 			encode=(-c:v libx264 -crf "$CLIP_QUALITY" -pix_fmt yuv420p -c:a aac -b:a "$AUDIO_BITRATE" -shortest)
 		fi
-		# Uses the ffmpeg inside the pinned Jellyfin image, so the host needs only Docker.
 		compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$FIXTURES_DIR/media:/out" \
 			--entrypoint "$FFMPEG" jellyfin -nostdin -hide_banner -loglevel error \
 			"${input[@]}" "${encode[@]}" -y "/out/$file" </dev/null
@@ -96,7 +94,6 @@ uri() {
 	jq -rn --arg value "$1" '$value | @uri'
 }
 
-# add_library <name> <collection-type> <root>...
 add_library() {
 	local query
 	query="name=$(uri "$1")&collectionType=$2"
@@ -118,7 +115,7 @@ add_library() {
 	}}')"
 }
 
-# Waits for a scan that ends after this call, not one that a library add may have started earlier.
+# Jellyfin 12 starts its own scan when a library gets a folder, so wait for a scan that ends after this trigger.
 scan_libraries() {
 	local task previous_end waited=0
 	task="$(api GET /ScheduledTasks | jq -r '.[] | select(.Key == "RefreshLibrary") | .Id')"
@@ -157,7 +154,6 @@ seed_user_state() {
 		"$(jq -n --argjson ticks $((RESUME_SECONDS * TICKS_PER_SECOND)) '{PlaybackPositionTicks: $ticks}')" >/dev/null
 }
 
-# Checks each case by what it means, so the checks still hold if the fake IDs in the .nfo files change.
 check_seed_cases() {
 	local state failures=0
 	state="$(jq -n \

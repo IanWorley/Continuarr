@@ -1,7 +1,3 @@
-# Turns the recorder's mappings into fixtures: one compact mapping per line, scrubbed.
-# Keeps only what a test can rely on: the request to match, and the status, content type, and body.
-# Dropping Date and timing headers means a re-record changes a fixture only when Jellyfin's answer changes.
-
 def scrub:
 	walk(if type == "string" then
 		(reduce $secrets[] as $secret (.; split($secret.real) | join($secret.placeholder)))

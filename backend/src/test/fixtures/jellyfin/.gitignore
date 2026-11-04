@@ -1,4 +1,3 @@
-# seed.sh writes these: the server's real API key and identity, and the generated clips.
 .seed/
 media/**/*.mkv
 media/**/*.mp3

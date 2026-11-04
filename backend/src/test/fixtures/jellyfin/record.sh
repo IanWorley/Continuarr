@@ -16,18 +16,9 @@ readonly BACKEND_DIR
 readonly MAPPINGS_DIR="$BACKEND_DIR/src/test/resources/wiremock/jellyfin/mappings"
 readonly REQUESTS_FILE="$FIXTURES_DIR/requests.txt"
 readonly WIREMOCK_CONTAINER_PORT=8080
-# The recorder reaches the seed server over the Compose network.
 readonly RECORD_TARGET="http://jellyfin:$JELLYFIN_CONTAINER_PORT"
 readonly LEAK_TEST=xyz.ianworley.continuarr.jellyfin.JellyfinFixtureSecretsTest
-
-# Replace the seed server's real values, keyed like .seed/secrets.json. JellyfinFixtureSecretsTest expects the same values.
-readonly PLACEHOLDERS='{
-	"apiKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	"serverId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-	"serverName": "Seed Server",
-	"localAddress": "http://192.0.2.1:8096"
-}'
-# 10/8, 172.16/12, and 192.168/16 become 192.0.2.1, an address reserved for documentation.
+readonly PLACEHOLDERS_FILE="$FIXTURES_DIR/placeholders.json"
 readonly PRIVATE_IPV4='\b(10(\.[0-9]{1,3}){3}|172\.(1[6-9]|2[0-9]|3[01])(\.[0-9]{1,3}){2}|192\.168(\.[0-9]{1,3}){2})\b'
 readonly DOCUMENTATION_IPV4=192.0.2.1
 
@@ -45,8 +36,8 @@ record() {
 
 write_mappings() {
 	local secrets mapping name
-	secrets="$(jq -c --argjson placeholders "$PLACEHOLDERS" \
-		'[to_entries[] | select(.value != "") | {real: .value, placeholder: $placeholders[.key]}]' "$SECRETS_FILE")"
+	secrets="$(jq -c --slurpfile placeholders "$PLACEHOLDERS_FILE" \
+		'[to_entries[] | select(.value != "") | {real: .value, placeholder: $placeholders[0][.key]}]' "$SECRETS_FILE")"
 	rm -rf "$MAPPINGS_DIR"
 	mkdir -p "$MAPPINGS_DIR"
 	jq -c --argjson secrets "$secrets" --arg private_ipv4 "$PRIVATE_IPV4" --arg documentation_ipv4 "$DOCUMENTATION_IPV4" -f "$FIXTURES_DIR/normalize.jq" |
