@@ -34,7 +34,6 @@ export function LoginForm({ submitting, failure, onSubmit }: LoginFormProps) {
   return (
     <form onSubmit={handleSubmit} className="w-full max-w-sm">
       <h1 className="text-2xl font-semibold text-ink-100">Sign in</h1>
-      <p className="mt-1.5 text-sm text-ink-400">Use the admin account you created during setup.</p>
 
       {/* Always mounted so screen readers are already watching it when a message appears. */}
       <div aria-live="polite" id={errorId}>
