@@ -1,7 +1,10 @@
 package xyz.ianworley.continuarr.server
 
+import tools.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.readValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertNull
 
 private const val MEDIA_ROOT = "/media"
@@ -13,6 +16,7 @@ private const val DIFFERENT_CASE_PATH = "/Media/TV/Show/S01E01.mkv"
 private const val UNRELATED_PATH = "/srv/movies/Movie.mkv"
 private const val WINDOWS_ROOT = "D:\\Media\\TV"
 private const val WINDOWS_EPISODE_PATH = "D:\\Media\\TV\\Show\\S01E01.mkv"
+private const val ABSOLUTE_PATH_JSON = "\"/media/tv/Show/S01E01.mkv\""
 
 class RelativePathTest {
 
@@ -65,6 +69,16 @@ class RelativePathTest {
 	@Test
 	fun `returns null when the path is the root itself`() {
 		assertNull(RelativePath.relativizeOrNull("$TV_ROOT/", listOf(TV_ROOT)))
+	}
+
+	@Test
+	fun `returns null when the path is the longest of nested roots`() {
+		assertNull(RelativePath.relativizeOrNull(TV_ROOT, listOf(MEDIA_ROOT, TV_ROOT)))
+	}
+
+	@Test
+	fun `Jackson can't build a RelativePath with a leading slash`() {
+		assertFails { jacksonObjectMapper().readValue<RelativePath>(ABSOLUTE_PATH_JSON) }
 	}
 
 	@Test

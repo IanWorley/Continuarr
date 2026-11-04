@@ -3,9 +3,19 @@ package xyz.ianworley.continuarr.server
 private const val SEPARATOR = '/'
 private const val WINDOWS_SEPARATOR = '\\'
 
-/** A non-empty, `/`-separated path below a library root, with no leading `/`. */
+/**
+ * A file path with its library root stripped: non-empty, `/`-separated, with no leading `/`.
+ * Dot segments are kept as the server reported them.
+ */
 @JvmInline
 value class RelativePath private constructor(val value: String) {
+	// Repeats the factory's guarantees because Jackson calls the private constructor directly.
+	init {
+		require(value.isNotEmpty() && !value.startsWith(SEPARATOR) && WINDOWS_SEPARATOR !in value) {
+			"Not a relative path: $value"
+		}
+	}
+
 	companion object {
 		/**
 		 * Strips the longest root that contains [absolutePath], comparing case-sensitively.
@@ -16,7 +26,7 @@ value class RelativePath private constructor(val value: String) {
 			val root = roots
 				.filter { it.isNotBlank() }
 				.map { it.withForwardSlashes().trimEnd(SEPARATOR) }
-				.filter { path.startsWith(it + SEPARATOR) }
+				.filter { path == it || path.startsWith(it + SEPARATOR) }
 				.maxByOrNull { it.length }
 				?: return null
 			val remainder = path.substring(root.length).trimStart(SEPARATOR)

@@ -1,5 +1,7 @@
 package xyz.ianworley.continuarr.server
 
+import tools.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.readValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -27,6 +29,12 @@ private val MALFORMED_NUMERIC_IDS = listOf(
 	"-81189",
 	"+81189",
 	"١٢٣",
+)
+
+private val MALFORMED_IDS_JSON = listOf(
+	"""{"imdb":"garbage"}""",
+	"""{"tvdb":"-1"}""",
+	"""{"tmdb":"12a"}""",
 )
 
 class ExternalIdsTest {
@@ -59,5 +67,12 @@ class ExternalIdsTest {
 	@Test
 	fun `TmdbId rejects malformed input`() {
 		assertEquals(emptyList(), MALFORMED_NUMERIC_IDS.filter { TmdbId.parseOrNull(it) != null })
+	}
+
+	@Test
+	fun `Jackson can't build malformed external IDs`() {
+		val mapper = jacksonObjectMapper()
+
+		assertEquals(emptyList(), MALFORMED_IDS_JSON.filter { runCatching { mapper.readValue<ExternalIds>(it) }.isSuccess })
 	}
 }
