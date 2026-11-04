@@ -4,8 +4,15 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
+private const val MEDIA_ROOT = "/media"
 private const val TV_ROOT = "/media/tv"
+private const val FILESYSTEM_ROOT = "/"
 private const val EPISODE_PATH = "Show/S01E01.mkv"
+private const val SIBLING_FOLDER_PATH = "/media/tv-kids/show.mkv"
+private const val DIFFERENT_CASE_PATH = "/Media/TV/Show/S01E01.mkv"
+private const val UNRELATED_PATH = "/srv/movies/Movie.mkv"
+private const val WINDOWS_ROOT = "D:\\Media\\TV"
+private const val WINDOWS_EPISODE_PATH = "D:\\Media\\TV\\Show\\S01E01.mkv"
 
 class RelativePathTest {
 
@@ -18,19 +25,22 @@ class RelativePathTest {
 
 	@Test
 	fun `picks the longest matching root`() {
-		val relative = RelativePath.relativizeOrNull("$TV_ROOT/$EPISODE_PATH", listOf("/media", TV_ROOT, "/"))
+		val relative = RelativePath.relativizeOrNull(
+			"$TV_ROOT/$EPISODE_PATH",
+			listOf(MEDIA_ROOT, TV_ROOT, FILESYSTEM_ROOT),
+		)
 
 		assertEquals(EPISODE_PATH, relative?.value)
 	}
 
 	@Test
 	fun `rejects a sibling folder sharing a prefix`() {
-		assertNull(RelativePath.relativizeOrNull("/media/tv-kids/show.mkv", listOf(TV_ROOT)))
+		assertNull(RelativePath.relativizeOrNull(SIBLING_FOLDER_PATH, listOf(TV_ROOT)))
 	}
 
 	@Test
 	fun `normalizes Windows separators`() {
-		val relative = RelativePath.relativizeOrNull("D:\\Media\\TV\\Show\\S01E01.mkv", listOf("D:\\Media\\TV"))
+		val relative = RelativePath.relativizeOrNull(WINDOWS_EPISODE_PATH, listOf(WINDOWS_ROOT))
 
 		assertEquals(EPISODE_PATH, relative?.value)
 	}
@@ -44,12 +54,12 @@ class RelativePathTest {
 
 	@Test
 	fun `compares case-sensitively`() {
-		assertNull(RelativePath.relativizeOrNull("/Media/TV/$EPISODE_PATH", listOf(TV_ROOT)))
+		assertNull(RelativePath.relativizeOrNull(DIFFERENT_CASE_PATH, listOf(TV_ROOT)))
 	}
 
 	@Test
 	fun `returns null when no root matches`() {
-		assertNull(RelativePath.relativizeOrNull("/srv/movies/Movie.mkv", listOf(TV_ROOT)))
+		assertNull(RelativePath.relativizeOrNull(UNRELATED_PATH, listOf(TV_ROOT)))
 	}
 
 	@Test
@@ -59,6 +69,6 @@ class RelativePathTest {
 
 	@Test
 	fun `ignores blank roots`() {
-		assertNull(RelativePath.relativizeOrNull("/srv/movies/Movie.mkv", listOf(TV_ROOT, "")))
+		assertNull(RelativePath.relativizeOrNull(UNRELATED_PATH, listOf(TV_ROOT, "")))
 	}
 }
