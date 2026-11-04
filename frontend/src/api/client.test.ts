@@ -98,7 +98,7 @@ describe('apiFetch', () => {
       (_input, init) =>
         new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))),
     )
-    const failed = vi.fn()
+    const failed = vi.fn<(reason: unknown) => void>()
 
     apiFetch(STATE_CHANGING_PATH, { method }).catch(failed)
     await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS - 1)
