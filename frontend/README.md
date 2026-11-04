@@ -33,7 +33,7 @@ Before you start, install the tools in the plan's [Prerequisites](../docs/plan.m
 		http://localhost:8080/api/setup
 	```
 
-	The first request gets the `XSRF-TOKEN` cookie, and the second sends it back in the `X-XSRF-TOKEN` header (see [Security](../docs/plan.md#security)). The second request prints `204` when it creates the admin. It prints `403` for a wrong setup token, `409` when an admin already exists, and `400` for a blank username or a password of the wrong length. The `/setup` page (#96) replaces these commands once it lands.
+	The first request gets the `XSRF-TOKEN` cookie, and the second sends it back in the `X-XSRF-TOKEN` header (see [Security](../docs/plan.md#security)). The second request prints `204` when it creates the admin. It prints `403` for a wrong setup token, `409` when an admin already exists, and `400` for a blank username or a password shorter than 8 characters or longer than 72 bytes. The `/setup` page (#96) replaces these commands once it lands.
 
 3. Install the dependencies and start the dev server from `frontend/`:
 
@@ -63,8 +63,8 @@ The `dev`, `typecheck`, and `build` scripts first run `generate:api`, which writ
 
 ## TypeScript allows only erasable syntax
 
-`tsconfig.app.json` turns on `erasableSyntaxOnly`, so every TypeScript construct must disappear when the types are stripped. Enums and constructor parameter properties such as `constructor(readonly x: T)` fail with `TS1294`. Use a union of string literals in place of an enum, and declare fields in the class body.
+`tsconfig.app.json` turns on `erasableSyntaxOnly`, which allows only TypeScript syntax that a tool can strip without generating code. Enums and constructor parameter properties such as `constructor(readonly x: T)` fail with `TS1294`. Use a union of string literals in place of an enum, and declare fields in the class body and assign them in the constructor.
 
 ## Style with the theme tokens
 
-Tailwind CSS v4 runs through `@tailwindcss/vite`, with no Tailwind config file. `src/index.css` holds the theme. The `@theme` block defines the colour tokens, so `--color-ink-900` gives classes like `bg-ink-900` and `text-ink-900`. The `@utility` blocks define custom utilities such as `brand-glow`. Use the tokens instead of raw colour values. If the palette needs a new colour, add a token to `@theme`.
+Tailwind CSS v4 runs through `@tailwindcss/vite`, with no Tailwind config file. `src/index.css` holds the theme. The `@theme` block defines the color tokens, so `--color-ink-900` gives classes like `bg-ink-900` and `text-ink-900`. The `@utility` blocks define custom utilities such as `brand-glow`. Use the tokens instead of raw color values. If the palette needs a new color, add a token to `@theme`.
