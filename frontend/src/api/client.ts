@@ -10,12 +10,13 @@ export const CSRF_PATH = '/api/csrf'
 export const LOGIN_PATH = '/api/login'
 export const LOGOUT_PATH = '/api/logout'
 export const SETUP_PATH = '/api/setup'
+export const API_TIMEOUT_MS = 10_000
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 const STATE_CHANGING_METHODS: ReadonlySet<HttpMethod> = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
-export type ApiRequestInit = Omit<RequestInit, 'method' | 'credentials'> & { method?: HttpMethod }
+export type ApiRequestInit = Omit<RequestInit, 'method' | 'credentials' | 'signal'> & { method?: HttpMethod }
 
 export interface Credentials {
   username: string
@@ -28,15 +29,17 @@ export type SetupStatus = components['schemas']['SetupStatus']
 
 /**
  * Sends a request to the backend. State-changing methods carry the CSRF token, fetching it
- * first if this browser has none yet.
+ * first if this browser has none yet. The whole call rejects if it takes longer than
+ * API_TIMEOUT_MS.
  */
 export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise<Response> {
   const method = init.method ?? 'GET'
+  const signal = AbortSignal.timeout(API_TIMEOUT_MS)
   const headers = new Headers(init.headers)
   if (STATE_CHANGING_METHODS.has(method)) {
-    headers.set(CSRF_HEADER_NAME, await csrfToken())
+    headers.set(CSRF_HEADER_NAME, await csrfToken(signal))
   }
-  return fetch(path, { ...init, method, headers, credentials: 'same-origin' })
+  return fetch(path, { ...init, method, headers, credentials: 'same-origin', signal })
 }
 
 /** Form login; answers 204 on success and 401 on bad credentials. */
@@ -78,11 +81,11 @@ export function setUp(request: SetupRequest): Promise<Response> {
 
 // Read from the cookie on every request rather than cached: Spring rotates the token on login
 // and logout, and the browser's cookie is always the current one.
-async function csrfToken(): Promise<string> {
+async function csrfToken(signal: AbortSignal): Promise<string> {
   const existing = readCsrfCookie()
   if (existing) return existing
 
-  const response = await fetch(CSRF_PATH, { credentials: 'same-origin' })
+  const response = await fetch(CSRF_PATH, { credentials: 'same-origin', signal })
   const token = readCsrfCookie()
   if (!response.ok || !token) {
     throw new Error(`GET ${CSRF_PATH} returned ${response.status} without a ${CSRF_COOKIE_NAME} cookie`)
