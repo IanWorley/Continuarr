@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from 'react'
 import type { SetupRequest } from '../api/client.ts'
-import { FIELD_CLASSES, FORM_CLASSES, FormAlert, HEADING_CLASSES, LABEL_CLASSES, SubmitButton } from '../auth/formParts.tsx'
+import { FIELD_CLASSES, FORM_CLASSES, FormAlert, HEADING_CLASSES, LABEL_CLASSES, SubmitButton } from '../forms/formParts.tsx'
 
 // Mirror SetupController's rules so the message can name them. The server counts the maximum in
 // UTF-8 bytes, so a password with accented letters or emoji can hit it before 72 characters.

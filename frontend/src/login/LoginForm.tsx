@@ -1,6 +1,6 @@
 import { useId, type FormEvent } from 'react'
 import type { Credentials } from '../api/client.ts'
-import { FIELD_CLASSES, FORM_CLASSES, FormAlert, HEADING_CLASSES, LABEL_CLASSES, SubmitButton } from '../auth/formParts.tsx'
+import { FIELD_CLASSES, FORM_CLASSES, FormAlert, HEADING_CLASSES, LABEL_CLASSES, SubmitButton } from '../forms/formParts.tsx'
 
 export type LoginFailure = 'bad-credentials' | 'unavailable'
 
