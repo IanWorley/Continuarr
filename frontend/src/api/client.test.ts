@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiFetch, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, CSRF_PATH, login, LOGIN_PATH } from './client.ts'
+import { API_TIMEOUT_MS, apiFetch, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, CSRF_PATH, login, LOGIN_PATH } from './client.ts'
 
 const TOKEN = 'token-before-login'
 const ROTATED_TOKEN = 'token-after-login'
@@ -35,6 +35,8 @@ afterEach(() => {
   clearCsrfCookie()
   fetchMock.mockReset()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 describe('apiFetch', () => {
@@ -79,5 +81,30 @@ describe('apiFetch', () => {
 
     expect(requestedPaths()).toEqual([LOGIN_PATH, STATE_CHANGING_PATH])
     expect(headerSentTo(STATE_CHANGING_PATH)).toBe(ROTATED_TOKEN)
+  })
+
+  it.each([
+    { request: 'a GET', method: 'GET' },
+    { request: 'a POST before the browser has a CSRF cookie', method: 'POST' },
+  ] as const)('fails $request the server never answers once the timeout passes', async ({ method }) => {
+    vi.useFakeTimers()
+    // jsdom schedules AbortSignal.timeout where Vitest's fake clock can't reach, so run it on setTimeout.
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(), milliseconds)
+      return controller.signal
+    })
+    fetchMock.mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))),
+    )
+    const failed = vi.fn()
+
+    apiFetch(STATE_CHANGING_PATH, { method }).catch(failed)
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS - 1)
+    expect(failed).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(failed).toHaveBeenCalledOnce()
   })
 })
