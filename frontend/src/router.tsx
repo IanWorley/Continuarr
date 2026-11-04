@@ -1,11 +1,22 @@
-import { createRootRoute, createRouter } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import { LoginPage } from './login/LoginPage.tsx'
 
-// Placeholder until the login, setup, and shell pages land (#9).
-const rootRoute = createRootRoute({
+const rootRoute = createRootRoute()
+
+// Placeholder until the logged-in shell lands (#9).
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
   component: () => <p>Continuarr</p>,
 })
 
-export const router = createRouter({ routeTree: rootRoute })
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/login',
+  component: LoginPage,
+})
+
+export const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, loginRoute]) })
 
 // Registers the router type so links and navigation are type-checked app-wide.
 declare module '@tanstack/react-router' {

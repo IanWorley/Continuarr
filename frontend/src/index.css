@@ -1,0 +1,35 @@
+@import 'tailwindcss';
+
+/* Dark-first palette tuned to sit beside Sonarr, Radarr, Plex, and Jellyfin. */
+@theme {
+  --color-ink-950: #07090f;
+  --color-ink-900: #0d111b;
+  --color-ink-700: #263047;
+  /* Control edges: at least 3:1 against ink-900 and ink-950 (WCAG 1.4.11). */
+  --color-ink-500: #5b6680;
+  --color-ink-400: #8f99ae;
+  --color-ink-100: #e7eaf1;
+
+  /* Amber is the action color; violet only tints the backdrop glow. */
+  --color-accent: #f5a524;
+  --color-accent-hover: #ffbb4d;
+  --color-accent-ink: #1a1203;
+  --color-sync: #8b5cf6;
+  --color-danger: #fca5a5;
+  --color-danger-surface: #2a1215;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+/* Brand-panel backdrop: posters fade out toward the edges under two soft glows. */
+@utility poster-fade {
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+@utility brand-glow {
+  background-image:
+    radial-gradient(circle at 20% 20%, --alpha(var(--color-accent) / 18%), transparent 45%),
+    radial-gradient(circle at 80% 85%, --alpha(var(--color-sync) / 22%), transparent 50%);
+}
