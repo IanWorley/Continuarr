@@ -11,7 +11,6 @@ const HTTP_NO_CONTENT = 204
 const HTTP_FORBIDDEN = 403
 const HTTP_UNAUTHORIZED = 401
 const USERNAME = 'admin'
-const SIGN_OUT_FAILED_MESSAGE = /Couldn't sign out/
 
 type Respond = () => Promise<Response>
 
@@ -28,6 +27,10 @@ const signedIn: Respond = async () => Response.json({ username: USERNAME })
 const signedOut: Respond = async () => new Response(null, { status: HTTP_UNAUTHORIZED })
 const setupDone: Respond = async () => Response.json({ required: false })
 const noContent: Respond = async () => new Response(null, { status: HTTP_NO_CONTENT })
+const refused: Respond = async () => new Response(null, { status: HTTP_FORBIDDEN })
+const unreachable: Respond = async () => {
+  throw new TypeError('Failed to fetch')
+}
 
 function logoutRequests() {
   return fetchMock.mock.calls.filter(([input, init]) => String(input) === LOGOUT_PATH && init?.method === 'POST')
@@ -83,16 +86,19 @@ it('signs out and returns to the login page', async () => {
   expect(logoutRequests()).toHaveLength(1)
 })
 
-it('stays in the shell when the server refuses the sign-out', async () => {
+it.each([
+  { failure: 'a 403', respond: refused },
+  { failure: 'a network error', respond: unreachable },
+])('returns to the login page after $failure on sign-out', async ({ respond }) => {
   stubBackend({
     [`GET ${SESSION_PATH}`]: signedIn,
-    [`POST ${LOGOUT_PATH}`]: async () => new Response(null, { status: HTTP_FORBIDDEN }),
+    [`POST ${LOGOUT_PATH}`]: respond,
+    [`GET ${SETUP_PATH}`]: setupDone,
   })
   const router = openShell()
 
   fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
 
-  expect(await screen.findByText(SIGN_OUT_FAILED_MESSAGE)).toBeDefined()
-  expect(screen.getByText(USERNAME)).toBeDefined()
-  expect(router.state.location.pathname).toBe('/')
+  expect(await screen.findByRole('button', { name: 'Sign in' })).toBeDefined()
+  expect(router.state.location.pathname).toBe('/login')
 })
