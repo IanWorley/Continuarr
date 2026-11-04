@@ -48,7 +48,7 @@ Change the `jellyfin` image tag in `compose.yaml`, then run `./record.sh`. Revie
 
 `JellyfinFixtureSecretsTest` runs with `./gradlew test`. It fails when a fixture holds one of these:
 
-- A 32-character hex value after an API key or token name, or a `ServerId`, `ServerName`, or `LocalAddress` that isn't its value in `placeholders.json`.
+- A 32-character hex value after an API key or token name, or a `ServerId`, `ServerName`, or `LocalAddress` that isn't its value in `placeholders.json`. The `Id` of the system info object, the one with `LocalAddress`, must be the server ID placeholder too.
 - A private IPv4 address in 10.0.0.0/8, 172.16.0.0/12, or 192.168.0.0/16.
 - Any value from `.seed/secrets.json`. Only a machine that ran `seed.sh` has that file, so CI skips this check.
 

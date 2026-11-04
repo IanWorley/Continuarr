@@ -34,6 +34,14 @@ private val PRIVATE_IPV4 =
 
 private fun readStrings(json: Path): Map<String, String> = JsonMapper().readValue(json.readText())
 
+// System info is the only Jellyfin object with a LocalAddress, and its plain Id is the server ID.
+private fun serverInfoIds(json: Any?): Sequence<Any?> = when (json) {
+	is Map<*, *> -> json.values.asSequence().flatMap(::serverInfoIds) +
+		if ("LocalAddress" in json) sequenceOf(json["Id"]) else emptySequence()
+	is List<*> -> json.asSequence().flatMap(::serverInfoIds)
+	else -> emptySequence()
+}
+
 class JellyfinFixtureSecretsTest {
 
 	private val fixtures: Map<Path, String> = Files.walk(FIXTURES_DIR).use { paths ->
@@ -57,11 +65,15 @@ class JellyfinFixtureSecretsTest {
 		val placeholders = readStrings(PLACEHOLDERS)
 
 		val leaks = fixtures.flatMap { (file, text) ->
-			PLACEHOLDER_FIELDS.flatMap { field ->
+			val fieldLeaks = PLACEHOLDER_FIELDS.flatMap { field ->
 				field.pattern.findAll(text)
 					.filter { it.groupValues[1] != placeholders.getValue(field.placeholderKey) }
 					.map { "$file has a real ${field.name}" }
 			}
+			val serverIdLeaks = serverInfoIds(JsonMapper().readValue<Any>(text))
+				.filter { it != placeholders.getValue("serverId") }
+				.map { "$file has a real server Id in its system info" }
+			fieldLeaks + serverIdLeaks
 		}
 
 		assertEquals(emptyList(), leaks, RERECORD_HINT)
