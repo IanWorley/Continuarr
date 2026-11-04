@@ -93,7 +93,7 @@ class JellyfinMediaServer(
 
 	override fun userStates(account: ServerAccountId, library: ServerLibraryId): Sequence<UserItemState> = TODO("#18")
 
-	override fun activeSessions(): List<ActiveSession> = TODO("#19")
+	override fun activeSessions(): List<ActiveSession> = get<List<SessionDto>>(SESSIONS_PATH).mapNotNull { it.toActiveSessionOrNull() }
 
 	/** A failure is logged, not thrown, so Continuarr starts while Jellyfin is down. */
 	@EventListener(ApplicationReadyEvent::class)
