@@ -1,6 +1,5 @@
 package xyz.ianworley.continuarr.jellyfin.internal
 
-/** The saved Jellyfin connection as the adapter finds it on each call. */
 sealed interface StoredConnection {
 	data object NotConfigured : StoredConnection
 
