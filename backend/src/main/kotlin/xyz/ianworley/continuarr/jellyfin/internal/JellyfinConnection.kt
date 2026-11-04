@@ -16,7 +16,6 @@ private const val PERCENT = '%'
 private val API_KEY_CHARACTERS = '!'..'~'
 private val QUOTED_STRING_SPECIALS = setOf('"', '\\')
 
-/** A Jellyfin server the adapter can call. */
 class JellyfinConnection(val baseUrl: URI, val apiKey: JellyfinApiKey)
 
 /**

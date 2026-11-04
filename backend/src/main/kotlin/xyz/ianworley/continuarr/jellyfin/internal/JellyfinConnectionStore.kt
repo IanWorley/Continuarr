@@ -12,10 +12,8 @@ private const val UNREADABLE_REASON =
 		"or save the connection again"
 private const val DATABASE_FAILURE_REASON = "Can't read the saved Jellyfin connection from the database"
 
-/** The `jellyfin_connection` row as stored, before the key is decrypted. */
 class JellyfinConnectionRow(val url: String, val apiKeyCiphertext: ByteArray)
 
-/** Reads and writes `jellyfin_connection`'s single row, encrypting the key with CONTINUARR_ENCRYPTION_KEY. */
 class JellyfinConnectionStore(private val jdbcClient: JdbcClient, encryptionKey: EncryptionKeyProperties) {
 
 	private val cipher: ApiKeyCipher? = encryptionKey.secretKey?.let(::ApiKeyCipher)

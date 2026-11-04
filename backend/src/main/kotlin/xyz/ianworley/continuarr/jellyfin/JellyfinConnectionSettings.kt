@@ -14,10 +14,8 @@ enum class JellyfinField {
 sealed interface JellyfinSaveResult {
 	data object Saved : JellyfinSaveResult
 
-	/** Lists every invalid field at once. */
 	data class Invalid(val fields: Set<JellyfinField>) : JellyfinSaveResult
 
-	/** CONTINUARR_ENCRYPTION_KEY isn't set, so the API key can't be stored. */
 	data object EncryptionKeyMissing : JellyfinSaveResult
 }
 

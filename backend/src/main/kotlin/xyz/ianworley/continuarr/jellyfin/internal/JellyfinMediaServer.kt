@@ -61,13 +61,14 @@ private fun Throwable.isLostConnection(): Boolean =
 	this is IOException && this !is CharConversionException && this !is CharacterCodingException
 
 /**
- * Every request goes through [get], so each method throws only [MediaServerException]. The adapter
- * adds no retries of its own, so the pollers decide when to try again. The JDK client may still replay an
- * idempotent GET once when a connection drops.
+ * Every request goes through [get], so each method throws only [MediaServerException]. The adapter adds no
+ * retries of its own, so the pollers decide when to try again. The JDK client may still replay an idempotent
+ * GET once when a connection drops.
  *
  * Each call reads [connection] once, so a newly saved server takes effect on the next call. With no usable
- * connection saved, calls fail as [MediaServerException.Unreachable]. Its message is the only way to tell
- * that apart from a server that's down, so a caller that needs to know asks JellyfinConnectionSettings.
+ * connection, calls fail as [MediaServerException.Unreachable]. `server`'s sealed exception has no case
+ * for that, so only the message ("Jellyfin connection not configured", or the reason a saved row can't
+ * be used) tells it apart from a server that's down.
  */
 class JellyfinMediaServer(
 	private val connection: () -> StoredConnection,

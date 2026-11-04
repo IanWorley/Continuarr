@@ -39,7 +39,6 @@ private const val OTHER_EXPECTED_AUTHORIZATION = """MediaBrowser Client="Continu
 
 private const val OTHER_ENCRYPTION_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
-// Nothing listens on port 1, so every query fails to connect.
 private const val UNREACHABLE_DATABASE_URL = "jdbc:postgresql://127.0.0.1:1/continuarr"
 
 private const val USERS_PATH = "/Users"
