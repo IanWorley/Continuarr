@@ -22,7 +22,18 @@ Before you start, install the tools in the plan's [Prerequisites](../docs/plan.m
 	No admin account yet. Create one with POST /api/setup using setup token 3f9c0b1e8d2a4c6f7e5b9a1d0c3e2f4a
 	```
 
-2. In another terminal, create the admin. Replace `<setup-token>` with the token from the log, and `<password>` with a password of at least 8 characters:
+2. In another terminal, install the dependencies and start the dev server from `frontend/`:
+
+	```sh
+	npm ci
+	npm run dev
+	```
+
+	Vite serves the app at http://localhost:5173 and forwards `/api` to the backend on port 8080.
+
+3. Open http://localhost:5173. While no admin exists, the app sends you to `/setup`, a form headed `Set up Continuarr`. Paste the token from the backend log into `Setup token`, fill in `Username`, `Password`, and `Confirm password`, and choose `Create admin`. The password needs at least 8 characters and at most 72 bytes. The page then sends you to `/login`.
+
+	To create the admin from a terminal instead, run these commands. Replace `<setup-token>` with the token from the log, and `<password>` with the password:
 
 	```sh
 	curl -s -c cookies.txt http://localhost:8080/api/csrf
@@ -33,20 +44,11 @@ Before you start, install the tools in the plan's [Prerequisites](../docs/plan.m
 		http://localhost:8080/api/setup
 	```
 
-	The first request gets the `XSRF-TOKEN` cookie, and the second sends it back in the `X-XSRF-TOKEN` header (see [Security](../docs/plan.md#security)). The second request prints `204` when it creates the admin. It prints `403` for a wrong setup token, `409` when an admin already exists, and `400` for a blank username or a password shorter than 8 characters or longer than 72 bytes. The `/setup` page (#96) replaces these commands once it lands.
+	The first request gets the `XSRF-TOKEN` cookie, and the second sends it back in the `X-XSRF-TOKEN` header (see [Security](../docs/plan.md#security)). The second request prints `204` when it creates the admin. It prints `403` for a wrong setup token, `409` when an admin already exists, and `400` for a blank username or a password shorter than 8 characters or longer than 72 bytes.
 
-3. Install the dependencies and start the dev server from `frontend/`:
+4. Sign in as the admin at `/login`. After sign-in the app shows the logged-in shell at `/`. Sign out from the shell's header.
 
-	```sh
-	npm ci
-	npm run dev
-	```
-
-	Vite serves the app at http://localhost:5173 and forwards `/api` to the backend on port 8080.
-
-4. Open http://localhost:5173 and sign in as the admin. Without a session the app sends you to `/login`, and after sign-in it shows the logged-in shell at `/`. Sign out from the shell's header.
-
-Stopping the backend deletes its database, so repeat step 2 after each restart.
+Stopping the backend deletes its database, and the next start logs a new setup token, so repeat step 3 after each restart.
 
 ## Run the checks CI runs
 
