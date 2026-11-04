@@ -32,7 +32,7 @@ export function LoginForm({ submitting, failure, onSubmit }: LoginFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full max-w-sm">
+    <form onSubmit={handleSubmit} className="w-full max-w-sm lg:max-w-md">
       <h1 className="text-2xl font-semibold text-ink-100">Sign in</h1>
 
       {/* Always mounted so screen readers are already watching it when a message appears. */}
@@ -74,7 +74,7 @@ export function LoginForm({ submitting, failure, onSubmit }: LoginFormProps) {
         <button
           type="submit"
           aria-disabled={submitting}
-          className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 font-semibold text-accent-ink transition not-aria-disabled:hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-disabled:cursor-wait aria-disabled:opacity-70"
+          className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 font-semibold text-accent-ink transition not-aria-disabled:hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-disabled:cursor-wait aria-disabled:opacity-85"
         >
           {submitting && <Spinner />}
           {submitting ? 'Signing in…' : 'Sign in'}

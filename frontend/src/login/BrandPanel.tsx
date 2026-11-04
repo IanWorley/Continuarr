@@ -22,7 +22,7 @@ export function BrandPanel() {
   const tiles = Array.from({ length: POSTER_REPEATS }, () => POSTER_TILES).flat()
 
   return (
-    <section className="relative isolate overflow-hidden bg-ink-950 px-6 py-8 sm:px-10 lg:px-14 lg:py-14">
+    <section className="relative isolate h-40 overflow-hidden bg-ink-950 px-6 py-8 sm:px-10 lg:h-auto lg:px-14 lg:py-14">
       <div
         aria-hidden="true"
         className="absolute inset-0 -z-10 poster-fade"

@@ -38,7 +38,7 @@ export function LoginPage() {
 /** The page without its data wiring, so each state can be rendered on its own. */
 export function LoginScreen(props: LoginFormProps) {
   return (
-    <main className="grid min-h-screen bg-ink-900 lg:grid-cols-2">
+    <main className="grid min-h-screen grid-rows-[auto_1fr] bg-ink-900 lg:grid-cols-2 lg:grid-rows-1">
       <BrandPanel />
       <div className="flex items-start justify-center px-6 py-10 sm:px-10 lg:items-center">
         <LoginForm {...props} />
