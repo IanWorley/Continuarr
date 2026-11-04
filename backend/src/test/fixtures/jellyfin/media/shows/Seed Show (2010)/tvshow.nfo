@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<tvshow>
+  <title>Seed Show</title>
+  <year>2010</year>
+  <uniqueid type="tvdb" default="true">900100</uniqueid>
+</tvshow>

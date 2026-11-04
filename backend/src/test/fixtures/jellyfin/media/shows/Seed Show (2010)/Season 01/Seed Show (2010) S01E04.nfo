@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<episodedetails>
+  <title>Conflicting Id Episode</title>
+  <season>1</season>
+  <episode>4</episode>
+  <uniqueid type="tvdb" default="true">900201</uniqueid>
+</episodedetails>

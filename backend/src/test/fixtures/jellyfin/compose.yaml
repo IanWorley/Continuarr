@@ -1,0 +1,25 @@
+name: continuarr-jellyfin-seed
+
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:12.0.20260908-012347
+    ports:
+      - "127.0.0.1:8097:8096"
+    volumes:
+      - ./media:/media:ro
+      - config:/config
+      - cache:/cache
+    # The image checks every 30s, which makes `docker compose up --wait` slow.
+    healthcheck:
+      interval: 2s
+      start_period: 60s
+
+  wiremock:
+    image: wiremock/wiremock:3.13.2
+    profiles: [record]
+    ports:
+      - "127.0.0.1:8098:8080"
+
+volumes:
+  config:
+  cache:

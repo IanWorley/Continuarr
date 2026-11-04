@@ -1,0 +1,4 @@
+.seed/
+media/**/*.mkv
+media/**/*.mp3
+compose.override.yaml
