@@ -19,20 +19,37 @@ private val SEED_SECRETS = SEED_DIR.resolve(".seed").resolve("secrets.json")
 
 private const val RERECORD_HINT = "Re-record with src/test/fixtures/jellyfin/record.sh, which scrubs these values."
 
-private class PlaceholderField(val name: String, val pattern: Regex, val placeholderKey: String)
-
-private val PLACEHOLDER_FIELDS = listOf(
-	PlaceholderField("API key", Regex("""(?i)(?:api_?key|token)\W{1,4}([0-9a-f]{32})"""), "apiKey"),
-	PlaceholderField("ServerId", Regex(""""ServerId"\s*:\s*"([^"]*)""""), "serverId"),
-	PlaceholderField("ServerName", Regex(""""ServerName"\s*:\s*"([^"]*)""""), "serverName"),
-	PlaceholderField("LocalAddress", Regex(""""LocalAddress"\s*:\s*"([^"]*)""""), "localAddress"),
-)
+// Keyed like placeholders.json.
+private val IDENTITY_PROPERTIES = mapOf("ServerId" to "serverId", "ServerName" to "serverName", "LocalAddress" to "localAddress")
+private val KEY_PROPERTY = Regex("""(?i)api_?key|token|authorization""")
+private val HEX_KEY = Regex("""(?i)[0-9a-f]{32}""")
+private val KEY_IN_TEXT = Regex("""(?i)(?:api_?key|token)\W{1,4}([0-9a-f]{32})""")
 
 // Written apart from record.sh's pattern, so a private range the scrub misses still fails here.
-private val PRIVATE_IPV4 =
-	Regex("""\b(?:10(?:\.\d{1,3}){3}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2})\b""")
+private val PRIVATE_ADDRESS = Regex(
+	"""(?i)\b(?:10(?:\.\d{1,3}){3}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}""" +
+		"""|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}""" +
+		"""|f[cd][0-9a-f]{2}:[0-9a-f:]*:[0-9a-f]{1,4}|fe[89ab][0-9a-f]:[0-9a-f:]*:[0-9a-f]{1,4})\b""",
+)
 
-private fun readStrings(json: Path): Map<String, String> = JsonMapper().readValue(json.readText())
+/** A string in a fixture, with the property names that lead to it from the root. */
+private class FixtureString(val path: List<String>, val value: String)
+
+private fun strings(json: Any?, path: List<String> = emptyList()): Sequence<FixtureString> = when (json) {
+	is Map<*, *> -> json.asSequence().flatMap { (key, value) -> strings(value, path + key.toString()) }
+	is List<*> -> json.asSequence().flatMap { strings(it, path) }
+	is String -> sequenceOf(FixtureString(path, json))
+	else -> emptySequence()
+}
+
+// A value under a key-named property is a key wherever it sits, as in a header matcher. Elsewhere,
+// such as a URL or a string body, it counts only right after a key name.
+private fun apiKeys(string: FixtureString): Sequence<String> =
+	if (string.path.any { KEY_PROPERTY.containsMatchIn(it) }) {
+		HEX_KEY.findAll(string.value).map { it.value }
+	} else {
+		KEY_IN_TEXT.findAll(string.value).map { it.groupValues[1] }
+	}
 
 // System info is the only Jellyfin object with a LocalAddress, and its plain Id is the server ID.
 private fun serverInfoIds(json: Any?): Sequence<Any?> = when (json) {
@@ -41,6 +58,8 @@ private fun serverInfoIds(json: Any?): Sequence<Any?> = when (json) {
 	is List<*> -> json.asSequence().flatMap(::serverInfoIds)
 	else -> emptySequence()
 }
+
+private fun readStrings(json: Path): Map<String, String> = JsonMapper().readValue(json.readText())
 
 class JellyfinFixtureSecretsTest {
 
@@ -65,15 +84,19 @@ class JellyfinFixtureSecretsTest {
 		val placeholders = readStrings(PLACEHOLDERS)
 
 		val leaks = fixtures.flatMap { (file, text) ->
-			val fieldLeaks = PLACEHOLDER_FIELDS.flatMap { field ->
-				field.pattern.findAll(text)
-					.filter { it.groupValues[1] != placeholders.getValue(field.placeholderKey) }
-					.map { "$file has a real ${field.name}" }
-			}
-			val serverIdLeaks = serverInfoIds(JsonMapper().readValue<Any>(text))
+			val json = JsonMapper().readValue<Any>(text)
+			val strings = strings(json).toList()
+			val keyLeaks = strings.flatMap(::apiKeys)
+				.filter { it != placeholders.getValue("apiKey") }
+				.map { "$file has a real API key" }
+			val identityLeaks = strings
+				.filter { (it.path.lastOrNull() ?: "") in IDENTITY_PROPERTIES }
+				.filter { it.value != placeholders.getValue(IDENTITY_PROPERTIES.getValue(it.path.last())) }
+				.map { "$file has a real ${it.path.last()}" }
+			val serverIdLeaks = serverInfoIds(json)
 				.filter { it != placeholders.getValue("serverId") }
 				.map { "$file has a real server Id in its system info" }
-			fieldLeaks + serverIdLeaks
+			keyLeaks + identityLeaks + serverIdLeaks
 		}
 
 		assertEquals(emptyList(), leaks, RERECORD_HINT)
@@ -81,7 +104,7 @@ class JellyfinFixtureSecretsTest {
 
 	@Test
 	fun `fixtures contain no private network address`() {
-		val leaks = fixtures.flatMap { (file, text) -> PRIVATE_IPV4.findAll(text).map { "$file contains ${it.value}" } }
+		val leaks = fixtures.flatMap { (file, text) -> PRIVATE_ADDRESS.findAll(text).map { "$file contains ${it.value}" } }
 
 		assertEquals(emptyList(), leaks, RERECORD_HINT)
 	}

@@ -187,7 +187,8 @@ check_seed_cases() {
 	check "Multi-episode file (S01E02-E03)" \
 		'any(.items[]; .Type == "Episode" and .IndexNumberEnd != null and .IndexNumberEnd > .IndexNumber)'
 	check "Episode with a TVDb ID that disagrees with the show + S/E" \
-		'[.items[] | select(.Name == "Conflicting Id Episode" or .Name == "Normal Episode") | .ProviderIds.Tvdb] | unique | length == 1'
+		'[.items[] | select(.Name == "Conflicting Id Episode" or .Name == "Normal Episode")]
+			| (map(.Name) | unique | length > 1) and (map(.ProviderIds.Tvdb) | unique | length == 1) and .[0].ProviderIds.Tvdb != null'
 	check "One library with two root locations" \
 		'any(.folders[]; (.Locations | length) > 1)'
 	check "A music library" \

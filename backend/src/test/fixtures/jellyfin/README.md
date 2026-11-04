@@ -33,7 +33,7 @@ To stop the server and delete its data, run `docker compose down --volumes`.
 The script runs `seed.sh` first, so every recording starts from the same server state. Then it does these steps:
 
 1. It sends each path in `requests.txt` through the WireMock recorder with the API key.
-2. It deletes the old mappings and writes one file per request, named from the method and path, such as `get-system-info.json`.
+2. It writes one file per request, named from the method, path, and query, such as `get-system-info.json` or `get-items-recursive-true.json`. It replaces the old mappings only after every request succeeds, so a failed run leaves them alone.
 3. It keeps the method and URL to match on, and the status, `Content-Type`, and body to return. The recorder doesn't save request headers, so matching ignores `Authorization` and no fixture holds the key. The script drops `Date` and timing headers, so a re-record changes a file only when Jellyfin's answer changes.
 4. It replaces the seed server's real API key, server ID, server name, and local address with the values in `placeholders.json`. It replaces any other private IPv4 address with `192.0.2.1`, an address reserved for documentation.
 5. It runs `JellyfinFixtureSecretsTest`.
@@ -48,8 +48,9 @@ Change the `jellyfin` image tag in `compose.yaml`, then run `./record.sh`. Revie
 
 `JellyfinFixtureSecretsTest` runs with `./gradlew test`. It fails when a fixture holds one of these:
 
-- A 32-character hex value after an API key or token name, or a `ServerId`, `ServerName`, or `LocalAddress` that isn't its value in `placeholders.json`. The `Id` of the system info object, the one with `LocalAddress`, must be the server ID placeholder too.
-- A private IPv4 address in 10.0.0.0/8, 172.16.0.0/12, or 192.168.0.0/16.
+- An API key that isn't the placeholder in `placeholders.json`. The test counts a 32-character hex value as a key when it sits under a property whose name contains `apikey`, `api_key`, `token`, or `authorization`, such as a header matcher. It also counts one that follows `api_key` or `token` inside a string, such as a URL or a string body.
+- A `ServerId`, `ServerName`, or `LocalAddress` that isn't its value in `placeholders.json`. The `Id` of the system info object, the one with `LocalAddress`, must be the server ID placeholder too.
+- A private IPv4 address in 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, or 100.64.0.0/10, or a private IPv6 address in fc00::/7 or fe80::/10. The scrub replaces only 10.0.0.0/8, 172.16.0.0/12, and 192.168.0.0/16, so a recording that holds any other private address fails here until the scrub covers it.
 - Any value from `.seed/secrets.json`. Only a machine that ran `seed.sh` has that file, so CI skips this check.
 
 ## Seed cases
