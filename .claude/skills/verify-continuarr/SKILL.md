@@ -34,6 +34,7 @@ Run it first whenever something looks off. It changes nothing. It checks that th
 ```sh
 .claude/skills/verify-continuarr/scripts/control.sh drive first-run-setup
 .claude/skills/verify-continuarr/scripts/control.sh drive sign-in
+.claude/skills/verify-continuarr/scripts/control.sh drive jellyfin-connection
 ```
 
 A journey is a Playwright script in `scripts/journeys/` that drives Chrome by ARIA role and label. It fails with a non-zero exit at the first assertion that does not hold. `drive` runs `doctor` first and installs `playwright-core` into the tools directory on first use. To cover a new path, add `scripts/journeys/<feature>.mjs` that calls `runJourney` from `scripts/journey.mjs`, then add a feature file for it.
