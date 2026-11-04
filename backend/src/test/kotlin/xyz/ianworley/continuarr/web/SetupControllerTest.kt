@@ -8,6 +8,7 @@ import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
+import org.springframework.test.web.servlet.get
 import tools.jackson.databind.json.JsonMapper
 import xyz.ianworley.continuarr.TestcontainersConfiguration
 import kotlin.test.BeforeTest
@@ -19,6 +20,7 @@ private const val ADMIN_PASSWORD = "correct-horse-battery"
 private const val SECOND_USERNAME = "intruder"
 private const val TOO_SHORT_PASSWORD = "short"
 private const val WRONG_TOKEN = "not-the-setup-token"
+private const val SETUP_REQUIRED_JSON_PATH = "$.required"
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -59,6 +61,15 @@ class SetupControllerTest(
 	@Test
 	fun `setup rejects a password shorter than the minimum`() {
 		setUp(SetupRequest(setupToken.value, ADMIN_USERNAME, TOO_SHORT_PASSWORD)).andExpect { status { isBadRequest() } }
+	}
+
+	@Test
+	fun `setup is reported as required, without logging in, until an admin exists`() {
+		mockMvc.get(SETUP_PATH).andExpect { jsonPath(SETUP_REQUIRED_JSON_PATH) { value(true) } }
+
+		setUp(SetupRequest(setupToken.value, ADMIN_USERNAME, ADMIN_PASSWORD))
+
+		mockMvc.get(SETUP_PATH).andExpect { jsonPath(SETUP_REQUIRED_JSON_PATH) { value(false) } }
 	}
 
 	private fun setUp(request: SetupRequest): ResultActionsDsl = mockMvc.postWithCsrf(SETUP_PATH) {
