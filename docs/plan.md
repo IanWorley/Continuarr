@@ -57,7 +57,7 @@ plex, jellyfin ──implement──▶ server (MediaServer interface, shared ty
 | `server` | `MediaServer` interface and shared types (`ServerKind`, `Duration`-based positions) |
 | `plex` | Plex client and adapter, including Plex Home token switching |
 | `jellyfin` | Jellyfin client and adapter |
-| `matching` | External-ID and path matching, suggestions, unmatched queue |
+| `matching` | External-ID and file-name matching, suggestions, unmatched queue |
 | `history` | Append-only watch events and history queries |
 | `sync` | State resolution, sync mode, echo suppression, write planning and execution |
 | `people` | People, server accounts, merging |
@@ -117,14 +117,18 @@ Rules:
   neither links the movie. The admin can still link it by hand, and a watch synced to it then
   marks every version watched on Jellyfin and clears their resume positions.
 - **Multi-episode files** → not synced, listed in the queue.
-- **Same relative file path** within a paired library → auto-link (strong guess). If IDs
-  disagree, link anyway and flag "metadata disagrees".
+- **Same file name** within a paired library → auto-link (strong guess). The file name is the
+  last segment of the server's path, so drive letters and mount roots don't matter. If IDs
+  disagree, the conflicting-IDs rule wins: the pair becomes a suggestion flagged "metadata
+  disagrees", not a link, because two different movies can share a name like `Movie.mkv`.
+- **Episode file names collide across shows** (two shows can both have `S01E01.mkv`), so an
+  episode links by file name only under the same matched show. The exact scoping is open in #43.
 - **Weaker guesses** (title + year, show + season/episode, runtime as tie-breaker) → suggestions
   with a confidence score; confirm/reject individually or in bulk.
 - **Manual links always win.**
 - Matching re-runs on every reconciliation pass.
 
-Match sources: `id`, `path`, `suggested` (does not sync), `manual`.
+Match sources: `id`, `file_name`, `suggested` (does not sync), `manual`.
 
 ## Conflict resolution
 
@@ -152,7 +156,7 @@ Match sources: `id`, `path`, `suggested` (does not sync), `manual`.
 | `server_accounts` | Person ↔ Plex/Jellyfin account; encrypted Plex token/PIN |
 | `library_pairs` | Plex library ↔ Jellyfin library |
 | `media_items` | Thin canonical item: kind, IMDb/TVDb/TMDb IDs (union), edition, parent show, season/episode, display title |
-| `server_items` | A Plex or Jellyfin item; link to `media_items` (nullable), runtime, relative path, match status, match source |
+| `server_items` | A Plex or Jellyfin item; link to `media_items` (nullable), runtime, file name, match status, match source |
 | `watch_events` | Append-only history: person, server item, type, start/end time, start/end position, `observed_at`, server timestamp, source |
 | `watch_state` | Current state per (person, media item); a cache rebuildable from events |
 | `active_sessions` | In-progress playback |
@@ -360,7 +364,7 @@ first depends on them.
 **Goal:** items on both servers are linked to canonical `media_items`.
 
 - ID matching (IMDb/TVDb → TMDb), episode-level TVDb, edition rule, conflict rule
-- Relative-path auto-linking with "metadata disagrees" flag
+- File-name auto-linking, with ID disagreements turned into "metadata disagrees" suggestions
 - Suggestions with confidence; unmatched queue UI with confirm/reject/bulk confirm/manual link
 - Re-matching on reconciliation
 

@@ -86,7 +86,7 @@ Every movie and episode has an `.nfo` file with its title and provider IDs. Ever
 | Special | S00E01 "Special" | Season-0 handling |
 | Multi-episode file | `Seed Show (2010) S01E02-E03.mkv` | Multi-episode rule |
 | Episode with a TVDb ID that disagrees with the show and S/E | S01E04 "Conflicting Id Episode", TVDb `900201`, the ID of S01E01 | Conflicting IDs rule |
-| One library with two root locations | Movies, with roots `/media/movies` and `/media/movies-more` | Relative-path helper, #15 |
+| One library with two root locations | Movies, with roots `/media/movies` and `/media/movies-more` | File names map the same way under either root, #17 |
 | A music library | Music, with `Seed Artist/Seed Album/01 - Seed Track.mp3` and no `.nfo` | Skipped by `libraries()` |
 | User A has one played movie | `user-a` has played `Matched Movie` | User state |
 | User B has one movie in progress | `user-b` is 2 seconds into `Matched Movie` | Resume position |
