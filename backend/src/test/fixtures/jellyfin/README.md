@@ -26,7 +26,9 @@ To stop the server and delete its data, run `docker compose down --volumes`.
 
 ## Run a second seed server
 
-With the defaults, every run uses the Compose project `continuarr-jellyfin-seed` and its volumes, so a second `seed.sh` deletes the first server's data. To run another server beside it, give it its own project name and ports. Set `COMPOSE_PROJECT_NAME`, which replaces the name in `compose.yaml`. Then write an untracked `compose.override.yaml` in this folder, which Compose loads on its own and Git ignores:
+With the defaults, every run uses the Compose project `continuarr-jellyfin-seed` and its volumes, so a second `seed.sh` deletes the first server's data. Run a second server from a separate checkout, such as a `git worktree`. `.seed/`, `media/`, and `compose.override.yaml` all belong to the folder, not the project. A second server in this folder would share `.seed/` and `media/` with the first, and an override here would move the default project's ports too.
+
+In the other checkout's copy of this folder, write an untracked `compose.override.yaml`. Compose loads it on its own, and Git ignores it:
 
 ```yaml
 services:
@@ -38,7 +40,7 @@ services:
       - "127.0.0.1:18098:8080"
 ```
 
-The `!override` tag replaces the ports. Without it, Compose adds the new ports to 8097 and 8098, and the second server can't bind them. Then run, for example, `COMPOSE_PROJECT_NAME=my-seed ./record.sh`, and use the same variable with `docker compose down --volumes`. The scripts find the ports through `docker compose port`, so they need no other change.
+The `!override` tag replaces the ports. Without it, Compose adds the new ports to 8097 and 8098, and the second server can't bind them. In that checkout, run the scripts with `COMPOSE_PROJECT_NAME` set, which replaces the name in `compose.yaml`. For example, run `COMPOSE_PROJECT_NAME=my-seed ./record.sh`, and use the same variable with `docker compose down --volumes`. The scripts find the ports through `docker compose port`, so they need no other change.
 
 ## Record the fixtures
 
@@ -65,7 +67,7 @@ Change the `jellyfin` image tag in `compose.yaml`, then run `./record.sh`. Revie
 
 `JellyfinFixtureSecretsTest` runs with `./gradlew test`. It reads each fixture as JSON, and a string body that holds JSON gets the same checks as `jsonBody`. It fails when a fixture holds one of these:
 
-- An API key that isn't the placeholder in `placeholders.json`. The test counts a 32-character hex value as a key when it sits under a property whose name contains `apikey`, `api_key`, `token`, or `authorization`, such as a header matcher. It also counts one that follows `api_key` or `token` inside a string, such as a URL.
+- An API key that isn't the placeholder in `placeholders.json`. The test counts a 32-character hex value as a key when it sits under a property whose name contains `apikey`, `api_key`, `token`, or `authorization`, such as a header matcher. It also counts one inside a string, such as a URL, that comes right after `api_key` or `token`, with 1 to 4 non-word characters between them.
 - A `ServerId`, `ServerName`, or `LocalAddress` that isn't its value in `placeholders.json`. The `Id` of the system info object, the one with `LocalAddress`, must be the server ID placeholder too.
 - A private IPv4 address in 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, or 100.64.0.0/10, or a private IPv6 address in fc00::/7 or fe80::/10. The scrub replaces only 10.0.0.0/8, 172.16.0.0/12, and 192.168.0.0/16, so a recording that holds any other private address fails here until the scrub covers it.
 - Any value from `.seed/secrets.json`. Only a machine that ran `seed.sh` has that file, so CI skips this check.

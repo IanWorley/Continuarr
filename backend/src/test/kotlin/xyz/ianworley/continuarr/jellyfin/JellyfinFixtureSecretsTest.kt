@@ -57,7 +57,7 @@ private fun strings(json: Any?, path: List<String> = emptyList()): Sequence<Fixt
 }
 
 // A value under a key-named property is a key wherever it sits, as in a header matcher. Elsewhere,
-// such as a URL or a string body, it counts only right after a key name.
+// such as in a URL, it counts only right after a key name.
 private fun apiKeys(string: FixtureString): Sequence<String> =
 	if (string.path.any { KEY_PROPERTY.containsMatchIn(it) }) {
 		HEX_KEY.findAll(string.value).map { it.value }
