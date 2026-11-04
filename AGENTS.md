@@ -6,6 +6,7 @@ Read this before you change the repo. It lists what the docs and failing checks 
 
 - [Setup in `docs/plan.md`](docs/plan.md#setup) lists the prerequisites and the commands to build, run, and test.
 - `.github/workflows/backend.yml` and `.github/workflows/frontend.yml` are the exact checks a PR must pass. Run the ones for the paths you touched.
+- Before you claim a user-facing change works, follow `.claude/skills/verify-continuarr/SKILL.md` to launch the real app, drive it, and keep the evidence. It works in any agent, not only Claude Code. Only one instance runs per machine, so launch refuses when port 8080 or 5173 is in use.
 
 ## Gotchas
 
