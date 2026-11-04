@@ -33,6 +33,10 @@ jobs:
       # Caches Gradle state and validates the wrapper jar checksum.
       - uses: gradle/actions/setup-gradle@v6
 
+      - name: Lint
+        working-directory: ${{ env.BACKEND_DIR }}
+        run: ./gradlew detekt
+
       # Testcontainers uses the runner's Docker for Postgres.
       - name: Test
         working-directory: ${{ env.BACKEND_DIR }}
