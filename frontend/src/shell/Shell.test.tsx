@@ -3,7 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { CSRF_COOKIE_NAME, LOGOUT_PATH, SESSION_PATH, SETUP_PATH } from '../api/client.ts'
+import { AUTH_PATH, CSRF_COOKIE_NAME, LOGOUT_PATH, SETUP_PATH } from '../api/client.ts'
 import { queryClient } from '../queryClient.ts'
 import { routeTree } from '../router.tsx'
 
@@ -64,7 +64,7 @@ afterEach(() => {
 })
 
 it('sends a visitor without a session to the login page', async () => {
-  stubBackend({ [`GET ${SESSION_PATH}`]: signedOut, [`GET ${SETUP_PATH}`]: setupDone })
+  stubBackend({ [`GET ${AUTH_PATH}`]: signedOut, [`GET ${SETUP_PATH}`]: setupDone })
 
   const router = openShell()
 
@@ -74,7 +74,7 @@ it('sends a visitor without a session to the login page', async () => {
 
 it('signs out and returns to the login page', async () => {
   stubBackend({
-    [`GET ${SESSION_PATH}`]: signedIn,
+    [`GET ${AUTH_PATH}`]: signedIn,
     [`POST ${LOGOUT_PATH}`]: noContent,
     [`GET ${SETUP_PATH}`]: setupDone,
   })
@@ -91,7 +91,7 @@ it.each([
   { failure: 'a network error', respond: unreachable },
 ])('returns to the login page after $failure on sign-out', async ({ respond }) => {
   stubBackend({
-    [`GET ${SESSION_PATH}`]: signedIn,
+    [`GET ${AUTH_PATH}`]: signedIn,
     [`POST ${LOGOUT_PATH}`]: respond,
     [`GET ${SETUP_PATH}`]: setupDone,
   })

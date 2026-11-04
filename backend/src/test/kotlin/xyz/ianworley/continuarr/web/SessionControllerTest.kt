@@ -20,7 +20,7 @@ class SessionControllerTest(@Autowired private val mockMvc: MockMvc) {
 
 	@Test
 	fun `the session names the signed-in admin`() {
-		mockMvc.get(SESSION_PATH) { with(user(ADMIN_USERNAME)) }.andExpect {
+		mockMvc.get(AUTH_PATH) { with(user(ADMIN_USERNAME)) }.andExpect {
 			status { isOk() }
 			jsonPath(USERNAME_JSON_PATH) { value(ADMIN_USERNAME) }
 		}
@@ -28,6 +28,6 @@ class SessionControllerTest(@Autowired private val mockMvc: MockMvc) {
 
 	@Test
 	fun `a visitor without a session gets 401`() {
-		mockMvc.get(SESSION_PATH).andExpect { status { isUnauthorized() } }
+		mockMvc.get(AUTH_PATH).andExpect { status { isUnauthorized() } }
 	}
 }

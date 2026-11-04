@@ -55,7 +55,7 @@
         }
       }
     },
-    "/api/session" : {
+    "/api/v1/auth" : {
       "get" : {
         "tags" : [ "session-controller" ],
         "operationId" : "session",
@@ -102,15 +102,6 @@
         },
         "required" : [ "password", "token", "username" ]
       },
-      "SetupStatus" : {
-        "type" : "object",
-        "properties" : {
-          "required" : {
-            "type" : "boolean"
-          }
-        },
-        "required" : [ "required" ]
-      },
       "Session" : {
         "type" : "object",
         "properties" : {
@@ -119,6 +110,15 @@
           }
         },
         "required" : [ "username" ]
+      },
+      "SetupStatus" : {
+        "type" : "object",
+        "properties" : {
+          "required" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "required" ]
       }
     }
   }

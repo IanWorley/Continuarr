@@ -4,12 +4,12 @@ import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 
-const val SESSION_PATH = "/api/session"
+const val AUTH_PATH = "/api/v1/auth"
 
 // Without a session, SecurityConfig answers 401 before this runs, and the SPA sends the visitor to login.
 @RestController
 class SessionController {
 
-	@GetMapping(SESSION_PATH)
+	@GetMapping(AUTH_PATH)
 	fun session(authentication: Authentication): Session = Session(authentication.name)
 }

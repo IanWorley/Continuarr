@@ -5,10 +5,10 @@ import type { components } from './schema'
 
 export const CSRF_COOKIE_NAME = 'XSRF-TOKEN'
 export const CSRF_HEADER_NAME = 'X-XSRF-TOKEN'
+export const AUTH_PATH = '/api/v1/auth'
 export const CSRF_PATH = '/api/csrf'
 export const LOGIN_PATH = '/api/login'
 export const LOGOUT_PATH = '/api/logout'
-export const SESSION_PATH = '/api/session'
 export const SETUP_PATH = '/api/setup'
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -50,9 +50,9 @@ export function logout(): Promise<Response> {
 
 /** The signed-in admin; rejects when this browser has no session. */
 export async function fetchSession(): Promise<Session> {
-  const response = await apiFetch(SESSION_PATH)
+  const response = await apiFetch(AUTH_PATH)
   if (!response.ok) {
-    throw new Error(`GET ${SESSION_PATH} returned ${response.status}`)
+    throw new Error(`GET ${AUTH_PATH} returned ${response.status}`)
   }
   return (await response.json()) as Session
 }
