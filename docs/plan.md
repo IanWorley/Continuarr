@@ -278,6 +278,13 @@ and matches live in the database and are edited in the admin UI.
 | `CONTINUARR_JELLYFIN_URL` / `CONTINUARR_JELLYFIN_API_KEY` | Jellyfin server and API key |
 | `SPRING_DATASOURCE_*` | Postgres connection (Compose only; Testcontainers handles dev and tests) |
 
+Both Jellyfin variables are required, so the app fails at startup without them, and
+`docker compose up` refuses to start until `.env` sets them. `.env.example` holds placeholders, so a
+fresh install starts and logs that it can't reach Jellyfin until you replace them. Tests and
+`./gradlew bootTestRun` default them to a closed local port, so the startup connection check fails
+and is logged. Don't run with `-Djdk.httpclient.HttpClient.log=headers` or `all`: the JDK then logs
+the Jellyfin API key with every request, and Continuarr warns at startup.
+
 ### Local development
 
 - `./gradlew bootTestRun` — runs the backend with Postgres started by Testcontainers.
