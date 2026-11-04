@@ -53,6 +53,7 @@ export function SettingsPage() {
   const query = useQuery({
     queryKey: JELLYFIN_CONNECTION_QUERY_KEY,
     queryFn: fetchJellyfinConnection,
+    networkMode: 'always',
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
