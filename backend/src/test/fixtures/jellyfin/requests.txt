@@ -1,3 +1,4 @@
 /System/Info
 /Users
 /Library/VirtualFolders
+/Sessions
