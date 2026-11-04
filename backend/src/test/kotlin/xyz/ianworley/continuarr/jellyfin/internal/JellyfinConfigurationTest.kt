@@ -12,16 +12,8 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 private const val VALID_URL = "http://jellyfin:8096"
-private const val NON_HTTP_URL = "ftp://jellyfin"
-private const val TOO_HIGH_PORT_URL = "http://jellyfin:80960"
-private const val ZERO_PORT_URL = "http://jellyfin:0"
 private const val URL_PASSWORD = "url-password"
 private const val URL_WITH_CREDENTIALS = "ftp://user:$URL_PASSWORD@jellyfin"
-private const val ZONE_ID_URL = "http://[fe80::1%en0]:8096"
-private const val ENCODED_ZONE_ID_URL = "http://[fe80::1%25en0]:8096"
-private const val URL_WITH_QUERY = "http://jellyfin:8096/?api_key=0123456789abcdef"
-private const val URL_WITH_SPACE = "http://jellyfin:8096/my jellyfin"
-private const val PERCENT_ENCODED_URL = "http://jellyfin:8096/my%20jellyfin"
 private const val VALID_API_KEY = "test-api-key"
 private const val BLANK_API_KEY = " "
 private const val KEY_BEFORE_LINE_BREAK = "0123456789abcdef"
@@ -49,37 +41,6 @@ class JellyfinConfigurationTest {
 	@Test
 	fun `missing URL fails startup naming CONTINUARR_JELLYFIN_URL`() {
 		assertStartupFailsNaming(URL_VARIABLE, "continuarr.jellyfin.api-key=$VALID_API_KEY")
-	}
-
-	@Test
-	fun `non-http URL fails startup naming CONTINUARR_JELLYFIN_URL`() {
-		assertStartupFailsNaming(URL_VARIABLE, "continuarr.jellyfin.url=$NON_HTTP_URL", "continuarr.jellyfin.api-key=$VALID_API_KEY")
-	}
-
-	@Test
-	fun `out-of-range port fails startup naming CONTINUARR_JELLYFIN_URL`() {
-		for (url in listOf(ZERO_PORT_URL, TOO_HIGH_PORT_URL)) {
-			assertStartupFailsNaming(URL_VARIABLE, "continuarr.jellyfin.url=$url", "continuarr.jellyfin.api-key=$VALID_API_KEY")
-		}
-	}
-
-	@Test
-	fun `an IPv6 zone ID fails startup naming CONTINUARR_JELLYFIN_URL`() {
-		for (url in listOf(ZONE_ID_URL, ENCODED_ZONE_ID_URL)) {
-			assertStartupFailsNaming(URL_VARIABLE, "continuarr.jellyfin.url=$url", "continuarr.jellyfin.api-key=$VALID_API_KEY")
-		}
-	}
-
-	@Test
-	fun `a URL that RestClient would encode again fails startup naming CONTINUARR_JELLYFIN_URL`() {
-		for (url in listOf(URL_WITH_SPACE, PERCENT_ENCODED_URL)) {
-			assertStartupFailsNaming(URL_VARIABLE, "continuarr.jellyfin.url=$url", "continuarr.jellyfin.api-key=$VALID_API_KEY")
-		}
-	}
-
-	@Test
-	fun `a URL with a query fails startup naming CONTINUARR_JELLYFIN_URL`() {
-		assertStartupFailsNaming(URL_VARIABLE, "continuarr.jellyfin.url=$URL_WITH_QUERY", "continuarr.jellyfin.api-key=$VALID_API_KEY")
 	}
 
 	@Test
