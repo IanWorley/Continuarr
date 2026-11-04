@@ -20,6 +20,7 @@ FRONTEND_READY_TIMEOUT_SECONDS=120
 STOP_TIMEOUT_SECONDS=30
 PROBE_TIMEOUT_SECONDS=5
 CONTAINER_REAP_TIMEOUT_SECONDS=30
+ENCRYPTION_KEY_BYTES=32
 
 die() { echo "control.sh: $*" >&2; exit 1; }
 port_owner() { lsof -nP -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -n 1 || true; }
@@ -70,7 +71,7 @@ launch() {
 	mkdir "$RUN_DIR" 2>/dev/null || die "an instance is already recorded in $RUN_DIR; run doctor, or cleanup first"
 	refuse() { rm -rf "$RUN_DIR"; die "$@"; }
 	local tool
-	for tool in lsof curl docker node npm; do
+	for tool in lsof curl docker node npm openssl; do
 		command -v "$tool" >/dev/null || refuse "$tool is not on PATH; launch needs it"
 	done
 	local port
@@ -90,7 +91,8 @@ launch() {
 
 	echo "Starting the backend (log: $evidence_dir/backend.log)"
 	(cd "$REPO_ROOT/backend" || exit 1
-		nohup ./gradlew bootTestRun --console=plain >"$evidence_dir/backend.log" 2>&1 &
+		CONTINUARR_ENCRYPTION_KEY="$(openssl rand -hex "$ENCRYPTION_KEY_BYTES")" \
+			nohup ./gradlew bootTestRun --console=plain >"$evidence_dir/backend.log" 2>&1 &
 		echo $! >"$RUN_DIR/backend-gradle.pid")
 	record_pid backend-gradle "$(read_state backend-gradle.pid)"
 	wait_for "$BACKEND_COLD_START_TIMEOUT_SECONDS" "$(read_state backend-gradle.pid)" backend backend_ready
