@@ -75,7 +75,7 @@ export function LoginForm({ submitting, failure, onSubmit }: LoginFormProps) {
         <button
           type="submit"
           aria-disabled={submitting}
-          className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 font-semibold text-accent-ink transition hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-disabled:cursor-wait aria-disabled:opacity-70"
+          className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 font-semibold text-accent-ink transition not-aria-disabled:hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-disabled:cursor-wait aria-disabled:opacity-70"
         >
           {submitting && <Spinner />}
           {submitting ? 'Signing in…' : 'Sign in'}
