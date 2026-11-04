@@ -96,7 +96,9 @@ describe('apiFetch', () => {
     })
     fetchMock.mockImplementation(
       (_input, init) =>
-        new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))),
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+        }),
     )
     const failed = vi.fn<(reason: unknown) => void>()
 
