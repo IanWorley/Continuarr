@@ -112,8 +112,10 @@ Rules:
   `X` in `{edition-X}`, or else the label in `Title (Year) - Label`. A label that names only a
   quality, such as `1080p` or `2160p`, is not an edition.
 - **A Jellyfin movie whose versions differ in edition** → unmatched queue. No edition counts as
-  its own value. Jellyfin shares one watched flag across all of a movie's versions, so it can't
-  keep the editions apart.
+  its own value. Marking or unmarking any version of a Jellyfin movie changes every version, so
+  Jellyfin can't keep the editions apart. This check runs before ID and path auto-linking, so
+  neither links the movie. The admin can still link it by hand, and a watch synced to it then
+  marks every version watched on Jellyfin and clears their resume positions.
 - **Multi-episode files** → not synced, listed in the queue.
 - **Same relative file path** within a paired library → auto-link (strong guess). If IDs
   disagree, link anyway and flag "metadata disagrees".
@@ -161,6 +163,8 @@ Match sources: `id`, `path`, `suggested` (does not sync), `manual`.
 - **Rollback** is a `correction` event authored by the admin, synced through the normal path.
   Bulk correction (e.g. a whole season for one person) is supported.
 - Rich metadata (posters, descriptions) is fetched from the servers on demand, not stored.
+- **Open, tied to the `ServerItem` shape in [#13](https://github.com/IanWorley/Continuarr/issues/13).**
+  `server_items` holds one relative path, so a Jellyfin movie with several files doesn't fit it.
 
 ## Sync safety
 
@@ -423,7 +427,7 @@ first depends on them.
 
 | # | Unknown | Verified in | Finding |
 |---|---|---|---|
-| 1 | How Jellyfin exposes editions and alternate versions | Phase 1 | Jellyfin 12.0 merges the files named `Title (Year) - Label` in one folder into one movie, with one media source per file. No field names the edition. The label is the only place an edition name appears, and quality labels such as `2160p` appear there too. A movie's versions share one watched flag, and each version keeps its own resume position. Files with Plex `{edition-X}` names stay separate movies. The Jellyfin edition rules in [Matching](#matching) come from this finding. A spot-check of a real library is still open in [#14](https://github.com/IanWorley/Continuarr/issues/14). |
+| 1 | How Jellyfin exposes editions and alternate versions | Phase 1 | Jellyfin 12.0 merges the files named `Title (Year) - Label` in one folder into one movie, with one media source per file. No field names the edition. The label in the file name is the only place an edition name appears, and quality labels such as `2160p` appear there too. Jellyfin stores resume position and play count per version, but marking or unmarking any version changes every version, and marking one watched clears every version's resume position. Files named `Title (Year) {edition-X}` stay separate movies, but `Title (Year) - {edition-X}` merges like any other label. The Jellyfin edition rules in [Matching](#matching) come from this finding. A spot-check of a real library is still open in [#14](https://github.com/IanWorley/Continuarr/issues/14). |
 | 2 | Whether both servers return file paths usable for relative-path matching | Phases 1–2 | |
 | 3 | Plex Home token switching, including PIN-protected users | Phase 2 | |
 | 4 | Whether either server drops very short resume positions | Phase 5 | |
