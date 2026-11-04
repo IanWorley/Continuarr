@@ -189,7 +189,8 @@ Single sync mode setting:
 
 - Single admin, created by first-run setup and stored as a `User` (table `app_user`) with a
   bcrypt hash. Until then, each start logs a one-time setup token; `POST /api/setup` with that
-  token creates the admin, and only works while none exists.
+  token creates the admin, and only works while none exists. `GET /api/setup` reports whether
+  that is still needed, so the SPA sends visitors to the setup page or the login page.
 - Form login (`POST /api/login`) with session cookie, answered with status codes (204/401) instead
   of redirects. Unauthenticated requests get 401.
 - SPA CSRF via `csrf.spa()` (Spring Security 7.0+): the SPA calls `GET /api/csrf` to get the
@@ -198,7 +199,7 @@ Single sync mode setting:
   outside the `http { }` block.
 - Plex tokens and PINs encrypted with Spring Security Crypto; key from env var or Docker secret.
 - Everything requires authentication except the Actuator health endpoint (Docker healthcheck),
-  `GET /api/csrf`, `POST /api/setup`, and the SPA itself: `index.html`, `/assets/**`, and client-side
+  `GET /api/csrf`, `GET` and `POST /api/setup`, and the SPA itself: `index.html`, `/assets/**`, and client-side
   routes (GETs with no file extension outside `/api`, `/actuator`, `/error`, and springdoc's `/v3`).
   The SPA has to load before login to show the login and setup pages; all data comes from `/api`,
   which stays protected. A new server path outside those prefixes would be public, so REST stays

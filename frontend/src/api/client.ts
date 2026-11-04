@@ -1,11 +1,14 @@
 // The one way pages call the backend: same-origin fetch with the session cookie and Spring
 // Security's SPA CSRF token. See docs/plan.md#security.
 
+import type { components } from './schema'
+
 export const CSRF_COOKIE_NAME = 'XSRF-TOKEN'
 export const CSRF_HEADER_NAME = 'X-XSRF-TOKEN'
 export const CSRF_PATH = '/api/csrf'
 export const LOGIN_PATH = '/api/login'
 export const LOGOUT_PATH = '/api/logout'
+export const SETUP_PATH = '/api/setup'
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -17,6 +20,9 @@ export interface Credentials {
   username: string
   password: string
 }
+
+export type SetupRequest = components['schemas']['SetupRequest']
+export type SetupStatus = components['schemas']['SetupStatus']
 
 /**
  * Sends a request to the backend. State-changing methods carry the CSRF token, fetching it
@@ -38,6 +44,25 @@ export function login({ username, password }: Credentials): Promise<Response> {
 
 export function logout(): Promise<Response> {
   return apiFetch(LOGOUT_PATH, { method: 'POST' })
+}
+
+/** Whether the admin still has to be created; anyone may ask. */
+export async function fetchSetupStatus(): Promise<SetupStatus> {
+  const response = await apiFetch(SETUP_PATH)
+  if (!response.ok) {
+    throw new Error(`GET ${SETUP_PATH} returned ${response.status}`)
+  }
+  // The shape is checked by the generated types and the backend's OpenApiSpecTest.
+  return (await response.json()) as SetupStatus
+}
+
+/** Creates the admin; answers 204, or 400, 403, or 409 as documented in openapi.json. */
+export function setUp(request: SetupRequest): Promise<Response> {
+  return apiFetch(SETUP_PATH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
 }
 
 // Read from the cookie on every request rather than cached: Spring rotates the token on login

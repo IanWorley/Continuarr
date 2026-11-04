@@ -10,6 +10,22 @@
   } ],
   "paths" : {
     "/api/setup" : {
+      "get" : {
+        "tags" : [ "setup-controller" ],
+        "operationId" : "setupStatus",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          }
+        }
+      },
       "post" : {
         "tags" : [ "setup-controller" ],
         "operationId" : "setUp",
@@ -67,6 +83,15 @@
           }
         },
         "required" : [ "password", "token", "username" ]
+      },
+      "SetupStatus" : {
+        "type" : "object",
+        "properties" : {
+          "required" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "required" ]
       }
     }
   }
