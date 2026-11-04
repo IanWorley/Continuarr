@@ -9,8 +9,7 @@ import org.springframework.web.bind.annotation.RestController
 
 const val CSRF_PATH = "/api/csrf"
 
-// csrf.spa() defers the token, so the XSRF-TOKEN cookie is only written once something reads
-// it. Clients call this before their first POST (setup or login).
+// Reading the token writes the XSRF-TOKEN cookie when the request has none.
 @RestController
 class CsrfController {
 
