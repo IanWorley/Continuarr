@@ -6,13 +6,13 @@ sealed interface ServerItem {
 	val id: ServerItemId
 	val title: String
 	val externalIds: ExternalIds
-	val relativePath: RelativePath?
+	val fileName: FileName?
 
 	data class Movie(
 		override val id: ServerItemId,
 		override val title: String,
 		override val externalIds: ExternalIds,
-		override val relativePath: RelativePath?,
+		override val fileName: FileName?,
 		val year: Int?,
 		val edition: String?,
 		val runtime: Duration?,
@@ -22,7 +22,7 @@ sealed interface ServerItem {
 		override val id: ServerItemId,
 		override val title: String,
 		override val externalIds: ExternalIds,
-		override val relativePath: RelativePath?,
+		override val fileName: FileName?,
 		val year: Int?,
 	) : ServerItem
 
@@ -31,7 +31,7 @@ sealed interface ServerItem {
 		override val id: ServerItemId,
 		override val title: String,
 		override val externalIds: ExternalIds,
-		override val relativePath: RelativePath?,
+		override val fileName: FileName?,
 		val showId: ServerItemId,
 		val season: Int?,
 		val episode: Int?,
