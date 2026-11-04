@@ -1,20 +1,13 @@
 import { useMutation } from '@tanstack/react-query'
 import { Outlet, useNavigate, useRouteContext } from '@tanstack/react-router'
-import { logout, LOGOUT_PATH } from '../api/client.ts'
-
-async function signOut(): Promise<void> {
-  const response = await logout()
-  if (!response.ok) {
-    throw new Error(`POST ${LOGOUT_PATH} returned ${response.status}`)
-  }
-}
+import { logout } from '../api/client.ts'
 
 export function Shell() {
   const { session } = useRouteContext({ from: '/shell' })
   const navigate = useNavigate()
   const mutation = useMutation({
-    mutationFn: signOut,
-    onSuccess: () => {
+    mutationFn: logout,
+    onSettled: () => {
       void navigate({ to: '/login' })
     },
   })
@@ -25,10 +18,7 @@ export function Shell() {
         <p className="text-xl font-extrabold tracking-tight">
           Continu<span className="text-accent">arr</span>
         </p>
-        <p aria-live="polite" className="ml-auto text-sm text-danger">
-          {mutation.isError && "Couldn't sign out. Try again in a moment."}
-        </p>
-        <span className="text-sm text-ink-400">{session.username}</span>
+        <span className="ml-auto text-sm text-ink-400">{session.username}</span>
         {/* aria-disabled rather than disabled, so a keyboard user's focus stays on the button. */}
         <button
           type="button"
