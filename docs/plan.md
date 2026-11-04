@@ -57,7 +57,7 @@ plex, jellyfin ──implement──▶ server (MediaServer interface, shared ty
 | `server` | `MediaServer` interface and shared types (`ServerKind`, `Duration`-based positions) |
 | `plex` | Plex client and adapter, including Plex Home token switching |
 | `jellyfin` | Jellyfin client and adapter |
-| `matching` | External-ID and path matching, suggestions, unmatched queue |
+| `matching` | External-ID and file-name matching, suggestions, unmatched queue |
 | `history` | Append-only watch events and history queries |
 | `sync` | State resolution, sync mode, echo suppression, write planning and execution |
 | `people` | People, server accounts, merging |
@@ -111,7 +111,8 @@ Rules:
 - **Multi-episode files** → not synced, listed in the queue.
 - **Same file name** within a paired library → auto-link (strong guess). The file name is the
   last segment of the server's path, so drive letters and mount roots don't matter. If IDs
-  disagree, link anyway and flag "metadata disagrees".
+  disagree, the conflicting-IDs rule wins: the pair becomes a suggestion flagged "metadata
+  disagrees", not a link, because two different movies can share a name like `Movie.mkv`.
 - **Episode file names collide across shows** (two shows can both have `S01E01.mkv`), so an
   episode links by file name only under the same matched show. The exact scoping is open in #43.
 - **Weaker guesses** (title + year, show + season/episode, runtime as tie-breaker) → suggestions
@@ -352,7 +353,7 @@ first depends on them.
 **Goal:** items on both servers are linked to canonical `media_items`.
 
 - ID matching (IMDb/TVDb → TMDb), episode-level TVDb, edition rule, conflict rule
-- File-name auto-linking with "metadata disagrees" flag
+- File-name auto-linking, with ID disagreements turned into "metadata disagrees" suggestions
 - Suggestions with confidence; unmatched queue UI with confirm/reject/bulk confirm/manual link
 - Re-matching on reconciliation
 
