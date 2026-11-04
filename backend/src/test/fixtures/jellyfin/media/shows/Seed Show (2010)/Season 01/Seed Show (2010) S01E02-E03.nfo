@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<episodedetails>
+  <title>Double Episode Part 1</title>
+  <season>1</season>
+  <episode>2</episode>
+  <uniqueid type="tvdb" default="true">900202</uniqueid>
+</episodedetails>
+<episodedetails>
+  <title>Double Episode Part 2</title>
+  <season>1</season>
+  <episode>3</episode>
+  <uniqueid type="tvdb" default="true">900203</uniqueid>
+</episodedetails>

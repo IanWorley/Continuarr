@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<movie>
+  <title>Two Versions</title>
+  <year>2003</year>
+  <uniqueid type="imdb" default="true">tt0900003</uniqueid>
+  <uniqueid type="tmdb">900003</uniqueid>
+</movie>
