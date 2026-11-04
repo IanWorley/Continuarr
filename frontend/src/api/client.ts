@@ -8,6 +8,7 @@ export const CSRF_HEADER_NAME = 'X-XSRF-TOKEN'
 export const CSRF_PATH = '/api/csrf'
 export const LOGIN_PATH = '/api/login'
 export const LOGOUT_PATH = '/api/logout'
+export const SESSION_PATH = '/api/session'
 export const SETUP_PATH = '/api/setup'
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -21,6 +22,7 @@ export interface Credentials {
   password: string
 }
 
+export type Session = components['schemas']['Session']
 export type SetupRequest = components['schemas']['SetupRequest']
 export type SetupStatus = components['schemas']['SetupStatus']
 
@@ -44,6 +46,15 @@ export function login({ username, password }: Credentials): Promise<Response> {
 
 export function logout(): Promise<Response> {
   return apiFetch(LOGOUT_PATH, { method: 'POST' })
+}
+
+/** The signed-in admin; rejects when this browser has no session. */
+export async function fetchSession(): Promise<Session> {
+  const response = await apiFetch(SESSION_PATH)
+  if (!response.ok) {
+    throw new Error(`GET ${SESSION_PATH} returned ${response.status}`)
+  }
+  return (await response.json()) as Session
 }
 
 /** Whether the admin still has to be created; anyone may ask. */
