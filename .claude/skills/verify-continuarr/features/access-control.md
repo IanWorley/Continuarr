@@ -16,13 +16,13 @@ Everything on the backend requires a session except the health endpoint, `GET /a
 
 Preconditions:
 
-- `control.sh doctor` passes. The rules hold with or without an admin.
+- `control.sh doctor` passes. The rules hold with or without an admin, except the last step, which needs a fresh launch.
 
 - **Health.** Run `curl -s -w ' %{http_code}\n' http://localhost:8080/actuator/health`. It prints `{"groups":["liveness","readiness"],"status":"UP"} 200`.
 - **Setup status.** Run `curl -s -w ' %{http_code}\n' http://localhost:8080/api/setup`. It prints `{"required":true} 200` on a fresh launch.
 - **Protected.** Run `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/v3/api-docs` and the same for `/api/v1/anything`. Both print `401`.
 - **CSRF.** Run `curl -s -o /dev/null -w '%{http_code}\n' -H 'Content-Type: application/json' -d '{"token":"x","username":"a","password":"12345678"}' http://localhost:8080/api/setup`. It prints `403`.
-- **CSRF accepted.** Fetch the token with `curl -s -c cookies.txt http://localhost:8080/api/csrf`, then repeat the `POST` with `-b cookies.txt -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' cookies.txt)"`. A wrong setup token still prints `403`, so send a blank username instead and expect `400`. That proves the request passed the CSRF check.
+- **CSRF accepted.** This step needs a fresh launch, because with an admin the endpoint answers `409` first. Fetch the token with `curl -s -c cookies.txt http://localhost:8080/api/csrf`. Then run `curl -s -o /dev/null -w '%{http_code}\n' -b cookies.txt -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' cookies.txt)" -H 'Content-Type: application/json' -d "{\"token\":\"$(.claude/skills/verify-continuarr/scripts/control.sh token)\",\"username\":\" \",\"password\":\"12345678\"}" http://localhost:8080/api/setup`. It prints `400`. The real setup token gets past the token check and the blank username fails validation, so the `400` proves the request passed the CSRF check. A wrong token prints `403` and proves nothing.
 
 ## Gotchas
 

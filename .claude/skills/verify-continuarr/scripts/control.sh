@@ -68,6 +68,10 @@ launch() {
 	mkdir -p "$STATE_HOME"
 	mkdir "$RUN_DIR" 2>/dev/null || die "an instance is already recorded in $RUN_DIR; run doctor, or cleanup first"
 	refuse() { rm -rf "$RUN_DIR"; die "$@"; }
+	local tool
+	for tool in lsof curl docker node npm; do
+		command -v "$tool" >/dev/null || refuse "$tool is not on PATH; launch needs it"
+	done
 	local port
 	for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
 		[[ -z "$(port_owner "$port")" ]] || refuse "port $port is in use by pid $(port_owner "$port"); this run will not drive an instance it did not start"

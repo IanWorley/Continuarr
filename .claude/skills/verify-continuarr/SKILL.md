@@ -13,7 +13,7 @@ The user-facing surface is the admin web UI at `http://localhost:5173`. Vite ser
 .claude/skills/verify-continuarr/scripts/control.sh launch
 ```
 
-It needs Docker running, a JDK 17+ for Gradle, Node and npm, and Google Chrome. It starts `./gradlew bootTestRun`, runs `npm ci` in `frontend/`, and starts `npm run dev`. Each launch gets a new, empty Postgres, and Liquibase migrates it at startup.
+It needs Docker running, a JDK 17+ for Gradle, Node and npm, `curl`, `lsof`, and Google Chrome. It starts `./gradlew bootTestRun`, runs `npm ci` in `frontend/`, and starts `npm run dev`. Each launch gets a new, empty Postgres, and Liquibase migrates it at startup.
 
 The instance is ready when the command prints `Ready: http://localhost:5173`. By then actuator health reports `UP` and `GET /api/setup` answers through both ports. A fresh launch has no admin. Run `control.sh token` to print its setup token. The first launch on a machine compiles the backend and pulls Postgres, so it can take minutes. Later launches take seconds.
 
