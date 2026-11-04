@@ -1,6 +1,6 @@
 # Jellyfin seed server and fixtures
 
-`seed.sh` starts a disposable Jellyfin that holds every case the Jellyfin client tests need. `record.sh` records WireMock fixtures from that server into [`src/test/resources/wiremock/jellyfin/mappings/`](../../resources/wiremock/jellyfin/mappings). No test replays them yet. The Jellyfin client tests in #16 to #19 will, so `./gradlew test` never needs a running Jellyfin.
+`seed.sh` starts a disposable Jellyfin that holds every case the Jellyfin client tests need. `record.sh` records WireMock fixtures from that server into [`src/test/resources/wiremock/jellyfin/mappings/`](../../resources/wiremock/jellyfin/mappings). `JellyfinMediaServerTest` replays them with WireMock, so `./gradlew test` never needs a running Jellyfin.
 
 ## Jellyfin 12.0 is the minimum supported version
 
