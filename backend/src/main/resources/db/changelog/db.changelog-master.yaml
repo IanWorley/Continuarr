@@ -7,3 +7,6 @@ databaseChangeLog:
   - include:
       file: changes/0002-app-user.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0003-jellyfin-connection.sql
+      relativeToChangelogFile: true
