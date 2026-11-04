@@ -164,7 +164,7 @@ Match sources: `id`, `path`, `suggested` (does not sync), `manual`.
   Bulk correction (e.g. a whole season for one person) is supported.
 - Rich metadata (posters, descriptions) is fetched from the servers on demand, not stored.
 - **Open, tied to the `ServerItem` shape in [#13](https://github.com/IanWorley/Continuarr/issues/13).**
-  `server_items` holds one relative path, so a Jellyfin movie with several files doesn't fit it.
+  `server_items` holds one file name, so a Jellyfin movie with several files doesn't fit it.
 
 ## Sync safety
 
@@ -431,7 +431,7 @@ first depends on them.
 | # | Unknown | Verified in | Finding |
 |---|---|---|---|
 | 1 | How Jellyfin exposes editions and alternate versions | Phase 1 | Jellyfin 12.0 merges the files named `Title (Year) - Label` in one folder into one movie, with one media source per file. No field names the edition. The label in the file name is the only place an edition name appears, and quality labels such as `2160p` appear there too. Jellyfin stores resume position and play count per version, but marking or unmarking any version changes every version, and marking one watched clears every version's resume position. Files named `Title (Year) {edition-X}` stay separate movies, but `Title (Year) - {edition-X}` merges like any other label. The Jellyfin edition rules in [Matching](#matching) come from this finding. A spot-check of a real library is still open in [#14](https://github.com/IanWorley/Continuarr/issues/14). |
-| 2 | Whether both servers return file paths usable for relative-path matching | Phases 1–2 | |
+| 2 | Whether both servers return file paths usable for file-name matching | Phases 1–2 | On Jellyfin 12.0, yes. An `/Items` list query returns `Path` for movies, series, seasons, and episodes only when it asks for `Fields=Path`. Movies and episodes are files, and series and seasons are folders. Every path starts with one of the library's `Locations` from `/Library/VirtualFolders`. The seed server covers a movie in a library's second root, a season 0 special, and a multi-episode file. Each version of a merged movie has its own path in `MediaSources`, and the movie's `Path` is the primary version's file. `ServerItem.Movie` holds one file name, so which version's path it comes from is open for [#13](https://github.com/IanWorley/Continuarr/issues/13) and [#17](https://github.com/IanWorley/Continuarr/issues/17). Paths are the ones Jellyfin sees on its own file system, such as `/media/...` inside a container. A server path substitution rewrites the paths Jellyfin returns but not `Locations`. In seven path-substitution configurations, every movie, episode, and season kept its file name. A substitution whose `From` is a show's own folder renames that show's folder name. That matters only for a show that can't match by external ID, because shows match on TVDb, then IMDb, then TMDb, and an episode links by file name only under its matched show. A spot-check of a real library is still open in [#15](https://github.com/IanWorley/Continuarr/issues/15), and the Plex side is open for Phase 2. |
 | 3 | Plex Home token switching, including PIN-protected users | Phase 2 | |
 | 4 | Whether either server drops very short resume positions | Phase 5 | |
 | 5 | The exact Spring Security SPA CSRF API for the version in use | Phase 0 — resolved, see [Security](#security) | |
