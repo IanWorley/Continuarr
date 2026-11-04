@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { SetupForm } from './SetupForm.tsx'
+import { SetupForm, type SetupFormProps } from './SetupForm.tsx'
 
 const PASSWORD = 'correct-horse-battery'
 const MISTYPED_PASSWORD = 'correct-horse-batterz'
@@ -10,7 +10,7 @@ const MISMATCH_MESSAGE = "The passwords don't match."
 afterEach(cleanup)
 
 it('stops mismatched passwords before anything is sent', () => {
-  const onSubmit = vi.fn()
+  const onSubmit = vi.fn<SetupFormProps['onSubmit']>()
   render(<SetupForm submitting={false} failure={undefined} onSubmit={onSubmit} />)
 
   fireEvent.change(screen.getByLabelText('Setup token'), { target: { value: 'token' } })
