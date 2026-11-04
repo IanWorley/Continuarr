@@ -1,0 +1,6 @@
+# Loaded on top of the main application.yaml for every test context and for bootTestRun.
+# Nothing listens on port 1, so the startup check fails fast instead of reaching a real Jellyfin.
+continuarr:
+  jellyfin:
+    url: http://127.0.0.1:1
+    api-key: offline-test-key
