@@ -32,7 +32,7 @@ positions, and unwatches between them.
 | Migrations | Liquibase (SQL-formatted changelogs) |
 | Testing | JUnit, Testcontainers (Postgres), WireMock (Plex/Jellyfin), `@ApplicationModuleTest` |
 | API contract | springdoc OpenAPI → `openapi-typescript` |
-| Frontend | Vite, React, TypeScript, TanStack Query, Router, Table |
+| Frontend | Vite, React, TypeScript, TanStack Query, Router, Table, Tailwind CSS |
 | Deploy | Docker Compose (app + Postgres); Spring Boot serves the built SPA |
 
 Not using: TanStack Start (no SSR needed), TanStack Form (forms are small; add if they grow).
@@ -220,6 +220,8 @@ Single sync mode setting:
 
 - TanStack Query for all API calls and polling; TanStack Router for routes; TanStack Table
   with server-side pagination.
+- Tailwind CSS v4 (`@tailwindcss/vite`), dark-first, with the palette as theme tokens in
+  `frontend/src/index.css`; no component library.
 - API types generated from the OpenAPI spec — backend changes that break the frontend fail
   at compile time.
 
