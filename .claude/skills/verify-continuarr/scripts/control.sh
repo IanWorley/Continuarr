@@ -18,6 +18,7 @@ PLAYWRIGHT_CORE_VERSION=1.64.1
 BACKEND_COLD_START_TIMEOUT_SECONDS=600
 FRONTEND_READY_TIMEOUT_SECONDS=120
 STOP_TIMEOUT_SECONDS=30
+PROBE_TIMEOUT_SECONDS=5
 CONTAINER_REAP_TIMEOUT_SECONDS=30
 
 die() { echo "control.sh: $*" >&2; exit 1; }
@@ -45,13 +46,13 @@ wait_for() {
 }
 
 backend_ready() {
-	curl -sf "$BACKEND_URL/actuator/health" | grep -q '"status":"UP"' &&
-		curl -sf "$BACKEND_URL/api/setup" | grep -q '"required"'
+	curl -sf --max-time "$PROBE_TIMEOUT_SECONDS" "$BACKEND_URL/actuator/health" | grep -q '"status":"UP"' &&
+		curl -sf --max-time "$PROBE_TIMEOUT_SECONDS" "$BACKEND_URL/api/setup" | grep -q '"required"'
 }
 
 frontend_ready() {
-	curl -sf "$FRONTEND_URL/" | grep -q 'id="root"' &&
-		curl -sf "$FRONTEND_URL/api/setup" | grep -q '"required"'
+	curl -sf --max-time "$PROBE_TIMEOUT_SECONDS" "$FRONTEND_URL/" | grep -q 'id="root"' &&
+		curl -sf --max-time "$PROBE_TIMEOUT_SECONDS" "$FRONTEND_URL/api/setup" | grep -q '"required"'
 }
 
 containers_connected_to() {
@@ -127,7 +128,7 @@ doctor() {
 	check "frontend serves the SPA and proxies /api" frontend_ready
 	check "launched from this checkout ($REPO_ROOT)" same_checkout
 	check "HEAD is the launched revision $(read_state revision)" same_revision
-	echo "info  setup status: $(curl -sf "$FRONTEND_URL/api/setup" || echo unreachable)"
+	echo "info  setup status: $(curl -sf --max-time "$PROBE_TIMEOUT_SECONDS" "$FRONTEND_URL/api/setup" || echo unreachable)"
 	echo "info  node $(node --version), frontend/.nvmrc pins $(cat "$REPO_ROOT/frontend/.nvmrc")"
 	((failures == 0)) || die "$failures check(s) failed"
 }
@@ -155,7 +156,7 @@ drive() {
 	ensure_playwright
 	CONTINUARR_VERIFY_TOOLS="$TOOLS_DIR" \
 		CONTINUARR_VERIFY_RUN_DIR="$RUN_DIR" \
-		CONTINUARR_VERIFY_EVIDENCE="$(read_state evidence-dir)/$journey" \
+		CONTINUARR_VERIFY_EVIDENCE="$(read_state evidence-dir)/$journey-$(date -u +%H%M%S)" \
 		CONTINUARR_FRONTEND_URL="$FRONTEND_URL" \
 		CONTINUARR_BACKEND_URL="$BACKEND_URL" \
 		CONTINUARR_SETUP_TOKEN="$(token 2>/dev/null || true)" \

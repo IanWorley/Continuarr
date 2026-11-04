@@ -40,7 +40,7 @@ A journey is a Playwright script in `scripts/journeys/` that drives Chrome by AR
 
 ## Evidence
 
-Each launch writes to `~/.local/state/continuarr-verify/evidence/<run-id>/`. Set `CONTINUARR_VERIFY_HOME` to move the root. The directory holds `backend.log`, `frontend.log`, `npm-ci.log`, and one directory per journey:
+Each launch writes to `~/.local/state/continuarr-verify/evidence/<run-id>/`. Set `CONTINUARR_VERIFY_HOME` to move the root. The directory holds `backend.log`, `frontend.log`, `npm-ci.log`, and one directory per journey attempt, named `<journey>-<HHMMSS>` in UTC, so a rerun never mixes with an earlier attempt:
 
 - `NN-<step>.png` is a full-page screenshot.
 - `NN-<step>.aria.yaml` is the ARIA snapshot, with the page URL on its first line.
