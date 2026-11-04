@@ -229,7 +229,7 @@ Single sync mode setting:
 
 ### Prerequisites
 
-- JDK (current LTS supported by Spring Boot 4)
+- Any JDK 17+ to start Gradle, which downloads the JDK 25 toolchain the build pins
 - Node.js (current LTS, pinned in `frontend/.nvmrc`) and npm
 - Docker (Testcontainers, Compose)
 - A Plex server (admin token) and a Jellyfin server (admin API key) to point at
