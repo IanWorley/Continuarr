@@ -17,7 +17,7 @@ It needs Docker running, a JDK 17+ for Gradle, Node and npm, and Google Chrome. 
 
 The instance is ready when the command prints `Ready: http://localhost:5173`. By then actuator health reports `UP` and `GET /api/setup` answers through both ports. A fresh launch has no admin. Run `control.sh token` to print its setup token. The first launch on a machine compiles the backend and pulls Postgres, so it can take minutes. Later launches take seconds.
 
-Only one instance runs per machine, because the Vite proxy targets port `8080`. Launch refuses when port `8080` or `5173` is in use, or when an earlier run is still recorded. Never drive an instance that this skill did not launch.
+Only one instance runs per machine, because the Vite proxy targets port `8080`. Launch refuses when port `8080` or `5173` is in use, or when an earlier or concurrent run holds the run directory. Never drive an instance that this skill did not launch.
 
 ## Doctor
 
@@ -55,7 +55,7 @@ A proof drives the real user path in the browser, not an API shortcut or a test-
 .claude/skills/verify-continuarr/scripts/control.sh cleanup
 ```
 
-Run it after every launch, including a failed one. It stops the four processes that `launch` recorded, by PID. It waits for Testcontainers' reaper to remove the containers this run recorded, and after 30 seconds it removes them by ID itself. Then it deletes the run state. The evidence and the tools directories stay. The Gradle daemon keeps running, because other builds share it.
+Run it after every launch, including a failed one. It stops the four processes that `launch` recorded, by PID, and skips any PID whose start time no longer matches, so a reused PID is never killed. It waits for Testcontainers' reaper to remove the containers this run recorded, and after 30 seconds it removes them by ID itself. It records only Testcontainers-labelled containers that the backend reached on localhost. Then it deletes the run state. The evidence and the tools directories stay. The Gradle daemon keeps running, because other builds share it.
 
 ## Helpers
 

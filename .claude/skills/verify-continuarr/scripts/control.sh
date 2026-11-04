@@ -24,6 +24,14 @@ die() { echo "control.sh: $*" >&2; exit 1; }
 port_owner() { lsof -nP -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -n 1 || true; }
 is_alive() { [[ -n "$1" ]] && kill -0 "$1" 2>/dev/null; }
 read_state() { cat "$RUN_DIR/$1" 2>/dev/null || true; }
+started_at() { ps -o lstart= -p "$1" 2>/dev/null || true; }
+record_pid() { echo "$2" >"$RUN_DIR/$1.pid"; started_at "$2" >"$RUN_DIR/$1.started"; }
+# A PID only counts as ours while its start time matches the launch, so a reused PID is never killed.
+is_ours() {
+	local pid
+	pid="$(read_state "$1.pid")"
+	is_alive "$pid" && [[ "$(started_at "$pid")" == "$(read_state "$1.started")" ]]
+}
 
 wait_for() {
 	local timeout="$1" pid="$2" what="$3"
@@ -48,23 +56,28 @@ frontend_ready() {
 
 containers_connected_to() {
 	local port
-	for port in $(lsof -nP -a -p "$1" -iTCP -sTCP:ESTABLISHED 2>/dev/null | awk 'NR > 1 { split($9, ends, "->"); n = split(ends[2], hp, ":"); print hp[n] }' | sort -u); do
-		docker ps --format '{{.ID}} {{.Ports}}' | awk -v mapping=":$port->" 'index($0, mapping) { print $1 }'
+	for port in $(lsof -nP -a -p "$1" -iTCP -sTCP:ESTABLISHED 2>/dev/null | awk 'NR > 1 {
+		split($9, ends, "->"); n = split(ends[2], hp, ":"); host = substr(ends[2], 1, length(ends[2]) - length(hp[n]) - 1)
+		if (host == "127.0.0.1" || host == "[::1]") print hp[n]
+	}' | sort -u); do
+		docker ps --filter label=org.testcontainers=true --format '{{.ID}} {{.Ports}}' | awk -v mapping=":$port->" 'index($0, mapping) { print $1 }'
 	done | sort -u
 }
 
 launch() {
-	[[ -d "$RUN_DIR" ]] && die "an instance is already recorded in $RUN_DIR; run doctor, or cleanup first"
+	mkdir -p "$STATE_HOME"
+	mkdir "$RUN_DIR" 2>/dev/null || die "an instance is already recorded in $RUN_DIR; run doctor, or cleanup first"
+	refuse() { rm -rf "$RUN_DIR"; die "$@"; }
 	local port
 	for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
-		[[ -z "$(port_owner "$port")" ]] || die "port $port is in use by pid $(port_owner "$port"); this run will not drive an instance it did not start"
+		[[ -z "$(port_owner "$port")" ]] || refuse "port $port is in use by pid $(port_owner "$port"); this run will not drive an instance it did not start"
 	done
-	docker info >/dev/null 2>&1 || die "Docker is not running; bootTestRun needs it for Postgres"
+	docker info >/dev/null 2>&1 || refuse "Docker is not running; bootTestRun needs it for Postgres"
 
 	local run_id evidence_dir
 	run_id="$(date -u +%Y%m%dT%H%M%SZ)"
 	evidence_dir="$EVIDENCE_ROOT/$run_id"
-	mkdir -p "$RUN_DIR" "$evidence_dir"
+	mkdir -p "$evidence_dir"
 	echo "$run_id" >"$RUN_DIR/run-id"
 	echo "$evidence_dir" >"$RUN_DIR/evidence-dir"
 	echo "$REPO_ROOT" >"$RUN_DIR/repo-root"
@@ -74,8 +87,9 @@ launch() {
 	(cd "$REPO_ROOT/backend" || exit 1
 		nohup ./gradlew bootTestRun --console=plain >"$evidence_dir/backend.log" 2>&1 &
 		echo $! >"$RUN_DIR/backend-gradle.pid")
+	record_pid backend-gradle "$(read_state backend-gradle.pid)"
 	wait_for "$BACKEND_COLD_START_TIMEOUT_SECONDS" "$(read_state backend-gradle.pid)" backend backend_ready
-	port_owner "$BACKEND_PORT" >"$RUN_DIR/backend-app.pid"
+	record_pid backend-app "$(port_owner "$BACKEND_PORT")"
 	containers_connected_to "$(read_state backend-app.pid)" >"$RUN_DIR/containers"
 
 	echo "Installing frontend dependencies (log: $evidence_dir/npm-ci.log)"
@@ -85,8 +99,9 @@ launch() {
 	(cd "$REPO_ROOT/frontend" || exit 1
 		nohup npm run dev -- --port "$FRONTEND_PORT" --strictPort >"$evidence_dir/frontend.log" 2>&1 &
 		echo $! >"$RUN_DIR/frontend-npm.pid")
+	record_pid frontend-npm "$(read_state frontend-npm.pid)"
 	wait_for "$FRONTEND_READY_TIMEOUT_SECONDS" "$(read_state frontend-npm.pid)" frontend frontend_ready
-	port_owner "$FRONTEND_PORT" >"$RUN_DIR/frontend-app.pid"
+	record_pid frontend-app "$(port_owner "$FRONTEND_PORT")"
 
 	echo "Ready: $FRONTEND_URL (run $run_id, evidence in $evidence_dir)"
 }
@@ -97,13 +112,13 @@ doctor() {
 	check() {
 		if "${@:2}" >/dev/null 2>&1; then echo "ok    $1"; else echo "FAIL  $1"; failures=$((failures + 1)); fi
 	}
-	owns_port() { [[ "$(port_owner "$2")" == "$(read_state "$1")" ]] && is_alive "$(read_state "$1")"; }
+	owns_port() { [[ "$(port_owner "$2")" == "$(read_state "$1.pid")" ]] && is_ours "$1"; }
 	same_checkout() { [[ "$(read_state repo-root)" == "$REPO_ROOT" ]]; }
 	same_revision() { [[ "$(read_state revision)" == "$(git -C "$REPO_ROOT" rev-parse HEAD)" ]]; }
 
 	echo "run $(read_state run-id), evidence in $(read_state evidence-dir)"
-	check "backend pid $(read_state backend-app.pid) owns port $BACKEND_PORT" owns_port backend-app.pid "$BACKEND_PORT"
-	check "frontend pid $(read_state frontend-app.pid) owns port $FRONTEND_PORT" owns_port frontend-app.pid "$FRONTEND_PORT"
+	check "backend pid $(read_state backend-app.pid) owns port $BACKEND_PORT" owns_port backend-app "$BACKEND_PORT"
+	check "frontend pid $(read_state frontend-app.pid) owns port $FRONTEND_PORT" owns_port frontend-app "$FRONTEND_PORT"
 	check "backend health is UP and /api/setup answers" backend_ready
 	check "frontend serves the SPA and proxies /api" frontend_ready
 	check "launched from this checkout ($REPO_ROOT)" same_checkout
@@ -143,21 +158,22 @@ drive() {
 		node "$script"
 }
 
-stop_pid() {
-	local pid="$1"
-	is_alive "$pid" || return 0
+stop_process() {
+	is_ours "$1" || return 0
+	local pid
+	pid="$(read_state "$1.pid")"
 	kill "$pid" 2>/dev/null || true
 	local deadline=$((SECONDS + STOP_TIMEOUT_SECONDS))
-	while is_alive "$pid" && ((SECONDS < deadline)); do sleep 1; done
-	is_alive "$pid" && kill -9 "$pid" 2>/dev/null || true
+	while is_ours "$1" && ((SECONDS < deadline)); do sleep 1; done
+	is_ours "$1" && kill -9 "$pid" 2>/dev/null || true
 }
 
 cleanup() {
 	[[ -d "$RUN_DIR" ]] || { echo "nothing to clean up"; return; }
-	local evidence_dir pidfile id
+	local evidence_dir process id
 	evidence_dir="$(read_state evidence-dir)"
-	for pidfile in frontend-app.pid frontend-npm.pid backend-app.pid backend-gradle.pid; do
-		stop_pid "$(read_state "$pidfile")"
+	for process in frontend-app frontend-npm backend-app backend-gradle; do
+		stop_process "$process"
 	done
 	# Testcontainers' reaper removes them once the app exits; force only the ones this run recorded.
 	local deadline=$((SECONDS + CONTAINER_REAP_TIMEOUT_SECONDS))
