@@ -40,6 +40,10 @@ function connectionReads(): number {
   return fetchMock.mock.calls.filter(([input, init]) => String(input) === JELLYFIN_CONNECTION_PATH && init?.method === 'GET').length
 }
 
+function cachedMutationVariables(): string {
+  return JSON.stringify(queryClient.getMutationCache().getAll().map((mutation) => mutation.state.variables))
+}
+
 function openSettings() {
   const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ['/settings'] }) })
   render(
@@ -83,6 +87,21 @@ it('shows the URL read back from the server and clears the key after a save', as
   expect(within(saved).getByText('Stored')).toBeDefined()
   expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe(STORED_URL)
   expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('')
+})
+
+it('keeps no copy of the typed key once the save settles', async () => {
+  stubBackend(HTTP_NO_CONTENT)
+  const router = openSettings()
+
+  await save(TYPED_URL)
+
+  await screen.findByText('Connection saved.')
+  expect(document.body.textContent).not.toContain(API_KEY)
+  await waitFor(() => expect(cachedMutationVariables()).not.toContain(API_KEY))
+  await act(async () => {
+    await router.navigate({ to: '/' })
+  })
+  expect(cachedMutationVariables()).not.toContain(API_KEY)
 })
 
 it('reads the save back while the browser says it is offline', async () => {

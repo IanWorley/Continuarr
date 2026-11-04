@@ -58,24 +58,38 @@ export function SettingsPage() {
     refetchOnReconnect: false,
   })
   const [confirmedSaves, setConfirmedSaves] = useState(0)
+  const [outcome, setOutcome] = useState<JellyfinSaveOutcome>()
   const mutation = useMutation({
     mutationFn: submitJellyfinConnection,
+    // The variables hold the plaintext key. Each save resets the mutation once it settles, and with
+    // no cache time no finished mutation keeps a copy, so the outcome lives in state instead.
+    gcTime: 0,
     // Awaiting the refetch keeps the button on "Saving…" until the page shows what the server
     // stored, so "Connection saved." and the read-back appear together.
-    onSuccess: async (outcome) => {
-      if (outcome.kind !== 'saved') return
+    onSuccess: async (result) => {
+      if (result.kind !== 'saved') return
       await queryClient.invalidateQueries({ queryKey: JELLYFIN_CONNECTION_QUERY_KEY })
       setConfirmedSaves((count) => count + 1)
     },
   })
+
+  function save(request: JellyfinConnectionRequest) {
+    setOutcome(undefined)
+    mutation.mutate(request, {
+      onSettled: (result) => {
+        setOutcome(result ?? { kind: 'failed' })
+        mutation.reset()
+      },
+    })
+  }
 
   return (
     <SettingsScreen
       load={toConnectionLoad(query)}
       confirmedSaves={confirmedSaves}
       submitting={mutation.isPending}
-      outcome={mutation.data}
-      onSave={(request) => mutation.mutate(request)}
+      outcome={outcome}
+      onSave={save}
     />
   )
 }
