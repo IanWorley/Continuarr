@@ -28,5 +28,5 @@ Each feature file starts with an H1 title and one paragraph about the user-visib
 ## Features
 
 - [First-run setup](./first-run-setup.md) covers the setup redirect, token and password errors, admin creation, and the closed setup page.
-- [Sign in](./sign-in.md) covers the login page, rejected credentials, and a session that authenticates API calls.
+- [Sign in](./sign-in.md) covers the login page, rejected credentials, the signed-in shell, sign-out, and the redirect from `/` without a session.
 - [Access control](./access-control.md) covers which endpoints answer without a session, and the CSRF requirement on state-changing calls.
