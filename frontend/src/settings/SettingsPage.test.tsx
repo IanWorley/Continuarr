@@ -3,7 +3,7 @@ import { onlineManager, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { AUTH_PATH, CSRF_COOKIE_NAME, JELLYFIN_CONNECTION_PATH } from '../api/client.ts'
+import { AUTH_PATH, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, JELLYFIN_CONNECTION_PATH } from '../api/client.ts'
 import { queryClient } from '../queryClient.ts'
 import { routeTree } from '../router.tsx'
 import { SettingsScreen } from './SettingsPage.tsx'
@@ -19,6 +19,7 @@ const OTHER_TAB_URL = 'https://other-tab.example.com'
 const API_KEY = 'dummy-key-0123'
 const KEY_MESSAGE = /It can't contain spaces, quotes, or backslashes/
 const USERNAME = 'admin'
+const CSRF_TOKEN = 'csrf-token'
 
 const fetchMock = vi.fn<typeof fetch>()
 let storedUrl: string | null = null
@@ -64,7 +65,7 @@ beforeEach(() => {
   storedUrl = null
   vi.stubGlobal('fetch', fetchMock)
   vi.stubGlobal('scrollTo', vi.fn())
-  document.cookie = `${CSRF_COOKIE_NAME}=token; path=/`
+  document.cookie = `${CSRF_COOKIE_NAME}=${CSRF_TOKEN}; path=/`
 })
 
 afterEach(() => {
@@ -104,6 +105,17 @@ it('keeps no copy of the typed key once the save settles', async () => {
   expect(cachedMutationVariables()).not.toContain(API_KEY)
 })
 
+it('sends the save with the CSRF token', async () => {
+  stubBackend(HTTP_NO_CONTENT)
+  openSettings()
+
+  await save(TYPED_URL)
+
+  await screen.findByText('Connection saved.')
+  const put = fetchMock.mock.calls.find(([input, init]) => String(input) === JELLYFIN_CONNECTION_PATH && init?.method === 'PUT')
+  expect(new Headers(put?.[1]?.headers).get(CSRF_HEADER_NAME)).toBe(CSRF_TOKEN)
+})
+
 it('reads the save back while the browser says it is offline', async () => {
   stubBackend(HTTP_NO_CONTENT)
   openSettings()
@@ -117,7 +129,7 @@ it('reads the save back while the browser says it is offline', async () => {
   expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe(STORED_URL)
 })
 
-it('keeps focus in the key field after a save submitted with Enter from it', async () => {
+it('keeps focus in the key field after a save submitted from it', async () => {
   stubBackend(HTTP_NO_CONTENT)
   openSettings()
   fireEvent.change(await screen.findByLabelText('Server URL'), { target: { value: TYPED_URL } })
@@ -142,6 +154,22 @@ it('keeps what the admin typed when the window regains focus', async () => {
 
   expect(connectionReads()).toBe(1)
   expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe(TYPED_URL)
+})
+
+it('keeps what the admin typed when the saved connection changes without their save', async () => {
+  stubBackend(HTTP_NO_CONTENT)
+  openSettings()
+  fireEvent.change(await screen.findByLabelText('Server URL'), { target: { value: TYPED_URL } })
+  fireEvent.change(screen.getByLabelText('API key'), { target: { value: API_KEY } })
+  storedUrl = OTHER_TAB_URL
+
+  await act(async () => {
+    await queryClient.invalidateQueries()
+  })
+
+  await within(screen.getByRole('region', { name: 'Saved connection' })).findByText(OTHER_TAB_URL)
+  expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe(TYPED_URL)
+  expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe(API_KEY)
 })
 
 it('starts the URL field from the current saved URL when the admin comes back to the page', async () => {
