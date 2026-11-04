@@ -7,6 +7,7 @@ import kotlin.test.assertEquals
 
 private const val WELL_FORMED_IMDB_ID = "tt0133093"
 private const val WELL_FORMED_NUMERIC_ID = "81189"
+private const val ZERO_PADDED_NUMERIC_ID = "0081189"
 
 private val MALFORMED_IMDB_IDS = listOf(
 	"",
@@ -35,6 +36,7 @@ private val MALFORMED_IDS_JSON = listOf(
 	"""{"imdb":"garbage"}""",
 	"""{"tvdb":"-1"}""",
 	"""{"tmdb":"12a"}""",
+	"""{"tvdb":"007"}""",
 )
 
 class ExternalIdsTest {
@@ -55,6 +57,11 @@ class ExternalIdsTest {
 	}
 
 	@Test
+	fun `TvdbId strips leading zeros`() {
+		assertEquals(WELL_FORMED_NUMERIC_ID, TvdbId.parseOrNull(ZERO_PADDED_NUMERIC_ID)?.value)
+	}
+
+	@Test
 	fun `TvdbId rejects malformed input`() {
 		assertEquals(emptyList(), MALFORMED_NUMERIC_IDS.filter { TvdbId.parseOrNull(it) != null })
 	}
@@ -62,6 +69,11 @@ class ExternalIdsTest {
 	@Test
 	fun `TmdbId accepts digits`() {
 		assertEquals(WELL_FORMED_NUMERIC_ID, TmdbId.parseOrNull(WELL_FORMED_NUMERIC_ID)?.value)
+	}
+
+	@Test
+	fun `TmdbId strips leading zeros`() {
+		assertEquals(WELL_FORMED_NUMERIC_ID, TmdbId.parseOrNull(ZERO_PADDED_NUMERIC_ID)?.value)
 	}
 
 	@Test
