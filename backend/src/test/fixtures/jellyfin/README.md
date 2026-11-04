@@ -1,6 +1,6 @@
 # Jellyfin seed server and fixtures
 
-`seed.sh` starts a disposable Jellyfin that holds every case the Jellyfin client tests need. `record.sh` records WireMock fixtures from that server into [`src/test/resources/wiremock/jellyfin/mappings/`](../../resources/wiremock/jellyfin/mappings). Tests replay the fixtures offline, so `./gradlew test` never starts Jellyfin.
+`seed.sh` starts a disposable Jellyfin that holds every case the Jellyfin client tests need. `record.sh` records WireMock fixtures from that server into [`src/test/resources/wiremock/jellyfin/mappings/`](../../resources/wiremock/jellyfin/mappings). No test replays them yet. The Jellyfin client tests in #16 to #19 will, so `./gradlew test` never needs a running Jellyfin.
 
 ## Jellyfin 12.0 is the minimum supported version
 
@@ -20,9 +20,25 @@ Run the commands below from this folder. Both servers bind to loopback only. Jel
 
 The script deletes the seed server's volumes and generates the clips listed in `media.tsv`. It completes the startup wizard and creates the API key, users, libraries, and user state. Then it prints `ok` or `FAIL` for each case in [Seed cases](#seed-cases), and it exits with an error if any case fails.
 
-When it finishes, open `http://127.0.0.1:8097` and sign in as `admin` with the password `seed-password`. The server resets on every run, so that password isn't a secret. The server's real API key, server ID, server name, and local address go to `.seed/secrets.json`, which Git ignores.
+When it finishes, open the URL it prints, `http://127.0.0.1:8097` by default, and sign in as `admin` with the password `seed-password`. The server resets on every run, so that password isn't a secret. The server's real API key, server ID, server name, and local address go to `.seed/secrets.json`, which Git ignores.
 
 To stop the server and delete its data, run `docker compose down --volumes`.
+
+## Run a second seed server
+
+With the defaults, every run uses the Compose project `continuarr-jellyfin-seed` and its volumes, so a second `seed.sh` deletes the first server's data. To run another server beside it, give it its own project name and ports. Set `COMPOSE_PROJECT_NAME`, which replaces the name in `compose.yaml`. Then write an untracked `compose.override.yaml` in this folder, which Compose loads on its own and Git ignores:
+
+```yaml
+services:
+  jellyfin:
+    ports: !override
+      - "127.0.0.1:18097:8096"
+  wiremock:
+    ports: !override
+      - "127.0.0.1:18098:8080"
+```
+
+The `!override` tag replaces the ports. Without it, Compose adds the new ports to 8097 and 8098, and the second server can't bind them. Then run, for example, `COMPOSE_PROJECT_NAME=my-seed ./record.sh`, and use the same variable with `docker compose down --volumes`. The scripts find the ports through `docker compose port`, so they need no other change.
 
 ## Record the fixtures
 
@@ -33,10 +49,11 @@ To stop the server and delete its data, run `docker compose down --volumes`.
 The script runs `seed.sh` first, so every recording starts from the same server state. Then it does these steps:
 
 1. It sends each path in `requests.txt` through the WireMock recorder with the API key.
-2. It writes one file per request, named from the method, path, and query, such as `get-system-info.json` or `get-items-recursive-true.json`. It replaces the old mappings only after every request succeeds, so a failed run leaves them alone.
+2. It writes one file per request into `.seed/staging/mappings`, named from the method, path, and query, such as `get-system-info.json` or `get-items-recursive-true.json`.
 3. It keeps the method and URL to match on, and the status, `Content-Type`, and body to return. The recorder doesn't save request headers, so matching ignores `Authorization` and no fixture holds the key. The script drops `Date` and timing headers, so a re-record changes a file only when Jellyfin's answer changes.
 4. It replaces the seed server's real API key, server ID, server name, and local address with the values in `placeholders.json`. It replaces any other private IPv4 address with `192.0.2.1`, an address reserved for documentation.
-5. It runs `JellyfinFixtureSecretsTest`.
+5. It fails if the staged folder has no mappings, then runs `JellyfinFixtureSecretsTest` on the staged folder.
+6. It replaces the committed mappings with the staged ones only after every step passes. A failed request, an empty recording, or a failed leak test leaves the committed mappings as they were.
 
 To record another endpoint, add its path to `requests.txt` and run `./record.sh`. The script sends each path as written and skips blank lines and lines that start with `#`. User IDs change on every seed, so a path that needs one needs a lookup in `record.sh` first.
 

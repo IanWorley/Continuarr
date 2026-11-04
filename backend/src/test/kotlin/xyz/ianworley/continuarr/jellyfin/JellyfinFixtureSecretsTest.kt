@@ -12,7 +12,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 // Relative to backend/, Gradle's working directory for tests.
-private val FIXTURES_DIR = Path.of("src", "test", "resources", "wiremock", "jellyfin")
+// record.sh sets the variable to check staged mappings before they replace the committed ones.
+private const val FIXTURES_DIR_VARIABLE = "JELLYFIN_FIXTURES_DIR"
+private val FIXTURES_DIR = System.getenv(FIXTURES_DIR_VARIABLE)?.let { Path.of(it) }
+	?: Path.of("src", "test", "resources", "wiremock", "jellyfin")
 private val SEED_DIR = Path.of("src", "test", "fixtures", "jellyfin")
 private val PLACEHOLDERS = SEED_DIR.resolve("placeholders.json")
 private val SEED_SECRETS = SEED_DIR.resolve(".seed").resolve("secrets.json")
