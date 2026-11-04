@@ -3,7 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { AUTH_PATH, CSRF_COOKIE_NAME, LOGOUT_PATH, SETUP_PATH } from '../api/client.ts'
+import { AUTH_PATH, CSRF_COOKIE_NAME, JELLYFIN_CONNECTION_PATH, LOGOUT_PATH, SETUP_PATH } from '../api/client.ts'
 import { queryClient } from '../queryClient.ts'
 import { routeTree } from '../router.tsx'
 
@@ -101,4 +101,17 @@ it.each([
 
   expect(await screen.findByRole('button', { name: 'Sign in' })).toBeDefined()
   expect(router.state.location.pathname).toBe('/login')
+})
+
+it('opens the settings page from the header', async () => {
+  stubBackend({
+    [`GET ${AUTH_PATH}`]: signedIn,
+    [`GET ${JELLYFIN_CONNECTION_PATH}`]: async () => Response.json({ url: null }),
+  })
+  const router = openShell()
+
+  fireEvent.click(await screen.findByRole('link', { name: 'Settings' }))
+
+  expect(await screen.findByRole('heading', { name: 'Jellyfin connection' })).toBeDefined()
+  expect(router.state.location.pathname).toBe('/settings')
 })

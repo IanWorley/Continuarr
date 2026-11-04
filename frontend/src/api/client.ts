@@ -10,6 +10,7 @@ export const CSRF_PATH = '/api/csrf'
 export const LOGIN_PATH = '/api/login'
 export const LOGOUT_PATH = '/api/logout'
 export const SETUP_PATH = '/api/setup'
+export const JELLYFIN_CONNECTION_PATH = '/api/v1/jellyfin/connection'
 export const API_TIMEOUT_MS = 10_000
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -26,6 +27,14 @@ export interface Credentials {
 export type Session = components['schemas']['Session']
 export type SetupRequest = components['schemas']['SetupRequest']
 export type SetupStatus = components['schemas']['SetupStatus']
+export type JellyfinConnectionRequest = components['schemas']['JellyfinConnectionRequest']
+export type JellyfinConnectionProblem = components['schemas']['JellyfinConnectionProblem']
+type JellyfinConnectionResponse = components['schemas']['JellyfinConnectionResponse']
+
+/** The server stores the URL and the key as one row, so a saved connection always has a key. */
+export interface JellyfinConnection {
+  url: NonNullable<JellyfinConnectionResponse['url']>
+}
 
 /**
  * Sends a request to the backend. State-changing methods carry the CSRF token, fetching it
@@ -74,6 +83,24 @@ export async function fetchSetupStatus(): Promise<SetupStatus> {
 export function setUp(request: SetupRequest): Promise<Response> {
   return apiFetch(SETUP_PATH, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+}
+
+export async function fetchJellyfinConnection(): Promise<JellyfinConnection | null> {
+  const response = await apiFetch(JELLYFIN_CONNECTION_PATH)
+  if (!response.ok) {
+    throw new Error(`GET ${JELLYFIN_CONNECTION_PATH} returned ${response.status}`)
+  }
+  const { url } = (await response.json()) as JellyfinConnectionResponse
+  // null rather than undefined: TanStack Query treats an undefined result as a bug.
+  return url ? { url } : null
+}
+
+export function saveJellyfinConnection(request: JellyfinConnectionRequest): Promise<Response> {
+  return apiFetch(JELLYFIN_CONNECTION_PATH, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   })

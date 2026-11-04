@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { Outlet, useNavigate, useRouteContext } from '@tanstack/react-router'
+import { Link, Outlet, useNavigate, useRouteContext } from '@tanstack/react-router'
 import { logout } from '../api/client.ts'
 
 export function Shell() {
@@ -18,6 +18,15 @@ export function Shell() {
         <p className="text-xl font-extrabold tracking-tight">
           Continu<span className="text-accent">arr</span>
         </p>
+        {/* Link marks the current page with aria-current="page". */}
+        <nav aria-label="Main">
+          <Link
+            to="/settings"
+            className="rounded-md px-2 py-1 text-sm text-ink-400 transition hover:text-ink-100 focus-visible:outline-2 focus-visible:outline-accent aria-[current=page]:text-ink-100"
+          >
+            Settings
+          </Link>
+        </nav>
         <span className="ml-auto text-sm text-ink-400">{session.username}</span>
         {/* aria-disabled rather than disabled, so a keyboard user's focus stays on the button. */}
         <button

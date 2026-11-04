@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { fetchSession, fetchSetupStatus } from './api/client.ts'
 import { LoginPage } from './login/LoginPage.tsx'
+import { SettingsPage } from './settings/SettingsPage.tsx'
 import { SetupPage } from './setup/SetupPage.tsx'
 import { Shell } from './shell/Shell.tsx'
 
@@ -34,6 +35,12 @@ const indexRoute = createRoute({
   path: '/',
 })
 
+const settingsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings',
+  component: SettingsPage,
+})
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
@@ -48,7 +55,7 @@ const setupRoute = createRoute({
   component: SetupPage,
 })
 
-export const routeTree = rootRoute.addChildren([shellRoute.addChildren([indexRoute]), loginRoute, setupRoute])
+export const routeTree = rootRoute.addChildren([shellRoute.addChildren([indexRoute, settingsRoute]), loginRoute, setupRoute])
 
 export const router = createRouter({ routeTree })
 
