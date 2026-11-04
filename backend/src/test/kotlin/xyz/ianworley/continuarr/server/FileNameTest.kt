@@ -4,7 +4,6 @@ import tools.jackson.module.kotlin.jacksonObjectMapper
 import tools.jackson.module.kotlin.readValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFails
 import kotlin.test.assertNull
 
 private const val EPISODE_FILE = "S01E01.mkv"
@@ -13,7 +12,12 @@ private const val UNIX_EPISODE_PATH = "/media/tv/Show/S01E01.mkv"
 private const val WINDOWS_EPISODE_PATH = "D:\\Media\\TV\\Show\\S01E01.mkv"
 private const val SHOW_FOLDER_PATH = "/media/tv/Breaking Bad/"
 private const val FILESYSTEM_ROOT = "/"
-private const val PATH_JSON = "\"/media/tv/Show/S01E01.mkv\""
+private val INVALID_FILE_NAME_JSON = listOf(
+	"\"/media/tv/Show/S01E01.mkv\"",
+	"\"Show\\\\S01E01.mkv\"",
+	"\"\"",
+	"\" \"",
+)
 
 class FileNameTest {
 
@@ -38,7 +42,9 @@ class FileNameTest {
 	}
 
 	@Test
-	fun `Jackson can't build a FileName that contains a separator`() {
-		assertFails { jacksonObjectMapper().readValue<FileName>(PATH_JSON) }
+	fun `Jackson can't build a blank FileName or one that contains a separator`() {
+		val mapper = jacksonObjectMapper()
+
+		assertEquals(emptyList(), INVALID_FILE_NAME_JSON.filter { runCatching { mapper.readValue<FileName>(it) }.isSuccess })
 	}
 }

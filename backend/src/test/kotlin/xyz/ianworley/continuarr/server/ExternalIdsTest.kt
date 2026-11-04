@@ -30,6 +30,8 @@ private val MALFORMED_NUMERIC_IDS = listOf(
 	"-81189",
 	"+81189",
 	"١٢٣",
+	"0",
+	"000",
 )
 
 private val MALFORMED_IDS_JSON = listOf(
@@ -37,6 +39,7 @@ private val MALFORMED_IDS_JSON = listOf(
 	"""{"tvdb":"-1"}""",
 	"""{"tmdb":"12a"}""",
 	"""{"tvdb":"007"}""",
+	"""{"tmdb":"007"}""",
 )
 
 class ExternalIdsTest {
