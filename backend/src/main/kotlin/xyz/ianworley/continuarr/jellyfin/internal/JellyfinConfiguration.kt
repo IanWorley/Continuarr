@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration
 import xyz.ianworley.continuarr.server.MediaServer
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(JellyfinProperties::class)
+@EnableConfigurationProperties(JellyfinProperties::class, EncryptionKeyProperties::class)
 class JellyfinConfiguration {
 
 	@Bean

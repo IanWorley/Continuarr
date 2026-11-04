@@ -32,11 +32,14 @@ fun parseBaseUrlOrNull(raw: String): URI? {
 private fun URI.isJellyfinBaseUrl(): Boolean = isAbsolute && scheme.lowercase() in URL_SCHEMES && host != null &&
 	(port == NO_PORT || port in PORTS) && rawUserInfo == null && rawQuery == null && rawFragment == null
 
-/** Keeps the key out of logs: [toString] hides it, and [authorizationHeader] is the only way to read it. */
+/** Keeps the key out of logs: [toString] hides it, and only [authorizationHeader] and [plaintext] read it. */
 class JellyfinApiKey private constructor(private val value: String) {
 
 	/** Jellyfin 12 accepts the key only in the MediaBrowser scheme. */
 	fun authorizationHeader(): String = """MediaBrowser Client="$CLIENT_NAME", Token="$value""""
+
+	/** For [ApiKeyCipher] to encrypt before the key is stored. */
+	fun plaintext(): ByteArray = value.toByteArray(Charsets.US_ASCII)
 
 	override fun toString(): String = "JellyfinApiKey(hidden)"
 
