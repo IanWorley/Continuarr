@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.post
 import xyz.ianworley.continuarr.TestcontainersConfiguration
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertNull
 
 private const val ADMIN_USERNAME = "admin"
 private const val ADMIN_PASSWORD = "correct-horse-battery"
@@ -45,6 +46,12 @@ class SecurityConfigTest(
 	@Test
 	fun `unauthenticated requests get 401 instead of a redirect`() {
 		mockMvc.get(PROTECTED_PATH).andExpect { status { isUnauthorized() } }
+	}
+
+	@Test
+	fun `an anonymous 401 creates no session`() {
+		val request = mockMvc.get(PROTECTED_PATH).andExpect { status { isUnauthorized() } }.andReturn().request
+		assertNull(request.getSession(false))
 	}
 
 	@Test

@@ -71,7 +71,6 @@ async function csrfToken(): Promise<string> {
   const existing = readCsrfCookie()
   if (existing) return existing
 
-  // csrf.spa() defers the token, so nothing writes the cookie until this endpoint reads it.
   const response = await fetch(CSRF_PATH, { credentials: 'same-origin' })
   const token = readCsrfCookie()
   if (!response.ok || !token) {

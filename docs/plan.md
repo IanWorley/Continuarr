@@ -192,11 +192,13 @@ Single sync mode setting:
   token creates the admin, and only works while none exists. `GET /api/setup` reports whether
   that is still needed, so the SPA sends visitors to the setup page or the login page.
 - Form login (`POST /api/login`) with session cookie, answered with status codes (204/401) instead
-  of redirects. Unauthenticated requests get 401.
-- SPA CSRF via `csrf.spa()` (Spring Security 7.0+): the SPA calls `GET /api/csrf` to get the
-  `XSRF-TOKEN` cookie (the token is deferred, so nothing else writes it), then sends it back in the
-  `X-XSRF-TOKEN` header. The Kotlin DSL has no `spa()` as of 7.1, so call `http.csrf { it.spa() }`
-  outside the `http { }` block.
+  of redirects. Unauthenticated requests get 401 and no session. Login never redirects back to a
+  rejected request, so the request cache is off.
+- SPA CSRF via `csrf.spa()` (Spring Security 7.0+): it writes the `XSRF-TOKEN` cookie on any
+  response to a request without one, 401s included. That is fine because the cookie keeps no state
+  on the server. The SPA sends the cookie back in the `X-XSRF-TOKEN` header, and calls
+  `GET /api/csrf` first when it has none, as after logout clears it. The Kotlin DSL has no `spa()`
+  as of 7.1, so call `http.csrf { it.spa() }` outside the `http { }` block.
 - Plex tokens and PINs encrypted with Spring Security Crypto; key from env var or Docker secret.
 - Everything requires authentication except the Actuator health endpoint (Docker healthcheck),
   `GET /api/csrf`, `GET` and `POST /api/setup`, and the SPA itself: `index.html`, `/assets/**`, and client-side

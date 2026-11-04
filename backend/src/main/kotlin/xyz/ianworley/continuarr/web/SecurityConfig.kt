@@ -20,6 +20,7 @@ import org.springframework.security.web.authentication.AuthenticationEntryPointF
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler
 import org.springframework.security.web.authentication.HttpStatusEntryPoint
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler
+import org.springframework.security.web.savedrequest.NullRequestCache
 import org.springframework.security.web.util.matcher.DispatcherTypeRequestMatcher
 
 const val LOGIN_PATH = "/api/login"
@@ -70,6 +71,11 @@ class SecurityConfig {
 			}
 			exceptionHandling {
 				authenticationEntryPoint = HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)
+			}
+			// Login answers 204 instead of redirecting back to the rejected request, so saving that
+			// request would only create a session for every anonymous 401.
+			requestCache {
+				requestCache = NullRequestCache()
 			}
 		}
 		return http.build()
