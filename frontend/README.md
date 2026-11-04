@@ -44,7 +44,7 @@ Before you start, install the tools in the plan's [Prerequisites](../docs/plan.m
 
 	Vite serves the app at http://localhost:5173 and forwards `/api` to the backend on port 8080.
 
-4. Open http://localhost:5173/login and sign in as the admin. The app then shows `/`, a placeholder until the logged-in shell lands (#9).
+4. Open http://localhost:5173 and sign in as the admin. Without a session the app sends you to `/login`, and after sign-in it shows the logged-in shell at `/`. Sign out from the shell's header.
 
 Stopping the backend deletes its database, so repeat step 2 after each restart.
 

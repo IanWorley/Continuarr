@@ -55,6 +55,24 @@
         }
       }
     },
+    "/api/v1/auth" : {
+      "get" : {
+        "tags" : [ "session-controller" ],
+        "operationId" : "session",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Session"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/csrf" : {
       "get" : {
         "tags" : [ "csrf-controller" ],
@@ -83,6 +101,15 @@
           }
         },
         "required" : [ "password", "token", "username" ]
+      },
+      "Session" : {
+        "type" : "object",
+        "properties" : {
+          "username" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "username" ]
       },
       "SetupStatus" : {
         "type" : "object",

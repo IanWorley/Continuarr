@@ -1,7 +1,8 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
-import { fetchSetupStatus } from './api/client.ts'
+import { fetchSession, fetchSetupStatus } from './api/client.ts'
 import { LoginPage } from './login/LoginPage.tsx'
 import { SetupPage } from './setup/SetupPage.tsx'
+import { Shell } from './shell/Shell.tsx'
 
 const rootRoute = createRootRoute()
 
@@ -15,12 +16,22 @@ async function redirectWhen(setupRequired: boolean, to: '/login' | '/setup'): Pr
   if (status?.required === setupRequired) throw redirect({ to })
 }
 
-// Placeholder until the logged-in shell lands (#9).
-const indexRoute = createRoute({
+// Signed-in pages nest under the shell. It skips the setup check, since /login's own check sends a
+// fresh install on to /setup.
+const shellRoute = createRoute({
   getParentRoute: () => rootRoute,
+  id: 'shell',
+  beforeLoad: async () => {
+    const session = await fetchSession().catch(() => undefined)
+    if (!session) throw redirect({ to: '/login' })
+    return { session }
+  },
+  component: Shell,
+})
+
+const indexRoute = createRoute({
+  getParentRoute: () => shellRoute,
   path: '/',
-  beforeLoad: () => redirectWhen(true, '/setup'),
-  component: () => <p>Continuarr</p>,
 })
 
 const loginRoute = createRoute({
@@ -37,7 +48,9 @@ const setupRoute = createRoute({
   component: SetupPage,
 })
 
-export const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, loginRoute, setupRoute]) })
+export const routeTree = rootRoute.addChildren([shellRoute.addChildren([indexRoute]), loginRoute, setupRoute])
+
+export const router = createRouter({ routeTree })
 
 // Registers the router type so links and navigation are type-checked app-wide.
 declare module '@tanstack/react-router' {

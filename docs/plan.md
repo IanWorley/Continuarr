@@ -193,7 +193,8 @@ Single sync mode setting:
   that is still needed, so the SPA sends visitors to the setup page or the login page.
 - Form login (`POST /api/login`) with session cookie, answered with status codes (204/401) instead
   of redirects. Unauthenticated requests get 401 and no session. Login never redirects back to a
-  rejected request, so the request cache is off.
+  rejected request, so the request cache is off. `GET /api/v1/auth` returns the signed-in
+  username, so the SPA sends a visitor without a session to the login page.
 - SPA CSRF via `csrf.spa()` (Spring Security 7.0+): it writes the `XSRF-TOKEN` cookie on any
   response to a request without one, 401s included. That is fine because the cookie keeps no state
   on the server. The SPA sends the cookie back in the `X-XSRF-TOKEN` header, and calls

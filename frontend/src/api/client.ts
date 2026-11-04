@@ -5,6 +5,7 @@ import type { components } from './schema'
 
 export const CSRF_COOKIE_NAME = 'XSRF-TOKEN'
 export const CSRF_HEADER_NAME = 'X-XSRF-TOKEN'
+export const AUTH_PATH = '/api/v1/auth'
 export const CSRF_PATH = '/api/csrf'
 export const LOGIN_PATH = '/api/login'
 export const LOGOUT_PATH = '/api/logout'
@@ -21,6 +22,7 @@ export interface Credentials {
   password: string
 }
 
+export type Session = components['schemas']['Session']
 export type SetupRequest = components['schemas']['SetupRequest']
 export type SetupStatus = components['schemas']['SetupStatus']
 
@@ -44,6 +46,15 @@ export function login({ username, password }: Credentials): Promise<Response> {
 
 export function logout(): Promise<Response> {
   return apiFetch(LOGOUT_PATH, { method: 'POST' })
+}
+
+/** The signed-in admin; rejects when this browser has no session. */
+export async function fetchSession(): Promise<Session> {
+  const response = await apiFetch(AUTH_PATH)
+  if (!response.ok) {
+    throw new Error(`GET ${AUTH_PATH} returned ${response.status}`)
+  }
+  return (await response.json()) as Session
 }
 
 /** Whether the admin still has to be created; anyone may ask. */
