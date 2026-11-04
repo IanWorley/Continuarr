@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc", "import", "jsx-a11y", "vitest"],
+  "plugins": ["react", "typescript", "oxc", "import", "jsx-a11y", "vitest", "unicorn", "promise"],
   "categories": {
     "correctness": "error",
     "suspicious": "error"
@@ -16,6 +16,25 @@
     "no-magic-numbers": [
       "error",
       { "ignore": [0, 1, -1], "ignoreArrayIndexes": true, "ignoreDefaultValues": true }
-    ]
+    ],
+    "array-callback-return": "error",
+    "eqeqeq": "error",
+    "no-promise-executor-return": "error",
+    "no-self-compare": "error",
+    "no-throw-literal": "error",
+    "no-useless-return": "error",
+    "prefer-promise-reject-errors": "error",
+    "import/no-cycle": "error",
+    "import/no-duplicates": "error",
+    "jsx-a11y/anchor-ambiguous-text": "error",
+    "react/button-has-type": "error",
+    "react/jsx-no-target-blank": "error",
+    "react/jsx-no-useless-fragment": "error",
+    "react/no-danger": "error",
+    "react/no-deriving-state-in-effects": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "vitest/no-identical-title": "error"
   }
 }
