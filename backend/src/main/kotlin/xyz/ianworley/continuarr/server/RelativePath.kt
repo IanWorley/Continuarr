@@ -10,14 +10,12 @@ value class RelativePath private constructor(val value: String) {
 		/**
 		 * Strips the longest root that contains [absolutePath], comparing case-sensitively.
 		 * Returns null when no root matches or when the path is a root itself.
-		 * The adapter logs the miss with the item ID.
 		 */
 		fun relativizeOrNull(absolutePath: String, roots: List<String>): RelativePath? {
-			val path = absolutePath.replace(WINDOWS_SEPARATOR, SEPARATOR)
-			// A blank root would strip to the empty prefix and match every path.
+			val path = absolutePath.withForwardSlashes()
 			val root = roots
-				.filterNot { it.isBlank() }
-				.map { it.replace(WINDOWS_SEPARATOR, SEPARATOR).trimEnd(SEPARATOR) }
+				.filter { it.isNotBlank() }
+				.map { it.withForwardSlashes().trimEnd(SEPARATOR) }
 				.filter { path.startsWith(it + SEPARATOR) }
 				.maxByOrNull { it.length }
 				?: return null
@@ -26,3 +24,5 @@ value class RelativePath private constructor(val value: String) {
 		}
 	}
 }
+
+private fun String.withForwardSlashes(): String = replace(WINDOWS_SEPARATOR, SEPARATOR)

@@ -2,7 +2,6 @@ package xyz.ianworley.continuarr.server
 
 import kotlin.time.Duration
 
-// Sealed rather than one class of nullable fields, so an episode can't exist without its show.
 sealed interface ServerItem {
 	val id: ServerItemId
 	val title: String
