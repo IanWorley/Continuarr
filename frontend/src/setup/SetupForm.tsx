@@ -1,5 +1,4 @@
-import { Link } from '@tanstack/react-router'
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import type { SetupRequest } from '../api/client.ts'
 import { FIELD_CLASSES, FORM_CLASSES, FormAlert, HEADING_CLASSES, LABEL_CLASSES, SubmitButton } from '../auth/formParts.tsx'
 
@@ -8,25 +7,17 @@ import { FIELD_CLASSES, FORM_CLASSES, FormAlert, HEADING_CLASSES, LABEL_CLASSES,
 const MIN_PASSWORD_LENGTH = 8
 const MAX_PASSWORD_BYTES = 72
 
-export type SetupFailure = 'invalid-account' | 'wrong-token' | 'admin-exists' | 'unavailable'
+export type SetupFailure = 'invalid-account' | 'wrong-token' | 'unavailable'
 
 // Caught here before anything is sent, so it never comes back from the server.
 type SetupFormError = SetupFailure | 'password-mismatch'
 
-const ERROR_MESSAGES: Record<SetupFormError, ReactNode> = {
+const ERROR_MESSAGES: Record<SetupFormError, string> = {
   'password-mismatch': "The passwords don't match.",
   'invalid-account':
     `Enter a username, and a password of ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_BYTES} characters. ` +
     'Accented letters and emoji count as two or more.',
   'wrong-token': "That setup token doesn't match. Copy the latest one from the server logs; it changes on every restart.",
-  'admin-exists': (
-    <>
-      An admin already exists.{' '}
-      <Link to="/login" className="font-semibold underline">
-        Sign in instead
-      </Link>
-    </>
-  ),
   unavailable: "Couldn't reach Continuarr. Try again in a moment.",
 }
 
