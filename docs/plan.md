@@ -262,7 +262,7 @@ and matches live in the database and are edited in the admin UI.
 - `./gradlew bootTestRun` — runs the backend with Postgres started by Testcontainers.
 - `./gradlew test` — tests against Testcontainers Postgres and WireMock.
 - `npm run dev` in `frontend/` — Vite dev server; forwards `/api` to the backend on port 8080.
-- `npm run typecheck`, `npm run lint`, `npm run build` in `frontend/` — the checks CI runs.
+- `npm run check` in `frontend/` — the checks CI runs: typecheck, lint, test, and build.
 - API types: `backend/openapi.json` is the committed spec (springdoc, behind login). `OpenApiSpecTest`
   fails when it no longer matches the API; copy `build/openapi.json` over it. The frontend's `dev`,
   `typecheck`, and `build` scripts generate `src/api/schema.d.ts` from it, so a breaking API change
@@ -273,7 +273,7 @@ and matches live in the database and are edited in the admin UI.
   `frontend/` first; it fails if there is no build. Gradle never runs Node, so `test` and
   `bootTestRun` don't need it (tests use a stand-in `index.html`).
 - CI runs on every PR and push to `main`: `.github/workflows/backend.yml` runs `./gradlew test`;
-  `.github/workflows/frontend.yml` runs install, typecheck, lint, and build.
+  `.github/workflows/frontend.yml` runs `npm ci` and `npm run check`.
 
 ## Milestones and phases
 
