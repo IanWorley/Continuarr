@@ -108,6 +108,12 @@ Rules:
 - **Conflicting IDs** → unmatched queue. Never sync on a conflict.
 - **Editions are separate movies.** Same edition (or none on both) matches; different editions
   don't; edition on one side only → unmatched queue.
+- **Jellyfin editions come from the file name.** Jellyfin has no edition field. The edition is the
+  `X` in `{edition-X}`, or else the label in `Title (Year) - Label`. A label that names only a
+  quality, such as `1080p` or `2160p`, is not an edition.
+- **A Jellyfin movie whose versions differ in edition** → unmatched queue. No edition counts as
+  its own value. Jellyfin shares one watched flag across all of a movie's versions, so it can't
+  keep the editions apart.
 - **Multi-episode files** → not synced, listed in the queue.
 - **Same relative file path** within a paired library → auto-link (strong guess). If IDs
   disagree, link anyway and flag "metadata disagrees".
@@ -415,11 +421,11 @@ first depends on them.
 
 ## Unknowns
 
-| # | Unknown | Verified in |
-|---|---|---|
-| 1 | How Jellyfin exposes editions and alternate versions | Phase 1 |
-| 2 | Whether both servers return file paths usable for relative-path matching | Phases 1–2 |
-| 3 | Plex Home token switching, including PIN-protected users | Phase 2 |
-| 4 | Whether either server drops very short resume positions | Phase 5 |
-| 5 | The exact Spring Security SPA CSRF API for the version in use | Phase 0 — resolved, see [Security](#security) |
-| 6 | Whether server APIs report changes precisely enough for the conflict window | Phase 5 |
+| # | Unknown | Verified in | Finding |
+|---|---|---|---|
+| 1 | How Jellyfin exposes editions and alternate versions | Phase 1 | Jellyfin 12.0 merges the files named `Title (Year) - Label` in one folder into one movie, with one media source per file. No field names the edition. The label is the only place an edition name appears, and quality labels such as `2160p` appear there too. A movie's versions share one watched flag, and each version keeps its own resume position. Files with Plex `{edition-X}` names stay separate movies. The Jellyfin edition rules in [Matching](#matching) come from this finding. A spot-check of a real library is still open in [#14](https://github.com/IanWorley/Continuarr/issues/14). |
+| 2 | Whether both servers return file paths usable for relative-path matching | Phases 1–2 | |
+| 3 | Plex Home token switching, including PIN-protected users | Phase 2 | |
+| 4 | Whether either server drops very short resume positions | Phase 5 | |
+| 5 | The exact Spring Security SPA CSRF API for the version in use | Phase 0 — resolved, see [Security](#security) | |
+| 6 | Whether server APIs report changes precisely enough for the conflict window | Phase 5 | |
