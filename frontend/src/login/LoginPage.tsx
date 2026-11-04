@@ -21,8 +21,6 @@ export function LoginPage() {
   const navigate = useNavigate()
   const mutation = useMutation({
     mutationFn: submitLogin,
-    // Query's default pauses while the browser reports offline; try anyway so it ends in "Couldn't reach".
-    networkMode: 'always',
     onSuccess: (failure) => {
       if (!failure) void navigate({ to: '/' })
     },
