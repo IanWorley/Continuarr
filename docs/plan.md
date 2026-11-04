@@ -227,6 +227,9 @@ Single sync mode setting:
 
 ## Setup
 
+[`frontend/README.md`](../frontend/README.md) walks through a local run, from a clone to signing in,
+and covers the frontend's toolchain and checks.
+
 ### Prerequisites
 
 - JDK (current LTS supported by Spring Boot 4)
