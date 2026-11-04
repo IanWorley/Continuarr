@@ -1,0 +1,2 @@
+# One request path per line, sent with the seed's API key. Blank lines and lines starting with # are skipped.
+/System/Info
