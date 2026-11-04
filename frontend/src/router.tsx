@@ -1,7 +1,7 @@
-import { createRootRoute, createRoute, createRouter, Outlet } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { LoginPage } from './login/LoginPage.tsx'
 
-const rootRoute = createRootRoute({ component: Outlet })
+const rootRoute = createRootRoute()
 
 // Placeholder until the logged-in shell lands (#9).
 const indexRoute = createRoute({

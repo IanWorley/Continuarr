@@ -6,6 +6,8 @@
   --color-ink-900: #0d111b;
   --color-ink-800: #151b29;
   --color-ink-700: #263047;
+  /* Control edges: at least 3:1 against ink-900 and ink-950 (WCAG 1.4.11). */
+  --color-ink-500: #5b6680;
   --color-ink-400: #8f99ae;
   --color-ink-100: #e7eaf1;
 

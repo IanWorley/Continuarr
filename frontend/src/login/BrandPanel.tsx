@@ -14,11 +14,12 @@ const POSTER_TILES: readonly string[] = [
   'from-yellow-500/40 to-red-900/40',
   'from-purple-500/40 to-indigo-950/60',
 ]
-const POSTER_ROWS = 3
+// Repeats of the list; with grid-cols-6 each repeat fills two rows of the tilted grid.
+const POSTER_REPEATS = 3
 
 /** The Continuarr name, tagline, and a CSS-only backdrop of blurred posters and a sync motif. */
 export function BrandPanel() {
-  const tiles = Array.from({ length: POSTER_ROWS }, () => POSTER_TILES).flat()
+  const tiles = Array.from({ length: POSTER_REPEATS }, () => POSTER_TILES).flat()
 
   return (
     <section className="relative isolate flex flex-col justify-between overflow-hidden bg-ink-950 px-6 py-8 sm:px-10 lg:px-14 lg:py-14">
@@ -26,9 +27,9 @@ export function BrandPanel() {
         aria-hidden="true"
         className="absolute inset-0 -z-10 poster-fade"
       >
-        <div className="absolute -inset-1/4 grid -rotate-12 grid-cols-6 gap-4 opacity-60 blur-[2px]">
+        <div className="absolute -inset-1/4 grid -rotate-12 grid-cols-6 gap-4 opacity-60 blur-xs">
           {tiles.map((gradient, index) => (
-            <div key={index} className={`aspect-[2/3] rounded-lg bg-gradient-to-br ${gradient}`} />
+            <div key={index} className={`aspect-2/3 rounded-lg bg-linear-to-br ${gradient}`} />
           ))}
         </div>
       </div>
@@ -42,9 +43,9 @@ export function BrandPanel() {
       </p>
 
       <div className="mt-6 max-w-md lg:mt-0">
-        <h1 className="text-xl font-semibold leading-snug text-ink-100 sm:text-2xl lg:text-4xl">
+        <p className="text-xl font-semibold leading-snug text-ink-100 sm:text-2xl lg:text-4xl">
           One watch history, kept in sync across Plex and Jellyfin.
-        </h1>
+        </p>
         <SyncMotif />
       </div>
     </section>
@@ -55,7 +56,7 @@ function SyncMotif() {
   return (
     <div aria-hidden="true" className="mt-6 hidden items-center gap-3 sm:flex lg:mt-10">
       <ServerChip name="Plex" dotClassName="bg-accent" />
-      <div className="relative h-px flex-1 bg-gradient-to-r from-accent/70 to-sync/70">
+      <div className="relative h-px flex-1 bg-linear-to-r from-accent/70 to-sync/70">
         <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink-100 sync-dot-glow motion-safe:animate-sync-travel" />
       </div>
       <ServerChip name="Jellyfin" dotClassName="bg-sync" />
