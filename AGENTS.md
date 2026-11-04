@@ -11,10 +11,11 @@ Read this before you change the repo. It lists what the docs and failing checks 
 ## Gotchas
 
 - Backend tests need Docker running. Testcontainers starts Postgres for `./gradlew test` and `./gradlew bootTestRun`.
-- `backend/openapi.json` is committed, and the frontend generates its API types from it. After you change the API, `OpenApiSpecTest` fails. Review the spec change, run `cp build/openapi.json openapi.json` in `backend/`, then run `npm run typecheck` in `frontend/`.
+- `backend/openapi.json` is committed, and the frontend generates its API types from it. After you change the API, `OpenApiSpecTest` fails. Review the spec change, run `cp build/openapi.json openapi.json` in `backend/`, then run `npm ci && npm run typecheck` in `frontend/`.
 - `./gradlew bootJar` packages `frontend/dist` and fails without it. Run `npm ci && npm run build` in `frontend/` first. `test` and `bootTestRun` don't need Node.
+- List each new changeset from `backend/src/main/resources/db/changelog/changes/` in `db.changelog-master.yaml`, or Liquibase never runs it. Never edit a merged changeset. Add a new one. Liquibase rejects a changed checksum, so the app fails to start on the database a `docker compose up` install keeps. CI can't catch this, because tests start a fresh Postgres every run.
 - The Spring Security Kotlin DSL has no `spa()`. In `SecurityConfig.kt`, keep `http.csrf { it.spa() }` as its own call outside the `http { }` block.
-- Each top-level package under `xyz.ianworley.continuarr` is a Spring Modulith module. Other modules may use only the types in a module's top-level package. Its subpackages are internal. `ModularityTest` fails on a violation. The planned modules are in [Architecture in `docs/plan.md`](docs/plan.md#architecture).
+- Each top-level package under `xyz.ianworley.continuarr` is a Spring Modulith module. Other modules may use only the types in a module's top-level package. Its subpackages are internal. A module can also limit which modules it may use, with `@ApplicationModule(allowedDependencies = [...])` on the `@PackageInfo` class in its top-level package, as in `jellyfin/JellyfinModule.kt`. Add a module to that list before you use its types. `ModularityTest` fails on a violation. The planned modules are in [Architecture in `docs/plan.md`](docs/plan.md#architecture).
 
 ## Commit
 
