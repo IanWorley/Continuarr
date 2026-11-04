@@ -24,7 +24,7 @@ export function BrandPanel() {
     <section className="relative isolate flex flex-col justify-between overflow-hidden bg-ink-950 px-6 py-8 sm:px-10 lg:px-14 lg:py-14">
       <div
         aria-hidden="true"
-        className="absolute inset-0 -z-10 [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_75%)]"
+        className="absolute inset-0 -z-10 poster-fade"
       >
         <div className="absolute -inset-1/4 grid -rotate-12 grid-cols-6 gap-4 opacity-60 blur-[2px]">
           {tiles.map((gradient, index) => (
@@ -34,7 +34,7 @@ export function BrandPanel() {
       </div>
       <div
         aria-hidden="true"
-        className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_20%,--theme(--color-accent/0.18),transparent_45%),radial-gradient(circle_at_80%_85%,--theme(--color-sync/0.22),transparent_50%)]"
+        className="absolute inset-0 -z-10 brand-glow"
       />
 
       <p className="text-2xl font-extrabold tracking-tight text-ink-100 lg:text-3xl">
@@ -56,7 +56,7 @@ function SyncMotif() {
     <div aria-hidden="true" className="mt-6 hidden items-center gap-3 sm:flex lg:mt-10">
       <ServerChip name="Plex" dotClassName="bg-accent" />
       <div className="relative h-px flex-1 bg-gradient-to-r from-accent/70 to-sync/70">
-        <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink-100 shadow-[0_0_12px_--theme(--color-ink-100)] motion-safe:animate-sync-travel" />
+        <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink-100 sync-dot-glow motion-safe:animate-sync-travel" />
       </div>
       <ServerChip name="Jellyfin" dotClassName="bg-sync" />
     </div>

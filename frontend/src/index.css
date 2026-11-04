@@ -33,3 +33,18 @@
 :root {
   color-scheme: dark;
 }
+
+/* Brand-panel backdrop: posters fade out toward the edges under two soft glows. */
+@utility poster-fade {
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+@utility brand-glow {
+  background-image:
+    radial-gradient(circle at 20% 20%, --alpha(var(--color-accent) / 18%), transparent 45%),
+    radial-gradient(circle at 80% 85%, --alpha(var(--color-sync) / 22%), transparent 50%);
+}
+
+@utility sync-dot-glow {
+  box-shadow: 0 0 12px var(--color-ink-100);
+}
