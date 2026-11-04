@@ -9,6 +9,56 @@
     "description" : "Generated server url"
   } ],
   "paths" : {
+    "/api/v1/jellyfin/connection" : {
+      "get" : {
+        "tags" : [ "jellyfin-connection-controller" ],
+        "operationId" : "connection",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/JellyfinConnectionResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "jellyfin-connection-controller" ],
+        "operationId" : "save",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/JellyfinConnectionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "Saved; the next Jellyfin call uses it"
+          },
+          "400" : {
+            "description" : "Names the invalid fields without echoing their values",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/JellyfinConnectionProblem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "CONTINUARR_ENCRYPTION_KEY isn't set, so the API key can't be stored"
+          }
+        }
+      }
+    },
     "/api/setup" : {
       "get" : {
         "tags" : [ "setup-controller" ],
@@ -87,6 +137,31 @@
   },
   "components" : {
     "schemas" : {
+      "JellyfinConnectionRequest" : {
+        "type" : "object",
+        "properties" : {
+          "url" : {
+            "type" : "string"
+          },
+          "apiKey" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "apiKey", "url" ]
+      },
+      "JellyfinConnectionProblem" : {
+        "type" : "object",
+        "properties" : {
+          "invalidFields" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "enum" : [ "URL", "API_KEY" ]
+            }
+          }
+        },
+        "required" : [ "invalidFields" ]
+      },
       "SetupRequest" : {
         "type" : "object",
         "properties" : {
@@ -101,6 +176,14 @@
           }
         },
         "required" : [ "password", "token", "username" ]
+      },
+      "JellyfinConnectionResponse" : {
+        "type" : "object",
+        "properties" : {
+          "url" : {
+            "type" : [ "string", "null" ]
+          }
+        }
       },
       "Session" : {
         "type" : "object",

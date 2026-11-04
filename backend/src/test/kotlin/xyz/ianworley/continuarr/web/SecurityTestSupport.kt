@@ -1,10 +1,12 @@
 package xyz.ianworley.continuarr.web
 
+import jakarta.servlet.http.Cookie
 import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import kotlin.test.assertNotNull
 
 const val CSRF_COOKIE = "XSRF-TOKEN"
@@ -20,13 +22,26 @@ private const val PASSWORD_PARAM = "password"
  * a session one, and that swap leaks into later tests sharing the Spring context.
  */
 fun MockMvc.postWithCsrf(path: String, dsl: MockHttpServletRequestDsl.() -> Unit = {}): ResultActionsDsl {
-	val xsrfCookie = get(CSRF_PATH).andReturn().response.getCookie(CSRF_COOKIE)
-	assertNotNull(xsrfCookie)
+	val xsrfCookie = xsrfCookie()
 	return post(path) {
-		cookie(xsrfCookie)
-		header(CSRF_HEADER, xsrfCookie.value)
+		sendCsrf(xsrfCookie)
 		dsl()
 	}
+}
+
+fun MockMvc.putWithCsrf(path: String, dsl: MockHttpServletRequestDsl.() -> Unit = {}): ResultActionsDsl {
+	val xsrfCookie = xsrfCookie()
+	return put(path) {
+		sendCsrf(xsrfCookie)
+		dsl()
+	}
+}
+
+private fun MockMvc.xsrfCookie(): Cookie = assertNotNull(get(CSRF_PATH).andReturn().response.getCookie(CSRF_COOKIE))
+
+private fun MockHttpServletRequestDsl.sendCsrf(xsrfCookie: Cookie) {
+	cookie(xsrfCookie)
+	header(CSRF_HEADER, xsrfCookie.value)
 }
 
 fun MockMvc.logIn(username: String, password: String): ResultActionsDsl = postWithCsrf(LOGIN_PATH) {
