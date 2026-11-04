@@ -11,25 +11,13 @@
   --color-ink-400: #8f99ae;
   --color-ink-100: #e7eaf1;
 
-  /* Amber nods to Plex, violet to Jellyfin; amber is the action color. */
+  /* Amber is the action color; violet only tints the backdrop glow. */
   --color-accent: #f5a524;
   --color-accent-hover: #ffbb4d;
   --color-accent-ink: #1a1203;
   --color-sync: #8b5cf6;
   --color-danger: #fca5a5;
   --color-danger-surface: #2a1215;
-
-  --animate-sync-travel: sync-travel 2.4s ease-in-out infinite;
-
-  @keyframes sync-travel {
-    0%,
-    100% {
-      left: 0%;
-    }
-    50% {
-      left: 100%;
-    }
-  }
 }
 
 :root {
@@ -45,8 +33,4 @@
   background-image:
     radial-gradient(circle at 20% 20%, --alpha(var(--color-accent) / 18%), transparent 45%),
     radial-gradient(circle at 80% 85%, --alpha(var(--color-sync) / 22%), transparent 50%);
-}
-
-@utility sync-dot-glow {
-  box-shadow: 0 0 12px var(--color-ink-100);
 }
