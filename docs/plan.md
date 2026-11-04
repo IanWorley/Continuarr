@@ -153,6 +153,7 @@ Match sources: `id`, `file_name`, `suggested` (does not sync), `manual`.
 |---|---|
 | `users` | A Continuarr person |
 | `app_user` | Login accounts; v1 has exactly one, the admin |
+| `jellyfin_connection` | The Jellyfin server URL and its encrypted API key; a single row |
 | `server_accounts` | Person ↔ Plex/Jellyfin account; encrypted Plex token/PIN |
 | `library_pairs` | Plex library ↔ Jellyfin library |
 | `media_items` | Thin canonical item: kind, IMDb/TVDb/TMDb IDs (union), edition, parent show, season/episode, display title |
@@ -214,7 +215,8 @@ Single sync mode setting:
   on the server. The SPA sends the cookie back in the `X-XSRF-TOKEN` header, and calls
   `GET /api/csrf` first when it has none, as after logout clears it. The Kotlin DSL has no `spa()`
   as of 7.1, so call `http.csrf { it.spa() }` outside the `http { }` block.
-- Plex tokens and PINs encrypted with Spring Security Crypto; key from env var or Docker secret.
+- Plex tokens and PINs and the Jellyfin API key encrypted with AES-256-GCM through Spring Security
+  Crypto; key from `CONTINUARR_ENCRYPTION_KEY`. No API response returns the Jellyfin API key.
 - Everything requires authentication except the Actuator health endpoint (Docker healthcheck),
   `GET /api/csrf`, `GET` and `POST /api/setup`, and the SPA itself: `index.html`, `/assets/**`, and client-side
   routes (GETs with no file extension outside `/api`, `/actuator`, `/error`, and springdoc's `/v3`).
@@ -267,22 +269,24 @@ continuarr/
 
 ### Configuration
 
-Server credentials and secrets come from env vars or Docker secrets. People, library pairs,
-and matches live in the database and are edited in the admin UI.
+Secrets and the Plex server come from env vars or Docker secrets. The Jellyfin server, people,
+library pairs, and matches live in the database and are edited in the admin UI.
 
 | Variable | Purpose |
 |---|---|
-| `CONTINUARR_ENCRYPTION_KEY` | Key for encrypting Plex tokens and PINs |
+| `CONTINUARR_ENCRYPTION_KEY` | Key for encrypting Plex tokens and PINs and the Jellyfin API key: 64 hex characters, from `openssl rand -hex 32` |
 | `CONTINUARR_MAX_SYNC_MODE` | Hard ceiling on sync mode (`OFF`, `DRY_RUN`, `LIVE`) |
 | `CONTINUARR_PLEX_URL` / `CONTINUARR_PLEX_TOKEN` | Plex server and admin token |
-| `CONTINUARR_JELLYFIN_URL` / `CONTINUARR_JELLYFIN_API_KEY` | Jellyfin server and API key |
 | `SPRING_DATASOURCE_*` | Postgres connection (Compose only; Testcontainers handles dev and tests) |
 
-Both Jellyfin variables are required, so the app fails at startup without them, and
-`docker compose up` refuses to start until `.env` sets them. `.env.example` holds placeholders, so a
-fresh install starts and logs that it can't reach Jellyfin until you replace them. Tests and
-`./gradlew bootTestRun` default them to a closed local port, so the startup connection check fails
-and is logged. Don't run with `-Djdk.httpclient.HttpClient.log=headers` or `all`: the JDK then logs
+The admin saves the Jellyfin URL and API key with `PUT /api/v1/jellyfin/connection`. `GET` on the
+same path returns the URL and never the key. The key is stored encrypted, so saving needs
+`CONTINUARR_ENCRYPTION_KEY`. The app starts without it, as a fresh `docker compose up` from
+`.env.example` does, and the save answers 503 until it is set. A malformed key fails startup. Changing
+the key leaves the saved Jellyfin key unreadable until the admin saves the connection again. Until a
+connection is saved, or while the saved key doesn't decrypt, every Jellyfin call fails as unreachable,
+and the startup connection check logs why. Tests and `./gradlew bootTestRun` start with no key and
+nothing saved. Don't run with `-Djdk.httpclient.HttpClient.log=headers` or `all`: the JDK then logs
 the Jellyfin API key with every request, and Continuarr warns at startup.
 
 ### Local development
