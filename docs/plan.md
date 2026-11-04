@@ -109,14 +109,17 @@ Rules:
 - **Editions are separate movies.** Same edition (or none on both) matches; different editions
   don't; edition on one side only → unmatched queue.
 - **Multi-episode files** → not synced, listed in the queue.
-- **Same relative file path** within a paired library → auto-link (strong guess). If IDs
+- **Same file name** within a paired library → auto-link (strong guess). The file name is the
+  last segment of the server's path, so drive letters and mount roots don't matter. If IDs
   disagree, link anyway and flag "metadata disagrees".
+- **Episode file names collide across shows** (two shows can both have `S01E01.mkv`), so an
+  episode links by file name only under the same matched show. The exact scoping is open in #43.
 - **Weaker guesses** (title + year, show + season/episode, runtime as tie-breaker) → suggestions
   with a confidence score; confirm/reject individually or in bulk.
 - **Manual links always win.**
 - Matching re-runs on every reconciliation pass.
 
-Match sources: `id`, `path`, `suggested` (does not sync), `manual`.
+Match sources: `id`, `file_name`, `suggested` (does not sync), `manual`.
 
 ## Conflict resolution
 
@@ -144,7 +147,7 @@ Match sources: `id`, `path`, `suggested` (does not sync), `manual`.
 | `server_accounts` | Person ↔ Plex/Jellyfin account; encrypted Plex token/PIN |
 | `library_pairs` | Plex library ↔ Jellyfin library |
 | `media_items` | Thin canonical item: kind, IMDb/TVDb/TMDb IDs (union), edition, parent show, season/episode, display title |
-| `server_items` | A Plex or Jellyfin item; link to `media_items` (nullable), runtime, relative path, match status, match source |
+| `server_items` | A Plex or Jellyfin item; link to `media_items` (nullable), runtime, file name, match status, match source |
 | `watch_events` | Append-only history: person, server item, type, start/end time, start/end position, `observed_at`, server timestamp, source |
 | `watch_state` | Current state per (person, media item); a cache rebuildable from events |
 | `active_sessions` | In-progress playback |
@@ -349,7 +352,7 @@ first depends on them.
 **Goal:** items on both servers are linked to canonical `media_items`.
 
 - ID matching (IMDb/TVDb → TMDb), episode-level TVDb, edition rule, conflict rule
-- Relative-path auto-linking with "metadata disagrees" flag
+- File-name auto-linking with "metadata disagrees" flag
 - Suggestions with confidence; unmatched queue UI with confirm/reject/bulk confirm/manual link
 - Re-matching on reconciliation
 
