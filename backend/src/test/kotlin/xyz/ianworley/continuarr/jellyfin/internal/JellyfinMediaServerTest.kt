@@ -23,12 +23,14 @@ import xyz.ianworley.continuarr.server.ServerAccountId
 import xyz.ianworley.continuarr.server.ServerLibrary
 import xyz.ianworley.continuarr.server.ServerLibraryId
 import java.net.ServerSocket
+import java.net.URI
 import java.time.Duration
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 private const val FIXTURES = "wiremock/jellyfin"
@@ -82,6 +84,12 @@ private val RECORDED_LIBRARIES = listOf("Movies" to LibraryKind.MOVIES, "Shows" 
 private const val RECORDED_SERVER_NAME = "Seed Server"
 private const val RECORDED_VERSION = "12.0.0"
 
+private const val NOT_CONFIGURED_MESSAGE = "Jellyfin connection not configured"
+private const val UNUSABLE_REASON = "The saved connection can't be used"
+
+private fun usableConnection(url: String): StoredConnection =
+	StoredConnection.Usable(JellyfinConnection(URI(url), assertNotNull(JellyfinApiKey.parseOrNull(API_KEY))))
+
 private fun closedPortUrl(): String = LOOPBACK_URL_PREFIX + ServerSocket(0).use { it.localPort }
 
 // IDs change on every re-record, so tests read them from the fixture by name.
@@ -110,10 +118,10 @@ class JellyfinMediaServerTest {
 		.options(wireMockConfig().dynamicPort().usingFilesUnderClasspath(FIXTURES))
 		.build()
 
-	private fun mediaServer(url: String = wireMock.baseUrl()) = JellyfinMediaServer(JellyfinProperties(url, API_KEY))
+	private fun mediaServer(url: String = wireMock.baseUrl()) = JellyfinMediaServer({ usableConnection(url) })
 
 	// A cold JVM's first request can take longer than this short timeout.
-	private fun impatientMediaServer() = JellyfinMediaServer(JellyfinProperties(wireMock.baseUrl(), API_KEY), SHORT_READ_TIMEOUT)
+	private fun impatientMediaServer() = JellyfinMediaServer({ usableConnection(wireMock.baseUrl()) }, SHORT_READ_TIMEOUT)
 
 	private fun stub(path: String, response: ResponseDefinitionBuilder) {
 		wireMock.stubFor(get(urlEqualTo(path)).willReturn(response))
@@ -244,6 +252,34 @@ class JellyfinMediaServerTest {
 			val failure = assertFailsWith<MediaServerException.Unreachable> { mediaServer(url = LOOPBACK_URL_PREFIX + server.localPort).accounts() }
 			assertContains(failure.message.orEmpty(), LOST_MID_BODY)
 		}
+	}
+
+	@Test
+	fun `calls fail as Unreachable when no connection is saved`() {
+		val server = JellyfinMediaServer({ StoredConnection.NotConfigured })
+
+		val failure = assertFailsWith<MediaServerException.Unreachable> { server.accounts() }
+		assertEquals(NOT_CONFIGURED_MESSAGE, failure.message)
+	}
+
+	@Test
+	fun `calls fail as Unreachable with the reason when the saved connection is unusable`() {
+		val server = JellyfinMediaServer({ StoredConnection.Unusable(UNUSABLE_REASON) })
+
+		val failure = assertFailsWith<MediaServerException.Unreachable> { server.accounts() }
+		assertEquals(UNUSABLE_REASON, failure.message)
+	}
+
+	@Test
+	fun `each call goes to the connection saved at that moment`() {
+		var stored = usableConnection(closedPortUrl())
+		val server = JellyfinMediaServer({ stored })
+		assertFailsWith<MediaServerException.Unreachable> { server.accounts() }
+
+		stored = usableConnection(wireMock.baseUrl())
+		server.accounts()
+
+		wireMock.verify(getRequestedFor(urlEqualTo(USERS_PATH)))
 	}
 
 	@Test

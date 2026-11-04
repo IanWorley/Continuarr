@@ -52,6 +52,8 @@ private const val JDK_HTTP_LOG_PROPERTY = "jdk.httpclient.HttpClient.log"
 private val JDK_HTTP_LOG_HEADER_LEVELS = setOf("headers", "all")
 private const val JDK_HTTP_LOG_SEPARATOR = ','
 
+private const val NOT_CONFIGURED_MESSAGE = "Jellyfin connection not configured"
+
 private val log = LoggerFactory.getLogger(JellyfinMediaServer::class.java)
 
 // Decoding errors are IOExceptions too, but they mean the whole body arrived and can't be read as text.
@@ -59,25 +61,21 @@ private fun Throwable.isLostConnection(): Boolean =
 	this is IOException && this !is CharConversionException && this !is CharacterCodingException
 
 /**
- * Every request goes through [get], so each method throws only [MediaServerException]. The adapter adds no
- * retries of its own, so the pollers decide when to try again. The JDK client may still replay an idempotent
- * GET once when a connection drops.
+ * Every request goes through [get], so each method throws only [MediaServerException]. The adapter
+ * adds no retries of its own, so the pollers decide when to try again. The JDK client may still replay an
+ * idempotent GET once when a connection drops.
+ *
+ * Each call reads [connection] once, so a newly saved server takes effect on the next call. With no usable
+ * connection saved, calls fail as [MediaServerException.Unreachable]. Its message is the only way to tell
+ * that apart from a server that's down, so a caller that needs to know asks JellyfinConnectionSettings.
  */
 class JellyfinMediaServer(
-	properties: JellyfinProperties,
+	private val connection: () -> StoredConnection,
 	readTimeout: Duration = JELLYFIN_READ_TIMEOUT,
 ) : MediaServer {
 
-	// The JDK client never follows redirects, so the Authorization header can't reach another host.
-	private val restClient: RestClient = RestClient.builder()
-		.baseUrl(properties.baseUrl)
-		.defaultHeader(HttpHeaders.AUTHORIZATION, properties.apiKey.authorizationHeader())
-		.requestFactory(
-			JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(JELLYFIN_CONNECT_TIMEOUT).build())
-				.apply { setReadTimeout(readTimeout) },
-		)
-		.configureMessageConverters { it.withJsonConverter(JSON_REJECTING_NULL_ELEMENTS) }
-		.build()
+	private val requestFactory = JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(JELLYFIN_CONNECT_TIMEOUT).build())
+		.apply { setReadTimeout(readTimeout) }
 
 	override val kind: ServerKind = ServerKind.JELLYFIN
 
@@ -119,6 +117,7 @@ class JellyfinMediaServer(
 	// exchange() hands over the status before any decoding, and never builds a RestClientResponseException,
 	// whose message would carry the response body.
 	private inline fun <reified T : Any> get(path: String): T {
+		val restClient = restClient()
 		val bodyType = object : ParameterizedTypeReference<T>() {}
 		return try {
 			restClient.get().uri(path).exchange { _, response ->
@@ -146,5 +145,20 @@ class JellyfinMediaServer(
 		} catch (e: ResourceAccessException) {
 			throw MediaServerException.Unreachable("Can't reach Jellyfin for GET $path", e)
 		}
+	}
+
+	// The JDK client never follows redirects, so the Authorization header can't reach another host.
+	private fun restClient(): RestClient {
+		val current = when (val stored = connection()) {
+			StoredConnection.NotConfigured -> throw MediaServerException.Unreachable(NOT_CONFIGURED_MESSAGE)
+			is StoredConnection.Unusable -> throw MediaServerException.Unreachable(stored.reason, stored.cause)
+			is StoredConnection.Usable -> stored.connection
+		}
+		return RestClient.builder()
+			.baseUrl(current.baseUrl)
+			.defaultHeader(HttpHeaders.AUTHORIZATION, current.apiKey.authorizationHeader())
+			.requestFactory(requestFactory)
+			.configureMessageConverters { it.withJsonConverter(JSON_REJECTING_NULL_ELEMENTS) }
+			.build()
 	}
 }
