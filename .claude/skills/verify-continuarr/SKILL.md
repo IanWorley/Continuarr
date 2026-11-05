@@ -13,7 +13,7 @@ The user-facing surface is the admin web UI at `http://localhost:5173`. Vite ser
 .claude/skills/verify-continuarr/scripts/control.sh launch
 ```
 
-It needs Docker running, a JDK 17+ for Gradle, Node and npm, `curl`, `lsof`, and Google Chrome. It starts `./gradlew bootTestRun`, runs `npm ci` in `frontend/`, and starts `npm run dev`. Each launch gets a new, empty Postgres, and Liquibase migrates it at startup.
+It needs Docker running, a JDK 17+ for Gradle, Node and npm, `curl`, `lsof`, `openssl`, and Google Chrome. It starts `./gradlew bootTestRun` with a new random `CONTINUARR_ENCRYPTION_KEY`, so the app can save a Jellyfin API key. Then it runs `npm ci` in `frontend/` and starts `npm run dev`. Each launch gets a new, empty Postgres, and Liquibase migrates it at startup.
 
 The instance is ready when the command prints `Ready: http://localhost:5173`. By then actuator health reports `UP` and `GET /api/setup` answers through both ports. A fresh launch has no admin. Run `control.sh token` to print its setup token. The first launch on a machine compiles the backend and pulls Postgres, so it can take minutes. Later launches take seconds.
 
@@ -34,6 +34,7 @@ Run it first whenever something looks off. It changes nothing. It checks that th
 ```sh
 .claude/skills/verify-continuarr/scripts/control.sh drive first-run-setup
 .claude/skills/verify-continuarr/scripts/control.sh drive sign-in
+.claude/skills/verify-continuarr/scripts/control.sh drive jellyfin-connection
 ```
 
 A journey is a Playwright script in `scripts/journeys/` that drives Chrome by ARIA role and label. It fails with a non-zero exit at the first assertion that does not hold. `drive` runs `doctor` first and installs `playwright-core` into the tools directory on first use. To cover a new path, add `scripts/journeys/<feature>.mjs` that calls `runJourney` from `scripts/journey.mjs`, then add a feature file for it.

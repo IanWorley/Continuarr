@@ -22,6 +22,15 @@ export function FormAlert({ id, children }: { id: string; children: ReactNode })
   )
 }
 
+/** Always mounted so screen readers are already watching it when a message appears. */
+export function FieldError({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <p aria-live="polite" id={id} className="mt-2 text-sm text-danger empty:hidden">
+      {children}
+    </p>
+  )
+}
+
 export interface SubmitButtonProps {
   submitting: boolean
   label: string
