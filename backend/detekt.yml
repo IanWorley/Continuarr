@@ -128,14 +128,11 @@ style:
     excludes: ['**/test/**']
     forbiddenImports:
       - value: 'org.springframework.jdbc.*'
-        reason: 'Use a Spring Data JPA repository instead of raw JDBC.'
+        reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
       - value: 'java.sql.*'
-        reason: 'Use a Spring Data JPA repository instead of raw JDBC.'
+        reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
       - value: 'javax.sql.*'
-        reason: 'Use a Spring Data JPA repository instead of raw JDBC.'
-      # Catches @NativeQuery only. @Query(nativeQuery = true) needs a rule that reads annotation arguments.
-      - value: 'org.springframework.data.jpa.repository.NativeQuery'
-        reason: 'Use a derived query method or JPQL in @Query instead of native SQL.'
+        reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
   MagicNumber:
     active: true
     ignoreNumbers: ['-1', '0', '1']
