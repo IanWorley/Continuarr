@@ -89,10 +89,13 @@ class JellyfinMediaServer(
 		}
 	}
 
+	@Suppress("NotImplementedDeclaration")
 	override fun items(library: ServerLibraryId): Sequence<ServerItem> = TODO("#17")
 
+	@Suppress("NotImplementedDeclaration")
 	override fun userStates(account: ServerAccountId, library: ServerLibraryId): Sequence<UserItemState> = TODO("#18")
 
+	@Suppress("NotImplementedDeclaration")
 	override fun activeSessions(): List<ActiveSession> = TODO("#19")
 
 	/** A failure is logged, not thrown, so Continuarr starts while Jellyfin is down. */

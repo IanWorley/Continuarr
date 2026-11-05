@@ -293,7 +293,8 @@ the Jellyfin API key with every request, and Continuarr warns at startup.
 
 - `./gradlew bootTestRun` — runs the backend with Postgres started by Testcontainers.
 - `./gradlew test` — tests against Testcontainers Postgres and WireMock.
-- `./gradlew detekt` — lints the backend's Kotlin.
+- `./gradlew detektMain detektTest` — lints the backend's Kotlin with type resolution. Plain
+  `./gradlew detekt` skips the rules that need it.
 - `npm run dev` in `frontend/` — Vite dev server; forwards `/api` to the backend on port 8080.
 - `npm run check` in `frontend/` — the checks CI runs: typecheck, lint, test, and build.
 - API types: `backend/openapi.json` is the committed spec (springdoc, behind login). `OpenApiSpecTest`
@@ -306,8 +307,8 @@ the Jellyfin API key with every request, and Continuarr warns at startup.
 - `./gradlew bootJar` packages `frontend/dist` as static resources, so run `npm run build` in
   `frontend/` first; it fails if there is no build. Gradle never runs Node, so `test` and
   `bootTestRun` don't need it (tests use a stand-in `index.html`).
-- CI runs on every PR and push to `main`: `.github/workflows/backend.yml` runs `./gradlew detekt`
-  and then `./gradlew test`; `.github/workflows/frontend.yml` runs `npm ci` and `npm run check`.
+- CI runs on every PR and push to `main`: `.github/workflows/backend.yml` runs `./gradlew detektMain
+  detektTest` and then `./gradlew test`; `.github/workflows/frontend.yml` runs `npm ci` and `npm run check`.
 
 ## Milestones and phases
 

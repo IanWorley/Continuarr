@@ -33,9 +33,10 @@ jobs:
       # Caches Gradle state and validates the wrapper jar checksum.
       - uses: gradle/actions/setup-gradle@v6
 
+      # detektMain and detektTest resolve types; plain detekt skips the rules that need it.
       - name: Lint
         working-directory: ${{ env.BACKEND_DIR }}
-        run: ./gradlew detekt
+        run: ./gradlew detektMain detektTest
 
       # Testcontainers uses the runner's Docker for Postgres.
       - name: Test
