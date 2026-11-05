@@ -14,10 +14,12 @@ import org.springframework.context.annotation.Import
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.transaction.CannotCreateTransactionException
 import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
-import org.springframework.jdbc.datasource.DriverManagerDataSource
 import xyz.ianworley.continuarr.jellyfin.internal.EncryptionKeyProperties
+import xyz.ianworley.continuarr.jellyfin.internal.JellyfinConnectionRepository
+import xyz.ianworley.continuarr.jellyfin.internal.JellyfinConnectionRow
 import xyz.ianworley.continuarr.jellyfin.internal.JellyfinConnectionStore
 import xyz.ianworley.continuarr.jellyfin.internal.StoredConnection
 import xyz.ianworley.continuarr.server.MediaServer
@@ -39,7 +41,7 @@ private const val OTHER_EXPECTED_AUTHORIZATION = """MediaBrowser Client="Continu
 
 private const val OTHER_ENCRYPTION_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
-private const val UNREACHABLE_DATABASE_URL = "jdbc:postgresql://127.0.0.1:1/continuarr"
+private const val UNREACHABLE_DATABASE_MESSAGE = "Could not open JPA EntityManager for transaction"
 
 private const val USERS_PATH = "/Users"
 private const val USERS_BODY = """[{"Id": "valid-user", "Name": "valid", "Policy": {"IsDisabled": false}}]"""
@@ -50,6 +52,7 @@ class JellyfinConnectionSettingsTest(
 	@Autowired private val settings: JellyfinConnectionSettings,
 	@Autowired private val store: JellyfinConnectionStore,
 	@Autowired private val mediaServer: MediaServer,
+	@Autowired private val repository: JellyfinConnectionRepository,
 	@Autowired private val jdbcClient: JdbcClient,
 ) {
 
@@ -97,7 +100,7 @@ class JellyfinConnectionSettingsTest(
 
 	@Test
 	fun `save without an encryption key returns EncryptionKeyMissing and stores nothing`() {
-		val settingsWithoutKey = JellyfinConnectionSettings(JellyfinConnectionStore(jdbcClient, EncryptionKeyProperties()))
+		val settingsWithoutKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties()))
 
 		assertEquals(JellyfinSaveResult.EncryptionKeyMissing, settingsWithoutKey.save(URL, API_KEY))
 		assertEquals(0, rowCount())
@@ -113,27 +116,32 @@ class JellyfinConnectionSettingsTest(
 	fun `a saved row loads as Unusable without an encryption key`() {
 		settings.save(URL, API_KEY)
 
-		assertIs<StoredConnection.Unusable>(JellyfinConnectionStore(jdbcClient, EncryptionKeyProperties()).load())
+		assertIs<StoredConnection.Unusable>(JellyfinConnectionStore(repository, EncryptionKeyProperties()).load())
 	}
 
 	@Test
 	fun `a row saved under another encryption key loads as Unusable`() {
 		settings.save(URL, API_KEY)
 
-		assertIs<StoredConnection.Unusable>(JellyfinConnectionStore(jdbcClient, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)).load())
+		assertIs<StoredConnection.Unusable>(JellyfinConnectionStore(repository, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)).load())
 	}
 
 	@Test
 	fun `the saved URL still reads when the API key won't decrypt`() {
 		settings.save(URL, API_KEY)
-		val settingsUnderOtherKey = JellyfinConnectionSettings(JellyfinConnectionStore(jdbcClient, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)))
+		val settingsUnderOtherKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)))
 
 		assertEquals(URL, settingsUnderOtherKey.savedUrl())
 	}
 
 	@Test
 	fun `a database failure loads as Unusable instead of throwing`() {
-		val unreachableDatabase = JdbcClient.create(DriverManagerDataSource(UNREACHABLE_DATABASE_URL))
+		// What the real repository throws when Postgres refuses the connection.
+		val unreachableDatabase = object : JellyfinConnectionRepository {
+			override fun findById(id: Short): JellyfinConnectionRow = throw CannotCreateTransactionException(UNREACHABLE_DATABASE_MESSAGE)
+
+			override fun save(row: JellyfinConnectionRow): JellyfinConnectionRow = throw CannotCreateTransactionException(UNREACHABLE_DATABASE_MESSAGE)
+		}
 
 		assertIs<StoredConnection.Unusable>(JellyfinConnectionStore(unreachableDatabase, EncryptionKeyProperties()).load())
 	}
