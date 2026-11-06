@@ -7,7 +7,8 @@ const ROTATED_TOKEN = 'token-after-login'
 const STATE_CHANGING_PATH = '/api/things'
 const NO_CONTENT = 204
 
-const fetchMock = vi.fn<typeof fetch>()
+// apiFetch only ever passes fetch a path string.
+const fetchMock = vi.fn<(path: string, init?: RequestInit) => Promise<Response>>()
 
 function setCsrfCookie(value: string) {
   document.cookie = `${CSRF_COOKIE_NAME}=${value}; path=/`
@@ -18,11 +19,11 @@ function clearCsrfCookie() {
 }
 
 function requestedPaths(): string[] {
-  return fetchMock.mock.calls.map(([input]) => String(input))
+  return fetchMock.mock.calls.map(([path]) => path)
 }
 
 function headerSentTo(path: string): string | null {
-  const call = fetchMock.mock.calls.find(([input]) => String(input) === path)
+  const call = fetchMock.mock.calls.find(([calledPath]) => calledPath === path)
   return new Headers(call?.[1]?.headers).get(CSRF_HEADER_NAME)
 }
 

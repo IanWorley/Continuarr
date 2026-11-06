@@ -1,6 +1,7 @@
-import { useId, type FormEvent } from 'react'
+import { useId, type SubmitEvent } from 'react'
 import type { Credentials } from '../api/client.ts'
 import { FIELD_CLASSES, FORM_CLASSES, FormAlert, HEADING_CLASSES, LABEL_CLASSES, SubmitButton } from '../auth/formParts.tsx'
+import { textField } from '../auth/textField.ts'
 
 export type LoginFailure = 'bad-credentials' | 'unavailable'
 
@@ -20,11 +21,11 @@ export function LoginForm({ submitting, failure, onSubmit }: LoginFormProps) {
   // Only a rejected login means the fields are wrong; an unreachable server says nothing about them.
   const credentialsInvalid = failure === 'bad-credentials'
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submitting) return
     const form = new FormData(event.currentTarget)
-    onSubmit({ username: String(form.get('username')), password: String(form.get('password')) })
+    onSubmit({ username: textField(form, 'username'), password: textField(form, 'password') })
   }
 
   return (
