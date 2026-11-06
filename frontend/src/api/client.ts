@@ -57,6 +57,7 @@ export async function fetchSession(): Promise<Session> {
   if (!response.ok) {
     throw new Error(`GET ${AUTH_PATH} returned ${response.status}`)
   }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the generated types and OpenApiSpecTest pin the shape.
   return (await response.json()) as Session
 }
 
@@ -66,7 +67,7 @@ export async function fetchSetupStatus(): Promise<SetupStatus> {
   if (!response.ok) {
     throw new Error(`GET ${SETUP_PATH} returned ${response.status}`)
   }
-  // The shape is checked by the generated types and the backend's OpenApiSpecTest.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the generated types and OpenApiSpecTest pin the shape.
   return (await response.json()) as SetupStatus
 }
 

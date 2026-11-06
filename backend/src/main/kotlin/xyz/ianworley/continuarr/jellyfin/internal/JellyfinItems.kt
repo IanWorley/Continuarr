@@ -70,7 +70,8 @@ fun libraryItems(library: ServerLibraryId, pageSize: PageSize, fetchPage: (path:
 
 private fun ItemDto.toServerItemOrNull(): ServerItem? {
 	if (type == EPISODE_TYPE && locationType == VIRTUAL_LOCATION_TYPE) return null
-	val mapper = type?.let(ITEM_MAPPERS::get) ?: return skipped("its type $type wasn't requested")
+	val itemType = type ?: return skipped("it has no type")
+	val mapper = ITEM_MAPPERS[itemType] ?: return skipped("its type $itemType wasn't requested")
 	val title = name ?: return skipped("it has no name")
 	return mapper(title)
 }
