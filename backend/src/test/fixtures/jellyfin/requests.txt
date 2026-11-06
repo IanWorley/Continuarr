@@ -1,3 +1,5 @@
 /System/Info
 /Users
 /Library/VirtualFolders
+/Items?ParentId=f137a2dd21bbc1b99aa5c0f6bf02a805&Recursive=true&IncludeItemTypes=Movie,Series,Episode&Fields=ProviderIds,Path&IsMissing=false&SortBy=DateCreated,SortName&SortOrder=Ascending&StartIndex=0&Limit=500
+/Items?ParentId=a656b907eb3a73532e40e44b968d0225&Recursive=true&IncludeItemTypes=Movie,Series,Episode&Fields=ProviderIds,Path&IsMissing=false&SortBy=DateCreated,SortName&SortOrder=Ascending&StartIndex=0&Limit=500

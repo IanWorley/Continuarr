@@ -1,0 +1,211 @@
+{
+  "request": {
+    "urlPath": "/Items",
+    "method": "GET",
+    "queryParameters": {
+      "ParentId": {
+        "hasExactly": [
+          {
+            "equalTo": "a656b907eb3a73532e40e44b968d0225"
+          }
+        ]
+      },
+      "Recursive": {
+        "hasExactly": [
+          {
+            "equalTo": "true"
+          }
+        ]
+      },
+      "IncludeItemTypes": {
+        "hasExactly": [
+          {
+            "equalTo": "Movie,Series,Episode"
+          }
+        ]
+      },
+      "Fields": {
+        "hasExactly": [
+          {
+            "equalTo": "ProviderIds,Path"
+          }
+        ]
+      },
+      "IsMissing": {
+        "hasExactly": [
+          {
+            "equalTo": "false"
+          }
+        ]
+      },
+      "SortBy": {
+        "hasExactly": [
+          {
+            "equalTo": "DateCreated,SortName"
+          }
+        ]
+      },
+      "SortOrder": {
+        "hasExactly": [
+          {
+            "equalTo": "Ascending"
+          }
+        ]
+      },
+      "StartIndex": {
+        "hasExactly": [
+          {
+            "equalTo": "0"
+          }
+        ]
+      },
+      "Limit": {
+        "hasExactly": [
+          {
+            "equalTo": "500"
+          }
+        ]
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": {
+      "Items": [
+        {
+          "Name": "Special",
+          "ServerId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Id": "340e7c392532b9976f35b087a65686f9",
+          "Container": "mkv",
+          "Path": "/media/shows/Seed Show (2010)/Season 00/Seed Show (2010) S00E01.mkv",
+          "ChannelId": null,
+          "RunTimeTicks": 50230000,
+          "ProductionYear": 2010,
+          "IndexNumber": 1,
+          "ParentIndexNumber": 0,
+          "ProviderIds": {
+            "Tvdb": "900200"
+          },
+          "IsFolder": false,
+          "Type": "Episode",
+          "SeriesName": "Seed Show",
+          "SeriesId": "1e1daf724073a8e469c808c14a98f721",
+          "SeasonId": "0a31556fa90e934e2c3b6a8e3e844f22",
+          "SeasonName": "Specials",
+          "VideoType": "VideoFile",
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Video"
+        },
+        {
+          "Name": "Normal Episode",
+          "ServerId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Id": "5f3de5ece0d79c44d81434f2796e3ed1",
+          "Container": "mkv",
+          "Path": "/media/shows/Seed Show (2010)/Season 01/Seed Show (2010) S01E01.mkv",
+          "ChannelId": null,
+          "RunTimeTicks": 50230000,
+          "ProductionYear": 2010,
+          "IndexNumber": 1,
+          "ParentIndexNumber": 1,
+          "ProviderIds": {
+            "Tvdb": "900201"
+          },
+          "IsFolder": false,
+          "Type": "Episode",
+          "SeriesName": "Seed Show",
+          "SeriesId": "1e1daf724073a8e469c808c14a98f721",
+          "SeasonId": "92cb4a27a19ff0074b8ada4d7c4ed0e4",
+          "SeasonName": "Season 1",
+          "VideoType": "VideoFile",
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Video"
+        },
+        {
+          "Name": "Double Episode Part 1 / Double Episode Part 2",
+          "ServerId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Id": "34ff6c92ba584fdd8dfec6e2017d22bd",
+          "Container": "mkv",
+          "Path": "/media/shows/Seed Show (2010)/Season 01/Seed Show (2010) S01E02-E03.mkv",
+          "ChannelId": null,
+          "RunTimeTicks": 50230000,
+          "ProductionYear": 2010,
+          "IndexNumber": 2,
+          "IndexNumberEnd": 3,
+          "ParentIndexNumber": 1,
+          "ProviderIds": {
+            "Tvdb": "900202"
+          },
+          "IsFolder": false,
+          "Type": "Episode",
+          "SeriesName": "Seed Show",
+          "SeriesId": "1e1daf724073a8e469c808c14a98f721",
+          "SeasonId": "92cb4a27a19ff0074b8ada4d7c4ed0e4",
+          "SeasonName": "Season 1",
+          "VideoType": "VideoFile",
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Video"
+        },
+        {
+          "Name": "Conflicting Id Episode",
+          "ServerId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Id": "7b493b632dd6a13cbf7c7b3c777d4e36",
+          "Container": "mkv",
+          "Path": "/media/shows/Seed Show (2010)/Season 01/Seed Show (2010) S01E04.mkv",
+          "ChannelId": null,
+          "RunTimeTicks": 50230000,
+          "ProductionYear": 2010,
+          "IndexNumber": 4,
+          "ParentIndexNumber": 1,
+          "ProviderIds": {
+            "Tvdb": "900201"
+          },
+          "IsFolder": false,
+          "Type": "Episode",
+          "SeriesName": "Seed Show",
+          "SeriesId": "1e1daf724073a8e469c808c14a98f721",
+          "SeasonId": "92cb4a27a19ff0074b8ada4d7c4ed0e4",
+          "SeasonName": "Season 1",
+          "VideoType": "VideoFile",
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Video"
+        },
+        {
+          "Name": "Seed Show",
+          "ServerId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Id": "1e1daf724073a8e469c808c14a98f721",
+          "Path": "/media/shows/Seed Show (2010)",
+          "ChannelId": null,
+          "ProductionYear": 2010,
+          "ProviderIds": {
+            "Tvdb": "900100"
+          },
+          "IsFolder": true,
+          "Type": "Series",
+          "AirDays": [],
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Unknown"
+        }
+      ],
+      "TotalRecordCount": 5,
+      "StartIndex": 0
+    }
+  }
+}

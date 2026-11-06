@@ -1,0 +1,168 @@
+{
+  "request": {
+    "urlPath": "/Items",
+    "method": "GET",
+    "queryParameters": {
+      "ParentId": {
+        "hasExactly": [
+          {
+            "equalTo": "f137a2dd21bbc1b99aa5c0f6bf02a805"
+          }
+        ]
+      },
+      "Recursive": {
+        "hasExactly": [
+          {
+            "equalTo": "true"
+          }
+        ]
+      },
+      "IncludeItemTypes": {
+        "hasExactly": [
+          {
+            "equalTo": "Movie,Series,Episode"
+          }
+        ]
+      },
+      "Fields": {
+        "hasExactly": [
+          {
+            "equalTo": "ProviderIds,Path"
+          }
+        ]
+      },
+      "IsMissing": {
+        "hasExactly": [
+          {
+            "equalTo": "false"
+          }
+        ]
+      },
+      "SortBy": {
+        "hasExactly": [
+          {
+            "equalTo": "DateCreated,SortName"
+          }
+        ]
+      },
+      "SortOrder": {
+        "hasExactly": [
+          {
+            "equalTo": "Ascending"
+          }
+        ]
+      },
+      "StartIndex": {
+        "hasExactly": [
+          {
+            "equalTo": "0"
+          }
+        ]
+      },
+      "Limit": {
+        "hasExactly": [
+          {
+            "equalTo": "500"
+          }
+        ]
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": {
+      "Items": [
+        {
+          "Name": "Matched Movie",
+          "ServerId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Id": "c3fa379723e76673ca7c69e567001c39",
+          "Container": "mkv",
+          "Path": "/media/movies/Matched Movie (2001)/Matched Movie (2001).mkv",
+          "ChannelId": null,
+          "RunTimeTicks": 50230000,
+          "ProductionYear": 2001,
+          "ProviderIds": {
+            "Imdb": "tt0900001",
+            "Tmdb": "900001"
+          },
+          "IsFolder": false,
+          "Type": "Movie",
+          "VideoType": "VideoFile",
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Video"
+        },
+        {
+          "Name": "Two Editions",
+          "ServerId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Id": "e7b0e4d3728c994a8c5c92673cdf0a35",
+          "Container": "mkv",
+          "Path": "/media/movies/Two Editions (2002)/Two Editions (2002) - Director's Cut.mkv",
+          "ChannelId": null,
+          "RunTimeTicks": 50230000,
+          "ProductionYear": 2002,
+          "ProviderIds": {
+            "Imdb": "tt0900002",
+            "Tmdb": "900002"
+          },
+          "IsFolder": false,
+          "Type": "Movie",
+          "VideoType": "VideoFile",
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Video"
+        },
+        {
+          "Name": "Two Versions",
+          "ServerId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Id": "c3c91da8d6322c1597155639550e158e",
+          "Container": "mkv",
+          "Path": "/media/movies/Two Versions (2003)/Two Versions (2003) - 2160p.mkv",
+          "ChannelId": null,
+          "RunTimeTicks": 50230000,
+          "ProductionYear": 2003,
+          "ProviderIds": {
+            "Imdb": "tt0900003",
+            "Tmdb": "900003"
+          },
+          "IsFolder": false,
+          "Type": "Movie",
+          "VideoType": "VideoFile",
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Video"
+        },
+        {
+          "Name": "Unmatched Movie",
+          "ServerId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Id": "b6670f6429d9f2b262efb59150d28313",
+          "Container": "mkv",
+          "Path": "/media/movies-more/Unmatched Movie (2004)/Unmatched Movie (2004).mkv",
+          "ChannelId": null,
+          "RunTimeTicks": 50230000,
+          "ProductionYear": 2004,
+          "ProviderIds": {},
+          "IsFolder": false,
+          "Type": "Movie",
+          "VideoType": "VideoFile",
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Video"
+        }
+      ],
+      "TotalRecordCount": 4,
+      "StartIndex": 0
+    }
+  }
+}
