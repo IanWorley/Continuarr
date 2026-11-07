@@ -71,7 +71,6 @@
     "unicorn/no-this-assignment": "error",
     "unicorn/no-useless-promise-resolve-reject": "error",
     "react-web-api/no-leaked-event-listener": "error",
-    "react-web-api/no-leaked-fetch": "error",
     "react-web-api/no-leaked-intersection-observer": "error",
     "react-web-api/no-leaked-interval": "error",
     "react-web-api/no-leaked-resize-observer": "error",
