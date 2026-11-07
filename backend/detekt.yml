@@ -168,7 +168,7 @@ style:
         reason: 'Scaffold placeholder; write the code or delete the comment.'
   ForbiddenImport:
     active: true
-    # Tests may still use JDBC to read the tables underneath the entities they check.
+    # Tests may still use JDBC to read the tables underneath the entities they check, and may use a seeded Random.
     excludes: ['**/test/**']
     forbiddenImports:
       - value: 'org.springframework.jdbc.*'
@@ -177,8 +177,66 @@ style:
         reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
       - value: 'javax.sql.*'
         reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
+      - value: 'java.util.Random'
+        reason: 'java.util.Random is predictable. Use java.security.SecureRandom for anything secret, as SetupToken does.'
+      - value: 'kotlin.random.*'
+        reason: 'kotlin.random.Random is predictable. Use java.security.SecureRandom for anything secret, as SetupToken does.'
   ForbiddenMethodCall:
     active: true
+    # Setting methods replaces detekt's defaults, so the first five entries repeat them.
+    methods:
+      - value: 'kotlin.io.print'
+        reason: 'print does not allow you to configure the output stream. Use a logger instead.'
+      - value: 'kotlin.io.println'
+        reason: 'println does not allow you to configure the output stream. Use a logger instead.'
+      - value: 'java.math.BigDecimal.<init>(kotlin.Double)'
+        reason: 'BigDecimal(Double) keeps floating point error. Use BigDecimal.valueOf(Double) or String.toBigDecimalOrNull().'
+      - value: 'java.math.BigDecimal.<init>(kotlin.String)'
+        reason: 'BigDecimal(String) can throw NumberFormatException. Use String.toBigDecimalOrNull().'
+      - value: 'kotlin.system.measureTimeMillis'
+        reason: 'It is obsolete. Use kotlin.time.measureTime.'
+      - value: 'java.lang.Thread.sleep'
+        reason: 'A fixed sleep is slow and flaky. Poll for the condition with a timeout, or inject a java.time.Clock.'
+      - value: 'java.util.concurrent.TimeUnit.sleep'
+        reason: 'A fixed sleep is slow and flaky. Poll for the condition with a timeout, or inject a java.time.Clock.'
+      - value: 'java.time.Instant.now()'
+        reason: 'Inject a java.time.Clock and call Instant.now(clock), so tests can control time.'
+      - value: 'java.time.LocalDateTime.now()'
+        reason: 'Inject a java.time.Clock and call LocalDateTime.now(clock), so tests can control time.'
+      - value: 'java.time.LocalDateTime.now(java.time.ZoneId)'
+        reason: 'Inject a java.time.Clock and call LocalDateTime.now(clock), so tests can control time.'
+      - value: 'java.time.OffsetDateTime.now()'
+        reason: 'Inject a java.time.Clock and call OffsetDateTime.now(clock), so tests can control time.'
+      - value: 'java.time.OffsetDateTime.now(java.time.ZoneId)'
+        reason: 'Inject a java.time.Clock and call OffsetDateTime.now(clock), so tests can control time.'
+      - value: 'java.time.ZonedDateTime.now()'
+        reason: 'Inject a java.time.Clock and call ZonedDateTime.now(clock), so tests can control time.'
+      - value: 'java.time.ZonedDateTime.now(java.time.ZoneId)'
+        reason: 'Inject a java.time.Clock and call ZonedDateTime.now(clock), so tests can control time.'
+      - value: 'java.time.LocalDate.now()'
+        reason: 'Inject a java.time.Clock and call LocalDate.now(clock), so tests can control time.'
+      - value: 'java.time.LocalDate.now(java.time.ZoneId)'
+        reason: 'Inject a java.time.Clock and call LocalDate.now(clock), so tests can control time.'
+      - value: 'java.lang.System.currentTimeMillis'
+        reason: 'Inject a java.time.Clock and call clock.millis(), so tests can control time.'
+      - value: 'java.lang.Math.random'
+        reason: 'It draws from a predictable generator. Use java.security.SecureRandom for anything secret, as SetupToken does.'
+      - value: 'kotlin.collections.random'
+        reason: 'It draws from a predictable generator. Use java.security.SecureRandom for anything secret, as SetupToken does.'
+      - value: 'kotlin.text.random'
+        reason: 'It draws from a predictable generator. Use java.security.SecureRandom for anything secret, as SetupToken does.'
+      - value: 'kotlin.ranges.random'
+        reason: 'It draws from a predictable generator. Use java.security.SecureRandom for anything secret, as SetupToken does.'
+  ForbiddenSuppress:
+    active: true
+    # @Suppress must not get around the JDBC ban, the !! rule, or the exception rules.
+    rules:
+      - 'UnsafeCallOnNullableType'
+      - 'ForbiddenImport'
+      - 'ForbiddenMethodCall'
+      - 'SwallowedException'
+      - 'TooGenericExceptionCaught'
+      - 'EmptyCatchBlock'
   MagicNumber:
     active: true
     ignoreNumbers: ['-1', '0', '1']
@@ -206,6 +264,8 @@ style:
     active: true
   WildcardImport:
     active: true
+    # detekt exempts java.util.* by default, which would let java.util.Random past ForbiddenImport.
+    excludeImports: []
 
 complexity:
   NestedScopeFunctions:
