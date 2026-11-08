@@ -43,4 +43,4 @@ Any issue or PR an agent writes says so in its body with this line, filled in wi
 This was written by an AI agent on behalf of <your GitHub user>. Model: <model> · Harness: <harness> · Effort: <effort>
 ```
 
-When an agent runs `scripts/ci_local.py`, the script prints this line after the table. It detects the harness and, where the harness sets it, the effort from env vars. It takes the user from `gh api user`, then `git config user.name`, then `GITHUB_ACTOR`. Pass `--model` and `--effort` for what it can't detect, and `--agent` or `--manual` to override detection. Replace any `<fill in: ...>` it leaves, and never guess a value.
+When an agent runs `scripts/ci_local.py`, the script prints this line after the table. It detects the harness and, where the harness sets it, the effort from env vars. It takes the user from `gh api user`, then `git config user.name`, then `GITHUB_ACTOR`. Pass `--model` and `--effort` for what it can't detect. Either one marks the run as an agent's, and `--agent` or `--manual` overrides detection. Replace any `<fill in: ...>` it leaves, and never guess a value.
