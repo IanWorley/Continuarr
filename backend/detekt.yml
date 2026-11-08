@@ -1,5 +1,5 @@
-# `./gradlew detekt` runs without type resolution and silently skips rules that need it,
-# so this file lists only rules that run without it.
+# CI runs `./gradlew detektMain detektTest`, which resolve types. Plain `./gradlew detekt` doesn't,
+# and it silently skips about half of these rules.
 empty-blocks:
   EmptyCatchBlock:
     active: true
@@ -33,15 +33,27 @@ empty-blocks:
     active: true
 
 exceptions:
+  ErrorUsageWithThrowable:
+    active: true
   ExceptionRaisedInUnexpectedLocation:
+    active: true
+  InstanceOfCheckForException:
+    active: true
+  NotImplementedDeclaration:
+    active: true
+  ObjectExtendsThrowable:
     active: true
   PrintStackTrace:
     active: true
   RethrowCaughtException:
     active: true
+  ReturnFromFinally:
+    active: true
   SwallowedException:
     active: true
   ThrowingExceptionFromFinally:
+    active: true
+  ThrowingExceptionInMain:
     active: true
   ThrowingExceptionsWithoutMessageOrCause:
     active: true
@@ -53,11 +65,33 @@ exceptions:
     active: true
 
 potential-bugs:
+  AvoidReferentialEquality:
+    active: true
+  CastNullableToNonNullableType:
+    active: true
+  CharArrayToStringCall:
+    active: true
+  DontDowncastCollectionTypes:
+    active: true
+  DoubleMutabilityForCollection:
+    active: true
+  ElseCaseInsteadOfExhaustiveWhen:
+    active: true
   EqualsAlwaysReturnsTrueOrFalse:
     active: true
   EqualsWithHashCodeExist:
     active: true
+  ExitOutsideMain:
+    active: true
   ExplicitGarbageCollectionCall:
+    active: true
+  HasPlatformType:
+    active: true
+  IgnoredReturnValue:
+    active: true
+  ImplicitDefaultLocale:
+    active: true
+  ImplicitUnitReturnType:
     active: true
   InvalidRange:
     active: true
@@ -65,24 +99,122 @@ potential-bugs:
     active: true
   IteratorNotThrowingNoSuchElementException:
     active: true
+  MapGetWithNotNullAssertionOperator:
+    active: true
+  MissingPackageDeclaration:
+    active: true
+  NullCheckOnMutableProperty:
+    active: true
+  NullableToStringCall:
+    active: true
+  PropertyUsedBeforeDeclaration:
+    active: true
   UnconditionalJumpStatementInLoop:
+    active: true
+  UnnecessaryNotNullCheck:
+    active: true
+  UnnecessaryNotNullOperator:
+    active: true
+  UnnecessarySafeCall:
+    active: true
+  UnreachableCatchBlock:
+    active: true
+  UnreachableCode:
+    active: true
+  UnsafeCallOnNullableType:
+    active: true
+    # A !! in a test fails the test loudly, which is what a test wants.
+    excludes: ['**/test/**']
+  UnsafeCast:
+    active: true
+  UnusedUnaryOperator:
     active: true
   UselessPostfixExpression:
     active: true
   WrongEqualsTypeParameter:
     active: true
 
+performance:
+  ForEachOnRange:
+    active: true
+  UnnecessaryInitOnArray:
+    active: true
+  UnnecessaryPartOfBinaryExpression:
+    active: true
+  UnnecessaryTemporaryInstantiation:
+    active: true
+
 style:
+  AbstractClassCanBeConcreteClass:
+    active: true
+  AbstractClassCanBeInterface:
+    active: true
+  DataClassShouldBeImmutable:
+    active: true
   EqualsNullCall:
+    active: true
+  ForbiddenComment:
+    active: true
+    comments:
+      - value: 'TODO:'
+        reason: 'Finish the change, or open an issue and reference it.'
+      - value: 'FIXME:'
+        reason: 'Fix the problem before merging.'
+      - value: 'STOPSHIP:'
+        reason: 'Fix the problem before merging.'
+      - value: '(?i)(insert|add|put|write) (your )?(code|implementation|logic) here'
+        reason: 'Scaffold placeholder; write the code or delete the comment.'
+      - value: '(?i)implement (me|this)'
+        reason: 'Scaffold placeholder; write the code or delete the comment.'
+  ForbiddenImport:
+    active: true
+    # Tests may still use JDBC to read the tables underneath the entities they check.
+    excludes: ['**/test/**']
+    forbiddenImports:
+      - value: 'org.springframework.jdbc.*'
+        reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
+      - value: 'java.sql.*'
+        reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
+      - value: 'javax.sql.*'
+        reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
+  ForbiddenMethodCall:
     active: true
   MagicNumber:
     active: true
     ignoreNumbers: ['-1', '0', '1']
+  SerialVersionUIDInSerializableClass:
+    active: true
+  UnnecessaryApply:
+    active: true
+  UnnecessaryLet:
+    active: true
+  UnusedImport:
+    active: true
   UnusedParameter:
     active: true
   UnusedPrivateClass:
     active: true
     # Spring Modulith reads @PackageInfo classes reflectively to declare each module.
     ignoreAnnotated: ['PackageInfo']
+  UnusedPrivateFunction:
+    active: true
+  UnusedPrivateProperty:
+    active: true
+  UnusedVariable:
+    active: true
+  VarCouldBeVal:
+    active: true
   WildcardImport:
+    active: true
+
+complexity:
+  NestedScopeFunctions:
+    active: true
+
+coroutines:
+  GlobalCoroutineUsage:
+    active: true
+  SleepInsteadOfDelay:
+    active: true
+  SuspendFunSwallowedCancellation:
     active: true

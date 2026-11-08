@@ -1,12 +1,12 @@
 # Access control
 
-Everything on the backend requires a session except the health endpoint, `GET /api/csrf`, `GET` and `POST /api/setup`, and the SPA's pages and assets. A state-changing request also needs the CSRF token, sent back in the `X-XSRF-TOKEN` header. [Security in `docs/plan.md`](../../../../docs/plan.md#security) is the source for these rules.
+Everything on the backend requires a session except the health endpoint, `GET /api/csrf`, `GET` and `POST /api/setup`, `POST /api/login`, `POST /api/logout`, and the SPA's pages and assets. Every state-changing request, meaning any method other than `GET`, `HEAD`, `OPTIONS`, or `TRACE`, also needs the CSRF token, sent back in the `X-XSRF-TOKEN` header. That includes login and logout, and the CSRF check runs before the session check. [Security in `docs/plan.md`](../../../../docs/plan.md#security) is the source for these rules.
 
 ## Sub-features
 
 - `access-public` answers the public endpoints without a session.
 - `access-protected` answers `401` to any other request without a session, including unknown `/api` paths.
-- `access-csrf` rejects a `POST` without the CSRF header with `403`.
+- `access-csrf` rejects a state-changing request without the CSRF header with `403`, such as `POST /api/setup`, `POST /api/login`, `POST /api/logout`, or `PUT /api/v1/jellyfin/connection`.
 
 ## How to get to it (user POV)
 
@@ -23,6 +23,8 @@ Preconditions:
 - **Protected.** Run `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/v3/api-docs` and the same for `/api/v1/anything`. Both print `401`.
 - **CSRF.** Run `curl -s -o /dev/null -w '%{http_code}\n' -H 'Content-Type: application/json' -d '{"token":"x","username":"a","password":"12345678"}' http://localhost:8080/api/setup`. It prints `403`.
 - **CSRF accepted.** This step needs a fresh launch, because with an admin the endpoint answers `409` first. Fetch the token with `curl -s -c cookies.txt http://localhost:8080/api/csrf`. Then run `curl -s -o /dev/null -w '%{http_code}\n' -b cookies.txt -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' cookies.txt)" -H 'Content-Type: application/json' -d "{\"token\":\"$(.claude/skills/verify-continuarr/scripts/control.sh token)\",\"username\":\" \",\"password\":\"12345678\"}" http://localhost:8080/api/setup`. It prints `400`. The real setup token gets past the token check and the blank username fails validation, so the `400` proves the request passed the CSRF check. A wrong token prints `403` and proves nothing.
+- **Login and logout without CSRF.** Run `curl -s -o /dev/null -w '%{http_code}\n' -d 'username=admin&password=wrong' http://localhost:8080/api/login`, then `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8080/api/logout`, then `curl -s -o /dev/null -w '%{http_code}\n' -X PUT -H 'Content-Type: application/json' -d '{}' http://localhost:8080/api/v1/jellyfin/connection`. Each prints `403`.
+- **Login and logout with CSRF.** Fetch the token with `curl -s -c cookies.txt http://localhost:8080/api/csrf`. Run `curl -s -o /dev/null -w '%{http_code}\n' -b cookies.txt -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' cookies.txt)" -d 'username=admin&password=wrong' http://localhost:8080/api/login`. It prints `401`, so login answered without a session. Run `curl -s -o /dev/null -w '%{http_code}\n' -b cookies.txt -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' cookies.txt)" -X POST http://localhost:8080/api/logout`. It prints `204`, so logout answers without a session too.
 
 ## Gotchas
 

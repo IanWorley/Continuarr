@@ -50,7 +50,7 @@ private fun embeddedJson(text: String): Any? = text.trimStart().takeIf { it.star
 	?.let { runCatching { JsonMapper().readValue<Any>(it) }.getOrNull() }
 
 private fun strings(json: Any?, path: List<String> = emptyList()): Sequence<FixtureString> = when (json) {
-	is Map<*, *> -> json.asSequence().flatMap { (key, value) -> strings(value, path + key.toString()) }
+	is Map<*, *> -> json.asSequence().flatMap { (key, value) -> strings(value, path + checkNotNull(key).toString()) }
 	is List<*> -> json.asSequence().flatMap { strings(it, path) }
 	is String -> sequenceOf(FixtureString(path, json))
 	else -> emptySequence()

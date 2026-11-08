@@ -8,8 +8,12 @@ const ADMIN_USERNAME = 'admin'
 const PASSWORD_BYTES = 16
 const OWNER_ONLY_FILE_MODE = 0o600
 
+// control.sh token keeps printing the launch's token after setup, so only the backend knows an admin exists.
+/** @type {{ required: boolean }} */
+const setupStatus = await (await fetch(`${BACKEND_URL}/api/setup`)).json()
+if (!setupStatus.required) throw new Error('An admin already exists in this launch, so relaunch for a fresh database')
 const setupToken = process.env.CONTINUARR_SETUP_TOKEN
-if (!setupToken) throw new Error('No setup token in this run; an admin already exists, so relaunch for a fresh database')
+if (!setupToken) throw new Error('Setup is required but control.sh token found no setup token in the backend log')
 const password = randomBytes(PASSWORD_BYTES).toString('hex')
 
 await runJourney(async ({ page, step, record }) => {

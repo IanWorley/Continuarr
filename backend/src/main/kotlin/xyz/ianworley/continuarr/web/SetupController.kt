@@ -17,6 +17,9 @@ private const val MIN_PASSWORD_LENGTH = 8
 // bcrypt ignores everything past 72 bytes, so Spring Security refuses longer passwords.
 private const val MAX_PASSWORD_BYTES = 72
 
+// Spring Security's encode returns null only for a null password, and this one isn't null.
+private const val PASSWORD_HASH_MISSING = "The password encoder returned no hash"
+
 // First-run setup: creates the single admin, once, for whoever holds the logged setup token.
 // Anyone may ask whether setup is still needed, so the SPA can choose between setup and login.
 @RestController
@@ -46,7 +49,7 @@ class SetupController(
 		}
 
 		return try {
-			users.save(User(username, passwordEncoder.encode(request.password)!!))
+			users.save(User(username, checkNotNull(passwordEncoder.encode(request.password)) { PASSWORD_HASH_MISSING }))
 			status(HttpStatus.NO_CONTENT)
 		} catch (_: DataIntegrityViolationException) {
 			// Another setup request won the race to app_user's single row.

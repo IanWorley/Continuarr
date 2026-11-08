@@ -65,14 +65,15 @@ private fun Throwable.isLostConnection(): Boolean =
  * retries of its own, so the pollers decide when to try again. The JDK client may still replay an idempotent
  * GET once when a connection drops.
  *
- * Each call reads [connection] once, so a newly saved server takes effect on the next call. With no usable
- * connection, calls fail as [MediaServerException.Unreachable]. `server`'s sealed exception has no case
- * for that, so only the message ("Jellyfin connection not configured", or the reason a saved row can't
- * be used) tells it apart from a server that's down.
+ * Each request reads [connection], so a newly saved server takes effect on the next request, even between
+ * the pages of one sequence. With no usable connection, calls fail as [MediaServerException.Unreachable].
+ * `server`'s sealed exception has no case for that, so only the message ("Jellyfin connection not
+ * configured", or the reason a saved row can't be used) tells it apart from a server that's down.
  */
 class JellyfinMediaServer(
 	private val connection: () -> StoredConnection,
 	readTimeout: Duration = JELLYFIN_READ_TIMEOUT,
+	private val pageSize: PageSize = JELLYFIN_PAGE_SIZE,
 ) : MediaServer {
 
 	private val requestFactory = JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(JELLYFIN_CONNECT_TIMEOUT).build())
@@ -89,8 +90,9 @@ class JellyfinMediaServer(
 		}
 	}
 
-	override fun items(library: ServerLibraryId): Sequence<ServerItem> = TODO("#17")
+	override fun items(library: ServerLibraryId): Sequence<ServerItem> = libraryItems(library, pageSize) { get<ItemsPageDto<ItemDto>>(it) }
 
+	@Suppress("NotImplementedDeclaration")
 	override fun userStates(account: ServerAccountId, library: ServerLibraryId): Sequence<UserItemState> = TODO("#18")
 
 	override fun activeSessions(): List<ActiveSession> = get<List<SessionDto>>(SESSIONS_PATH).mapNotNull { it.toActiveSessionOrNull() }
