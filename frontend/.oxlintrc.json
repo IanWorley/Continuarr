@@ -4,6 +4,7 @@
     "typeAware": true,
     "reportUnusedDisableDirectives": "error"
   },
+  "jsPlugins": ["eslint-plugin-react-web-api", "eslint-plugin-react-you-might-not-need-an-effect"],
   "plugins": ["react", "typescript", "oxc", "import", "jsx-a11y", "vitest", "unicorn", "promise"],
   "categories": {
     "correctness": "error",
@@ -68,6 +69,19 @@
     "unicorn/no-abusive-eslint-disable": "error",
     "unicorn/no-instanceof-array": "error",
     "unicorn/no-this-assignment": "error",
-    "unicorn/no-useless-promise-resolve-reject": "error"
+    "unicorn/no-useless-promise-resolve-reject": "error",
+    "react-web-api/no-leaked-event-listener": "error",
+    "react-web-api/no-leaked-intersection-observer": "error",
+    "react-web-api/no-leaked-interval": "error",
+    "react-web-api/no-leaked-resize-observer": "error",
+    "react-web-api/no-leaked-timeout": "error",
+    "react-you-might-not-need-an-effect/no-adjust-state-on-prop-change": "error",
+    "react-you-might-not-need-an-effect/no-chain-state-updates": "error",
+    "react-you-might-not-need-an-effect/no-event-handler": "error",
+    "react-you-might-not-need-an-effect/no-external-store-subscription": "error",
+    "react-you-might-not-need-an-effect/no-initialize-state": "error",
+    "react-you-might-not-need-an-effect/no-pass-data-to-parent": "error",
+    "react-you-might-not-need-an-effect/no-pass-live-state-to-parent": "error",
+    "react-you-might-not-need-an-effect/no-reset-all-state-on-prop-change": "error"
   }
 }
