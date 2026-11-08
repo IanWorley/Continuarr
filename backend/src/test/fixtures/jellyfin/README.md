@@ -59,6 +59,16 @@ The script runs `seed.sh` first, so every recording starts from the same server 
 
 To record another endpoint, add its path to `requests.txt` and run `./record.sh`. The script sends each path as written and skips blank lines and lines that start with `#`. User IDs change on every seed, so a path that needs one needs a lookup in `record.sh` first.
 
+## The sessions fixture records scripted playback
+
+`get-sessions.json` is a recording, not a hand-written file, and no client streams a clip for it. `seed.sh` signs in as the admin on two devices, `seed-playing` and `seed-paused`, and each device reports playback to `POST /Sessions/Playing`. That report is enough for Jellyfin to list the session as playing. The admin plays because a playback report changes the player's play count and resume position, and `user-a` and `user-b` hold the user state cases.
+
+Jellyfin keeps a paused session at its reported position. It moves a playing session's position forward from the report until the item's runtime, so the playing session's position in the fixture depends on how long the recording took. Tests check the exact position only on the paused session.
+
+Jellyfin also stops a playing session a few minutes after its last report. In one test run it was gone within 6 minutes, while the paused session stayed. So the seed server has a playing session only right after `seed.sh`, which `record.sh` runs first.
+
+The fixture also has two sessions with nothing playing. One is the `continuarr-seed` session that creates the API key. Jellyfin opens the other for the requests that use the API key.
+
 ## Re-record after a Jellyfin upgrade
 
 Change the `jellyfin` image tag in `compose.yaml`, then run `./record.sh`. Review the diff of the mappings for API changes before you commit them.
@@ -91,5 +101,8 @@ Every movie and episode has an `.nfo` file with its title and provider IDs. Ever
 | User A has one played movie | `user-a` has played `Matched Movie` | User state |
 | User B has one movie in progress | `user-b` is 2 seconds into `Matched Movie` | Resume position |
 | A disabled user | `user-disabled` | Account mapping |
+| Admin is playing an episode | `seed-playing` reports "Normal Episode" playing from 1 second | Active sessions |
+| Admin has paused a movie | `seed-paused` reports `Unmatched Movie` paused at 3 seconds | Paused state and position |
+| A session with nothing playing | `continuarr-seed`, the session that creates the API key | Skipped by `activeSessions()` |
 
 The `admin` user is also on the server. The users `user-a`, `user-b`, and `user-disabled` use the same password as `admin`.

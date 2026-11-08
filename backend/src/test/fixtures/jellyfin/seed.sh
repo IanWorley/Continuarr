@@ -29,6 +29,13 @@ readonly STATE_MOVIE="Matched Movie"
 readonly RESUME_SECONDS=2
 readonly TICKS_PER_SECOND=10000000
 
+readonly PLAYING_CLIENT=seed-playing
+readonly PLAYING_EPISODE="Normal Episode"
+readonly PLAYING_SECONDS=1
+readonly PAUSED_CLIENT=seed-paused
+readonly PAUSED_MOVIE="Unmatched Movie"
+readonly PAUSED_SECONDS=3
+
 readonly POLL_SECONDS=1
 readonly SCAN_TIMEOUT_SECONDS=120
 
@@ -74,11 +81,16 @@ complete_wizard() {
 	curl -fsS -X POST "$JELLYFIN_URL/Startup/Complete"
 }
 
+sign_in_as_admin() {
+	local client_auth="$1"
+	curl -fsS -X POST -H "Authorization: $client_auth" -H 'Content-Type: application/json' \
+		-d "$(jq -n --arg name "$ADMIN_USER" --arg password "$SEED_PASSWORD" '{Username: $name, Pw: $password}')" \
+		"$JELLYFIN_URL/Users/AuthenticateByName" | jq -r .AccessToken
+}
+
 create_api_key() {
 	local token
-	token="$(curl -fsS -X POST -H "Authorization: $CLIENT_AUTH" -H 'Content-Type: application/json' \
-		-d "$(jq -n --arg name "$ADMIN_USER" --arg password "$SEED_PASSWORD" '{Username: $name, Pw: $password}')" \
-		"$JELLYFIN_URL/Users/AuthenticateByName" | jq -r .AccessToken)"
+	token="$(sign_in_as_admin "$CLIENT_AUTH")"
 	curl -fsS -X POST -H "$(token_header "$token")" "$JELLYFIN_URL/Auth/Keys?app=Continuarr"
 	curl -fsS -H "$(token_header "$token")" "$JELLYFIN_URL/Auth/Keys" | jq -r '.Items[0].AccessToken'
 }
@@ -140,6 +152,12 @@ user_id() {
 	api GET /Users | jq -r --arg name "$1" '.[] | select(.Name == $name) | .Id'
 }
 
+item_id() {
+	local type="$1" name="$2"
+	api GET "/Items?Recursive=true&IncludeItemTypes=$type&searchTerm=$(uri "$name")" |
+		jq -r --arg name "$name" '.Items[] | select(.Name == $name) | .Id'
+}
+
 seed_user_state() {
 	local user_a user_b disabled policy movie
 	user_a="$(create_user "$USER_A")"
@@ -147,11 +165,27 @@ seed_user_state() {
 	disabled="$(create_user "$DISABLED_USER")"
 	policy="$(api GET "/Users/$disabled" | jq '.Policy | .IsDisabled = true')"
 	api POST "/Users/$disabled/Policy" "$policy"
-	movie="$(api GET "/Items?Recursive=true&IncludeItemTypes=Movie&searchTerm=$(uri "$STATE_MOVIE")" |
-		jq -r --arg name "$STATE_MOVIE" '.Items[] | select(.Name == $name) | .Id')"
+	movie="$(item_id Movie "$STATE_MOVIE")"
 	api POST "/UserPlayedItems/$movie?userId=$user_a" >/dev/null
 	api POST "/UserItems/$movie/UserData?userId=$user_b" \
 		"$(jq -n --argjson ticks $((RESUME_SECONDS * TICKS_PER_SECOND)) '{PlaybackPositionTicks: $ticks}')" >/dev/null
+}
+
+# A playback report is enough for Jellyfin to list a session as playing, so nothing streams the clip.
+start_admin_playback() {
+	local client="$1" item="$2" seconds="$3" paused="$4" token
+	token="$(sign_in_as_admin "MediaBrowser Client=\"$client\", Device=\"seed\", DeviceId=\"$client\", Version=\"1.0\"")"
+	curl -fsS -X POST -H "$(token_header "$token")" -H 'Content-Type: application/json' \
+		-d "$(jq -n --arg item "$item" --argjson ticks $((seconds * TICKS_PER_SECOND)) --argjson paused "$paused" \
+			'{ItemId: $item, PositionTicks: $ticks, IsPaused: $paused, PlayMethod: "DirectPlay"}')" "$JELLYFIN_URL/Sessions/Playing"
+}
+
+seed_sessions() {
+	local episode movie
+	episode="$(item_id Episode "$PLAYING_EPISODE")"
+	movie="$(item_id Movie "$PAUSED_MOVIE")"
+	start_admin_playback "$PLAYING_CLIENT" "$episode" "$PLAYING_SECONDS" false
+	start_admin_playback "$PAUSED_CLIENT" "$movie" "$PAUSED_SECONDS" true
 }
 
 check_seed_cases() {
@@ -162,7 +196,8 @@ check_seed_cases() {
 		--argjson users "$(api GET /Users)" \
 		--argjson played "$(api GET "/Items?userId=$(user_id "$USER_A")&Recursive=true&IncludeItemTypes=Movie&Filters=IsPlayed")" \
 		--argjson resume "$(api GET "/UserItems/Resume?userId=$(user_id "$USER_B")&IncludeItemTypes=Movie")" \
-		'{folders: $folders, items: $items.Items, users: $users, played: $played.Items, resume: $resume.Items}')"
+		--argjson sessions "$(api GET /Sessions)" \
+		'{folders: $folders, items: $items.Items, users: $users, played: $played.Items, resume: $resume.Items, sessions: $sessions}')"
 
 	check() {
 		if jq -e "$2" <<<"$state" >/dev/null; then
@@ -199,6 +234,13 @@ check_seed_cases() {
 		'[.resume[] | select(.UserData.PlaybackPositionTicks > 0)] | length == 1'
 	check "A disabled user" \
 		'any(.users[]; .Policy.IsDisabled)'
+	check "Admin is playing an episode" \
+		"any(.sessions[]; .Client == \"$PLAYING_CLIENT\" and .NowPlayingItem.Name == \"$PLAYING_EPISODE\" and .PlayState.IsPaused == false)"
+	check "Admin has paused a movie" \
+		"any(.sessions[]; .Client == \"$PAUSED_CLIENT\" and .NowPlayingItem.Name == \"$PAUSED_MOVIE\" and .PlayState.IsPaused
+			and .PlayState.PositionTicks == $((PAUSED_SECONDS * TICKS_PER_SECOND)))"
+	check "A session with nothing playing" \
+		'any(.sessions[]; .NowPlayingItem == null)'
 
 	if [ "$failures" -gt 0 ]; then
 		echo "$failures seed case(s) missing" >&2
@@ -218,5 +260,6 @@ add_library Shows tvshows /media/shows
 add_library Music music /media/music
 scan_libraries
 seed_user_state
+seed_sessions
 check_seed_cases
 echo "Seed server ready at $JELLYFIN_URL"
