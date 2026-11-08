@@ -23,8 +23,8 @@ Write commit messages and PR titles as Conventional Commits. Scope them `backend
 
 ## Open a PR
 
-- Branch from `main`, keep the PR small, and link the issue it closes when one fits.
-- Run `python3 scripts/ci_local.py`, then paste its closing table verbatim into the PR body under `## Verification`. Don't write or edit the table by hand. It has one row per test suite. Skipped tests count in the total but not as passed. ✅ means every CI step in that suite's job passed:
+- Branch from `main`, keep the PR small, and link the issue it closes when one fits. `.github/pull_request_template.md` lays out the body.
+- Run `python3 scripts/ci_local.py`, then paste everything it prints after `--- Paste everything below into the PR body ---` verbatim under `## Verification`. Don't write or edit it by hand. The table has one row per test suite. Skipped tests count in the total but not as passed. ✅ means every CI step in that suite's job passed. A failed lint step adds a line with each failed rule and its count, such as `detekt: MagicNumber ×3, LongMethod ×1`:
 
   | Suite | Tests passed | Result |
   |-------|--------------|--------|
@@ -34,3 +34,13 @@ Write commit messages and PR titles as Conventional Commits. Scope them `backend
 - Before you open the PR, attack it with `/interrogate` and `/blast-radius`, and fix the real findings.
 - In the PR body, also show a planted failure for any new check, and list the known gaps.
 - Agents never merge a PR or push to `main`.
+
+## Say when an agent wrote it
+
+Any issue or PR an agent writes says so in its body with this line, filled in with real values:
+
+```
+This was written by an AI agent on behalf of <your GitHub user>. Model: <model> · Harness: <harness> · Effort: <effort>
+```
+
+When an agent runs `scripts/ci_local.py`, the script prints this line after the table. It detects the harness and, where the harness sets it, the effort from env vars. It takes the user from `gh api user`, then `git config user.name`, then `GITHUB_ACTOR`. Pass `--model` and `--effort` for what it can't detect, and `--agent` or `--manual` to override detection. Replace any `<fill in: ...>` it leaves, and never guess a value.
