@@ -5,7 +5,7 @@ Read this before you change the repo. It lists what the docs and failing checks 
 ## Find the commands
 
 - [Setup in `docs/plan.md`](docs/plan.md#setup) lists the prerequisites and the commands to build, run, and test.
-- `.github/workflows/backend.yml` and `.github/workflows/frontend.yml` are the exact checks a PR must pass. Run the ones for the paths you touched.
+- `.github/workflows/backend.yml` and `.github/workflows/frontend.yml` are the exact checks a PR must pass. `python3 scripts/ci_local.py` runs the same steps on your machine, prints where each step's logs and reports are, and stops at the first failure. Pass `backend` or `frontend` to run one job.
 - Before you claim a user-facing change works, follow `.claude/skills/verify-continuarr/SKILL.md` to launch the real app, drive it, and keep the evidence. It works in any agent, not only Claude Code. Only one instance runs per machine, so launch refuses when port 8080 or 5173 is in use.
 
 ## Gotchas
@@ -20,3 +20,13 @@ Read this before you change the repo. It lists what the docs and failing checks 
 ## Commit
 
 Write commit messages and PR titles as Conventional Commits. Scope them `backend` or `frontend` when the change stays in one, as in `feat(backend): ...`.
+
+## Open a PR
+
+- Verify in two parts. Run `python3 scripts/ci_local.py` for the lint, test, and build steps CI runs. For a user-facing change, then run the verify-continuarr skill to drive the real app. Neither covers the other.
+- Paste the table the script prints at the end into the PR description under `## Verification`. It has one row per CI step:
+
+  | Step | Command | Result |
+  |------|---------|--------|
+  | Backend lint (detekt) | `./gradlew detektMain detektTest` | pass |
+  | Frontend test | `npm test` | pass |

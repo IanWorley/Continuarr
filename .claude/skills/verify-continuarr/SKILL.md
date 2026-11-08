@@ -7,6 +7,10 @@ description: Launch Continuarr locally (Spring Boot on a Testcontainers Postgres
 
 The user-facing surface is the admin web UI at `http://localhost:5173`. Vite serves it and forwards `/api` to the backend on port `8080`. The REST API is the second surface, driven with `curl`. Run every command from the repo root. `control.sh` below means `.claude/skills/verify-continuarr/scripts/control.sh`.
 
+## Before a PR
+
+Run `python3 scripts/ci_local.py` from the repo root first. It runs the lint, test, and build steps from `.github/workflows`, which this skill does not. Then launch, drive the journeys your change touches, and clean up.
+
 ## Launch
 
 ```sh
