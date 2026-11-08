@@ -5,7 +5,7 @@ plugins {
 	id("org.springframework.boot") version "4.1.2"
 	id("io.spring.dependency-management") version "1.1.7"
 	// 2.0.0-alpha.3 is the release built against Kotlin 2.3.21; detekt must match the compiler in use.
-	id("dev.detekt") version "2.0.0-alpha.3"
+	id("dev.detekt") version "2.0.0-alpha.6"
 }
 
 group = "xyz.ianworley"
@@ -21,7 +21,7 @@ repositories {
 	mavenCentral()
 }
 
-extra["springModulithVersion"] = "2.1.1"
+extra["springModulithVersion"] = "2.1.2"
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
