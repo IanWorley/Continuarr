@@ -14,12 +14,13 @@ const USERNAME = 'admin'
 
 type Respond = () => Promise<Response>
 
-const fetchMock = vi.fn<typeof fetch>()
+// apiFetch only ever passes fetch a path string.
+const fetchMock = vi.fn<(path: string, init?: RequestInit) => Promise<Response>>()
 
 function stubBackend(routes: Record<string, Respond>) {
-  fetchMock.mockImplementation((input, init) => {
-    const respond = routes[`${init?.method ?? 'GET'} ${String(input)}`]
-    return respond ? respond() : Promise.reject(new Error(`Unexpected request to ${String(input)}`))
+  fetchMock.mockImplementation((path, init) => {
+    const respond = routes[`${init?.method ?? 'GET'} ${path}`]
+    return respond ? respond() : Promise.reject(new Error(`Unexpected request to ${path}`))
   })
 }
 
@@ -33,7 +34,7 @@ const unreachable: Respond = async () => {
 }
 
 function logoutRequests() {
-  return fetchMock.mock.calls.filter(([input, init]) => String(input) === LOGOUT_PATH && init?.method === 'POST')
+  return fetchMock.mock.calls.filter(([path, init]) => path === LOGOUT_PATH && init?.method === 'POST')
 }
 
 // A fresh router per test, because the app's shared router stops resolving navigation once an

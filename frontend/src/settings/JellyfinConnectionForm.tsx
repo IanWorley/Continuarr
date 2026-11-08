@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, type FormEvent } from 'react'
+import { useEffect, useId, useRef, type SubmitEvent } from 'react'
 import type { JellyfinConnectionRequest } from '../api/client.ts'
 import { FIELD_CLASSES, FieldError, FormAlert, LABEL_CLASSES, SubmitButton } from '../forms/formParts.tsx'
+import { textField } from '../forms/textField.ts'
 
 export type JellyfinField = keyof JellyfinConnectionRequest
 
@@ -44,17 +45,19 @@ export function JellyfinConnectionForm({ savedUrl, confirmedSaves, submitting, o
   const alert = outcome && outcome.kind !== 'saved' && outcome.kind !== 'invalid' ? ALERT_MESSAGES[outcome.kind] : undefined
 
   // Resets in place rather than remounting the inputs, so keyboard focus stays where the admin left it.
+  // It runs after the commit that renders the saved URL as the new defaultValue, which reset() restores.
   useEffect(() => {
+    // oxlint-disable-next-line react-you-might-not-need-an-effect/no-event-handler -- syncs the uncontrolled inputs to the committed defaults.
     if (confirmedSaves > 0) formRef.current?.reset()
   }, [confirmedSaves])
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submitting) return
     const form = new FormData(event.currentTarget)
     onSubmit({
-      url: String(form.get('url')).trim(),
-      apiKey: String(form.get('apiKey')).trim(),
+      url: textField(form, 'url').trim(),
+      apiKey: textField(form, 'apiKey').trim(),
     })
   }
 

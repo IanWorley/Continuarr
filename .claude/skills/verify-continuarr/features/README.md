@@ -30,4 +30,4 @@ Each feature file starts with an H1 title and one paragraph about the user-visib
 - [First-run setup](./first-run-setup.md) covers the setup redirect, token and password errors, admin creation, and the closed setup page.
 - [Sign in](./sign-in.md) covers the login page, rejected credentials, the signed-in shell, sign-out, and the redirect from `/` without a session.
 - [Access control](./access-control.md) covers which endpoints answer without a session, and the CSRF requirement on state-changing calls.
-- [Jellyfin connection](./jellyfin-connection.md) covers the settings page with nothing saved, a `400` message under the field it names, a save with its API read-back, and the page after a reload.
+- [Jellyfin connection](./jellyfin-connection.md) covers the settings page with nothing saved, a `400` message under the field it names, a save with its API read-back, the page after a reload, and the API's session, CSRF, and validation answers.

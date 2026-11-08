@@ -21,12 +21,13 @@ const KEY_MESSAGE = /It can't contain spaces, quotes, or backslashes/
 const USERNAME = 'admin'
 const CSRF_TOKEN = 'csrf-token'
 
-const fetchMock = vi.fn<typeof fetch>()
+// apiFetch only ever passes fetch a path string.
+const fetchMock = vi.fn<(path: string, init?: RequestInit) => Promise<Response>>()
 let storedUrl: string | null = null
 
 function stubBackend(saveStatus: number, saveBody: unknown = null) {
-  fetchMock.mockImplementation(async (input, init) => {
-    const route = `${init?.method ?? 'GET'} ${String(input)}`
+  fetchMock.mockImplementation(async (path, init) => {
+    const route = `${init?.method ?? 'GET'} ${path}`
     if (route === `GET ${AUTH_PATH}`) return Response.json({ username: USERNAME })
     if (route === `GET ${JELLYFIN_CONNECTION_PATH}`) return Response.json({ url: storedUrl })
     if (route === `PUT ${JELLYFIN_CONNECTION_PATH}`) {
@@ -38,7 +39,7 @@ function stubBackend(saveStatus: number, saveBody: unknown = null) {
 }
 
 function connectionReads(): number {
-  return fetchMock.mock.calls.filter(([input, init]) => String(input) === JELLYFIN_CONNECTION_PATH && init?.method === 'GET').length
+  return fetchMock.mock.calls.filter(([path, init]) => path === JELLYFIN_CONNECTION_PATH && init?.method === 'GET').length
 }
 
 function cachedMutationVariables(): string {
@@ -86,8 +87,8 @@ it('shows the URL read back from the server and clears the key after a save', as
   const saved = await screen.findByRole('region', { name: 'Saved connection' })
   expect(await within(saved).findByText(STORED_URL)).toBeDefined()
   expect(within(saved).getByText('Stored')).toBeDefined()
-  expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe(STORED_URL)
-  expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('')
+  expect(screen.getByLabelText<HTMLInputElement>('Server URL').value).toBe(STORED_URL)
+  expect(screen.getByLabelText<HTMLInputElement>('API key').value).toBe('')
 })
 
 it('keeps no copy of the typed key once the save settles', async () => {
@@ -112,7 +113,7 @@ it('sends the save with the CSRF token', async () => {
   await save(TYPED_URL)
 
   await screen.findByText('Connection saved.')
-  const put = fetchMock.mock.calls.find(([input, init]) => String(input) === JELLYFIN_CONNECTION_PATH && init?.method === 'PUT')
+  const put = fetchMock.mock.calls.find(([path, init]) => path === JELLYFIN_CONNECTION_PATH && init?.method === 'PUT')
   expect(new Headers(put?.[1]?.headers).get(CSRF_HEADER_NAME)).toBe(CSRF_TOKEN)
 })
 
@@ -126,7 +127,7 @@ it('reads the save back while the browser says it is offline', async () => {
 
   await screen.findByText('Connection saved.')
   expect(within(screen.getByRole('region', { name: 'Saved connection' })).getByText(STORED_URL)).toBeDefined()
-  expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe(STORED_URL)
+  expect(screen.getByLabelText<HTMLInputElement>('Server URL').value).toBe(STORED_URL)
 })
 
 it('keeps focus in the key field after a save submitted from it', async () => {
@@ -153,7 +154,7 @@ it('keeps what the admin typed when the window regains focus', async () => {
   })
 
   expect(connectionReads()).toBe(1)
-  expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe(TYPED_URL)
+  expect(screen.getByLabelText<HTMLInputElement>('Server URL').value).toBe(TYPED_URL)
 })
 
 it('keeps what the admin typed when the saved connection changes without their save', async () => {
@@ -168,8 +169,8 @@ it('keeps what the admin typed when the saved connection changes without their s
   })
 
   await within(screen.getByRole('region', { name: 'Saved connection' })).findByText(OTHER_TAB_URL)
-  expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe(TYPED_URL)
-  expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe(API_KEY)
+  expect(screen.getByLabelText<HTMLInputElement>('Server URL').value).toBe(TYPED_URL)
+  expect(screen.getByLabelText<HTMLInputElement>('API key').value).toBe(API_KEY)
 })
 
 it('starts the URL field from the current saved URL when the admin comes back to the page', async () => {
@@ -187,7 +188,7 @@ it('starts the URL field from the current saved URL when the admin comes back to
   })
 
   await within(await screen.findByRole('region', { name: 'Saved connection' })).findByText(OTHER_TAB_URL)
-  expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe(OTHER_TAB_URL)
+  expect(screen.getByLabelText<HTMLInputElement>('Server URL').value).toBe(OTHER_TAB_URL)
 })
 
 it('shows the key message under the key field when the 400 names it', async () => {
@@ -227,7 +228,7 @@ it('says nothing is saved yet and leaves the URL empty', () => {
   )
 
   expect(screen.getByText('Nothing saved yet.')).toBeDefined()
-  expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe('')
+  expect(screen.getByLabelText<HTMLInputElement>('Server URL').value).toBe('')
 })
 
 it('says so when the saved connection cannot be loaded', () => {

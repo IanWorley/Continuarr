@@ -43,6 +43,7 @@ async function submitJellyfinConnection(request: JellyfinConnectionRequest): Pro
 }
 
 async function outcomeOfBadRequest(response: Response): Promise<JellyfinSaveOutcome> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the generated types and OpenApiSpecTest pin the shape.
   const problem = (await response.json().catch(() => undefined)) as JellyfinConnectionProblem | undefined
   const fields = new Set(problem?.invalidFields.map((name) => FIELD_BY_PROBLEM_NAME[name]))
   return fields.size > 0 ? { kind: 'invalid', fields } : { kind: 'failed' }

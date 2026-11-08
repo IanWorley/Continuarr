@@ -33,9 +33,15 @@ empty-blocks:
     active: true
 
 exceptions:
+  ErrorUsageWithThrowable:
+    active: true
   ExceptionRaisedInUnexpectedLocation:
     active: true
+  InstanceOfCheckForException:
+    active: true
   NotImplementedDeclaration:
+    active: true
+  ObjectExtendsThrowable:
     active: true
   PrintStackTrace:
     active: true
@@ -47,6 +53,8 @@ exceptions:
     active: true
   ThrowingExceptionFromFinally:
     active: true
+  ThrowingExceptionInMain:
+    active: true
   ThrowingExceptionsWithoutMessageOrCause:
     active: true
   ThrowingNewInstanceOfSameException:
@@ -57,15 +65,33 @@ exceptions:
     active: true
 
 potential-bugs:
+  AvoidReferentialEquality:
+    active: true
+  CastNullableToNonNullableType:
+    active: true
+  CharArrayToStringCall:
+    active: true
   DontDowncastCollectionTypes:
+    active: true
+  DoubleMutabilityForCollection:
+    active: true
+  ElseCaseInsteadOfExhaustiveWhen:
     active: true
   EqualsAlwaysReturnsTrueOrFalse:
     active: true
   EqualsWithHashCodeExist:
     active: true
+  ExitOutsideMain:
+    active: true
   ExplicitGarbageCollectionCall:
     active: true
+  HasPlatformType:
+    active: true
   IgnoredReturnValue:
+    active: true
+  ImplicitDefaultLocale:
+    active: true
+  ImplicitUnitReturnType:
     active: true
   InvalidRange:
     active: true
@@ -73,18 +99,36 @@ potential-bugs:
     active: true
   IteratorNotThrowingNoSuchElementException:
     active: true
+  MapGetWithNotNullAssertionOperator:
+    active: true
   MissingPackageDeclaration:
     active: true
+  NullCheckOnMutableProperty:
+    active: true
+  NullableToStringCall:
+    active: true
+  PropertyUsedBeforeDeclaration:
+    active: true
   UnconditionalJumpStatementInLoop:
+    active: true
+  UnnecessaryNotNullCheck:
     active: true
   UnnecessaryNotNullOperator:
     active: true
   UnnecessarySafeCall:
     active: true
+  UnreachableCatchBlock:
+    active: true
+  UnreachableCode:
+    active: true
   UnsafeCallOnNullableType:
     active: true
     # A !! in a test fails the test loudly, which is what a test wants.
     excludes: ['**/test/**']
+  UnsafeCast:
+    active: true
+  UnusedUnaryOperator:
+    active: true
   UselessPostfixExpression:
     active: true
   WrongEqualsTypeParameter:
@@ -128,14 +172,13 @@ style:
     excludes: ['**/test/**']
     forbiddenImports:
       - value: 'org.springframework.jdbc.*'
-        reason: 'Use a Spring Data JPA repository instead of raw JDBC.'
+        reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
       - value: 'java.sql.*'
-        reason: 'Use a Spring Data JPA repository instead of raw JDBC.'
+        reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
       - value: 'javax.sql.*'
-        reason: 'Use a Spring Data JPA repository instead of raw JDBC.'
-      # Catches @NativeQuery only. @Query(nativeQuery = true) needs a rule that reads annotation arguments.
-      - value: 'org.springframework.data.jpa.repository.NativeQuery'
-        reason: 'Use a derived query method or JPQL in @Query instead of native SQL.'
+        reason: 'Use a Spring Data JPA repository; for SQL JPA cannot express, use @Query(nativeQuery = true) on one.'
+  ForbiddenMethodCall:
+    active: true
   MagicNumber:
     active: true
     ignoreNumbers: ['-1', '0', '1']
@@ -145,12 +188,22 @@ style:
     active: true
   UnnecessaryLet:
     active: true
+  UnusedImport:
+    active: true
   UnusedParameter:
     active: true
   UnusedPrivateClass:
     active: true
     # Spring Modulith reads @PackageInfo classes reflectively to declare each module.
     ignoreAnnotated: ['PackageInfo']
+  UnusedPrivateFunction:
+    active: true
+  UnusedPrivateProperty:
+    active: true
+  UnusedVariable:
+    active: true
+  VarCouldBeVal:
+    active: true
   WildcardImport:
     active: true
 

@@ -1,6 +1,7 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useState, type SubmitEvent } from 'react'
 import type { SetupRequest } from '../api/client.ts'
 import { FIELD_CLASSES, FORM_CLASSES, FormAlert, HEADING_CLASSES, LABEL_CLASSES, SubmitButton } from '../forms/formParts.tsx'
+import { textField } from '../forms/textField.ts'
 
 // Mirror SetupController's rules so the message can name them. The server counts the maximum in
 // UTF-8 bytes, so a password with accented letters or emoji can hit it before 72 characters.
@@ -33,18 +34,18 @@ export function SetupForm({ submitting, failure, onSubmit }: SetupFormProps) {
   const error: SetupFormError | undefined = passwordsDiffer ? 'password-mismatch' : failure
   const describedBy = error ? errorId : undefined
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submitting) return
     const form = new FormData(event.currentTarget)
-    const password = String(form.get('password'))
-    const differ = password !== String(form.get('confirmPassword'))
+    const password = textField(form, 'password')
+    const differ = password !== textField(form, 'confirmPassword')
     setPasswordsDiffer(differ)
     if (differ) return
     onSubmit({
       // Copying from a terminal often picks up surrounding whitespace, which no token contains.
-      token: String(form.get('token')).trim(),
-      username: String(form.get('username')),
+      token: textField(form, 'token').trim(),
+      username: textField(form, 'username'),
       password,
     })
   }
