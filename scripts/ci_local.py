@@ -50,6 +50,9 @@ OXLINT_JSON_COMMAND = "npm run --silent lint -- --format=json"
 WRAPPER_PROPERTIES = BACKEND_DIR / "gradle" / "wrapper" / "gradle-wrapper.properties"
 WRAPPER_JAR = BACKEND_DIR / "gradle" / "wrapper" / "gradle-wrapper.jar"
 # Fixed here, not read from the repo, so a PR can't point the check at a checksum it controls.
+# The first list is the one setup-gradle@v6 accepts. A jar newer than that list falls back to its version's.
+KNOWN_WRAPPER_CHECKSUMS_URL = (
+    "https://raw.githubusercontent.com/gradle/actions/v6/sources/src/wrapper-validation/wrapper-checksums.json")
 WRAPPER_CHECKSUM_URL = "https://services.gradle.org/distributions/gradle-{version}-wrapper.jar.sha256"
 GRADLE_VERSION_PATTERN = re.compile(r"^distributionUrl=.*/gradle-([0-9A-Za-z.+-]+?)-(?:bin|all)\.zip$", re.MULTILINE)
 NETWORK_TIMEOUT_SECONDS = 10
@@ -186,20 +189,26 @@ def check_java() -> str | None:
     return None
 
 
+def fetch(url: str) -> str:
+    with urllib.request.urlopen(url, timeout=NETWORK_TIMEOUT_SECONDS) as response:
+        return response.read().decode()
+
+
 def check_gradle_wrapper() -> str | None:
     # CI's gradle/actions/setup-gradle validates the wrapper jar before any Gradle task runs.
-    match = GRADLE_VERSION_PATTERN.search(WRAPPER_PROPERTIES.read_text())
-    if match is None:
-        return f"{WRAPPER_PROPERTIES.relative_to(REPO_ROOT)} has no distributionUrl with a Gradle version."
-    url = WRAPPER_CHECKSUM_URL.format(version=match.group(1))
-    try:
-        with urllib.request.urlopen(url, timeout=NETWORK_TIMEOUT_SECONDS) as response:
-            expected = response.read().decode().strip()
-    except (urllib.error.URLError, TimeoutError) as error:
-        return f"couldn't fetch {url} to validate the Gradle wrapper jar as CI does: {error}"
     actual = hashlib.sha256(WRAPPER_JAR.read_bytes()).hexdigest()
+    try:
+        if actual in {entry["checksum"] for entry in json.loads(fetch(KNOWN_WRAPPER_CHECKSUMS_URL))}:
+            return None
+        match = GRADLE_VERSION_PATTERN.search(WRAPPER_PROPERTIES.read_text())
+        if match is None:
+            return f"{WRAPPER_JAR.relative_to(REPO_ROOT)} is not a known Gradle wrapper (SHA-256 {actual})."
+        url = WRAPPER_CHECKSUM_URL.format(version=match.group(1))
+        expected = fetch(url).strip()
+    except (urllib.error.URLError, TimeoutError) as error:
+        return f"couldn't fetch Gradle's wrapper checksums to validate the wrapper jar as CI does: {error}"
     if actual != expected:
-        return f"{WRAPPER_JAR.relative_to(REPO_ROOT)} has SHA-256 {actual}, but {url} lists {expected}."
+        return f"{WRAPPER_JAR.relative_to(REPO_ROOT)} has SHA-256 {actual}, which neither setup-gradle nor {url} lists."
     return None
 
 
@@ -280,7 +289,8 @@ def detect_harness() -> tuple[str | None, str | None]:
 
 def resolve_agent(args: argparse.Namespace) -> Agent | None:
     harness, effort = detect_harness()
-    if args.manual or (harness is None and not args.agent):
+    # Only an agent passes --model or --effort, so either one marks the run as an agent's.
+    if args.manual or (harness is None and not (args.agent or args.model or args.effort)):
         return None
     return Agent(harness, args.model, args.effort or effort)
 

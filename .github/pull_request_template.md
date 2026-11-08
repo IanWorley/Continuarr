@@ -6,10 +6,13 @@
 
 ## Verification
 
-<!-- Paste everything `python3 scripts/ci_local.py` prints after "--- Paste everything below into the PR body ---". Don't edit it. Add the verify-continuarr run ID for a user-facing change, and a planted failure for any new check. -->
+<!-- Replace the placeholder below with everything `python3 scripts/ci_local.py` prints after "--- Paste everything below into the PR body ---". Don't edit it. An agent's run ends with the attribution line, filled in. A person's run ends with "Run by: manual". Add the verify-continuarr run ID for a user-facing change, and a planted failure for any new check. -->
 
-## Known gaps
+| Suite | Tests passed | Result |
+|-------|--------------|--------|
 
-<!-- If an AI agent wrote this PR, keep the line below with real values. The script prints it filled in when an agent runs it. If a person wrote it, delete the line. -->
+Run by: <agent in harness, or manual>
 
 This was written by an AI agent on behalf of <your GitHub user>. Model: <model> · Harness: <harness> · Effort: <effort>
+
+## Known gaps
