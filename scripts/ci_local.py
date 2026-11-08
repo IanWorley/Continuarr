@@ -49,6 +49,9 @@ DETEKT_REPORTS = BACKEND_DIR / "build" / "reports" / "detekt"
 OXLINT_JSON_COMMAND = "npm run --silent lint -- --format=json"
 WRAPPER_PROPERTIES = BACKEND_DIR / "gradle" / "wrapper" / "gradle-wrapper.properties"
 WRAPPER_JAR = BACKEND_DIR / "gradle" / "wrapper" / "gradle-wrapper.jar"
+# Fixed here, not read from the repo, so a PR can't point the check at a checksum it controls.
+WRAPPER_CHECKSUM_URL = "https://services.gradle.org/distributions/gradle-{version}-wrapper.jar.sha256"
+GRADLE_VERSION_PATTERN = re.compile(r"^distributionUrl=.*/gradle-([0-9A-Za-z.+-]+?)-(?:bin|all)\.zip$", re.MULTILINE)
 NETWORK_TIMEOUT_SECONDS = 10
 GH_TIMEOUT_SECONDS = 5
 FILL_IN = "<fill in: {}>"
@@ -114,7 +117,12 @@ def detekt_findings(since: float) -> Counter[str]:
 def oxlint_findings(_since: float) -> Counter[str]:
     output = subprocess.run(OXLINT_JSON_COMMAND, shell=True, cwd=FRONTEND_DIR, env=step_env(),
                             capture_output=True, text=True).stdout
-    return Counter(diagnostic["code"] for diagnostic in json.loads(output)["diagnostics"])
+    try:
+        diagnostics = json.loads(output)["diagnostics"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return Counter()
+    # Some diagnostics, such as an unused disable directive, have no rule code.
+    return Counter(diagnostic.get("code") or diagnostic.get("message", "unknown") for diagnostic in diagnostics)
 
 
 class Lint(NamedTuple):
@@ -180,10 +188,10 @@ def check_java() -> str | None:
 
 def check_gradle_wrapper() -> str | None:
     # CI's gradle/actions/setup-gradle validates the wrapper jar before any Gradle task runs.
-    match = re.search(r"^distributionUrl=(.+)$", WRAPPER_PROPERTIES.read_text(), re.MULTILINE)
+    match = GRADLE_VERSION_PATTERN.search(WRAPPER_PROPERTIES.read_text())
     if match is None:
-        return f"{WRAPPER_PROPERTIES.relative_to(REPO_ROOT)} has no distributionUrl."
-    url = re.sub(r"-(bin|all)\.zip$", "-wrapper.jar.sha256", match.group(1).replace("\\:", ":"))
+        return f"{WRAPPER_PROPERTIES.relative_to(REPO_ROOT)} has no distributionUrl with a Gradle version."
+    url = WRAPPER_CHECKSUM_URL.format(version=match.group(1))
     try:
         with urllib.request.urlopen(url, timeout=NETWORK_TIMEOUT_SECONDS) as response:
             expected = response.read().decode().strip()
@@ -348,10 +356,11 @@ def main() -> int:
     agent = resolve_agent(args)
     user = None
     if agent is None:
-        print("Run by: manual")
+        print("Run by: manual", flush=True)
     else:
         user, sources = acting_user()
-        print(f"Run by: agent in {agent.harness or FILL_IN.format('harness')}, on behalf of {user} (from {sources})")
+        print(f"Run by: agent in {agent.harness or FILL_IN.format('harness')}, on behalf of {user} (from {sources})",
+              flush=True)
 
     problems = [p for job in jobs for check in PREREQUISITES[job] if (p := check()) is not None]
     if problems:
