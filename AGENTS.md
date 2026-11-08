@@ -23,10 +23,14 @@ Write commit messages and PR titles as Conventional Commits. Scope them `backend
 
 ## Open a PR
 
-- Verify in two parts. Run `python3 scripts/ci_local.py` for the lint, test, and build steps CI runs. For a user-facing change, then run the verify-continuarr skill to drive the real app. Neither covers the other.
-- Paste the table the script prints at the end into the PR description under `## Verification`. It has one row per CI step:
+- Branch from `main`, keep the PR small, and link the issue it closes when one fits.
+- Run `python3 scripts/ci_local.py`, then paste its closing table verbatim into the PR body under `## Verification`. Don't write or edit the table by hand. It has one row per test suite. Skipped tests count in the total but not as passed. ✅ means every CI step in that suite's job passed:
 
-  | Step | Command | Result |
-  |------|---------|--------|
-  | Backend lint (detekt) | `./gradlew detektMain detektTest` | pass |
-  | Frontend test | `npm test` | pass |
+  | Suite | Tests passed | Result |
+  |-------|--------------|--------|
+  | Backend | 127/128 | ✅ |
+
+- For a user-facing change, run the verify-continuarr skill too, and cite its run ID.
+- Before you open the PR, attack it with `/interrogate` and `/blast-radius`, and fix the real findings.
+- In the PR body, also show a planted failure for any new check, and list the known gaps.
+- Agents never merge a PR or push to `main`.

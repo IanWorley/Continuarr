@@ -14,9 +14,11 @@ import shutil
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ElementTree
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 Job = Literal["backend", "frontend"]
 Result = Literal["pass", "fail", "not run"]
@@ -31,6 +33,35 @@ MIN_GRADLE_JAVA = 17
 # Group 1 is the full version and group 2 the major. JDK 8 and older report "1.8.0_402", major 8.
 JAVA_VERSION_PATTERN = re.compile(r'version "((?:1\.)?(\d+)[^"]*)"')
 FRONTEND_CHECK_SCRIPT = "check"
+JUNIT_RESULTS = BACKEND_DIR / "build" / "test-results" / "test"
+# Vitest's summary line, such as "Tests  1 failed | 126 passed | 1 skipped (128)".
+VITEST_SUMMARY_PATTERN = re.compile(r"^\s*Tests\s+(.*)\((\d+)\)\s*$", re.MULTILINE)
+VITEST_PASSED_PATTERN = re.compile(r"(\d+) passed")
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
+PASS_MARK = "✅"
+FAIL_MARK = "❌"
+
+
+class Counts(NamedTuple):
+    passed: int
+    total: int
+
+
+def junit_counts(_log: Path) -> Counts | None:
+    suites = [ElementTree.parse(path).getroot() for path in sorted(JUNIT_RESULTS.glob("*.xml"))]
+    if not suites:
+        return None
+    total = sum(int(suite.get("tests", 0)) for suite in suites)
+    not_passed = sum(int(suite.get(key, 0)) for suite in suites for key in ("failures", "errors", "skipped"))
+    return Counts(total - not_passed, total)
+
+
+def vitest_counts(log: Path) -> Counts | None:
+    match = VITEST_SUMMARY_PATTERN.search(ANSI_ESCAPE_PATTERN.sub("", log.read_text()))
+    if match is None:
+        return None
+    passed = VITEST_PASSED_PATTERN.search(match.group(1))
+    return Counts(int(passed.group(1)) if passed else 0, int(match.group(2)))
 
 
 @dataclass(frozen=True)
@@ -41,6 +72,8 @@ class Step:
     cwd: Path
     # Globs under cwd that must each match a path for the step to pass.
     artifacts: tuple[str, ...] = ()
+    # Reads the suite's test counts after a test step. Skipped tests count in the total, not as passed.
+    counts: Callable[[Path], Counts | None] | None = None
 
     @property
     def log(self) -> Path:
@@ -51,7 +84,8 @@ BACKEND_STEPS = (
     Step("backend", "Lint (detekt)", "./gradlew detektMain detektTest", BACKEND_DIR,
          ("build/reports/detekt/main.*", "build/reports/detekt/test.*")),
     Step("backend", "Test", "./gradlew test", BACKEND_DIR,
-         ("build/classes/kotlin/main", "build/reports/tests/test/index.html", "build/test-results/test/*.xml")),
+         ("build/classes/kotlin/main", "build/reports/tests/test/index.html", "build/test-results/test/*.xml"),
+         junit_counts),
 )
 
 # CI runs `npm ci` and then `npm run check`. The steps after install are the parts of `check`,
@@ -60,7 +94,7 @@ FRONTEND_STEPS = (
     Step("frontend", "Install", "npm ci", FRONTEND_DIR, ("node_modules",)),
     Step("frontend", "Typecheck", "npm run typecheck", FRONTEND_DIR, ("src/api/schema.d.ts",)),
     Step("frontend", "Lint (oxlint)", "npm run lint", FRONTEND_DIR),
-    Step("frontend", "Test", "npm test", FRONTEND_DIR),
+    Step("frontend", "Test", "npm test", FRONTEND_DIR, counts=vitest_counts),
     Step("frontend", "Build", "vite build", FRONTEND_DIR, ("dist/index.html", "dist/assets/*")),
 )
 
@@ -143,10 +177,14 @@ def report_artifacts(step: Step) -> bool:
     return found_all
 
 
-def print_table(results: dict[Step, Result]) -> None:
-    print("\n| Step | Command | Result |\n|------|---------|--------|")
-    for step, result in results.items():
-        print(f"| {step.job.capitalize()} {step.name.lower()} | `{step.command}` | {result} |")
+def print_table(results: dict[Step, Result], counts: dict[Job, Counts]) -> None:
+    # Deterministic so it can be pasted into a PR as is. A suite passes only when its whole CI job does.
+    print("\n| Suite | Tests passed | Result |\n|-------|--------------|--------|")
+    for job in dict.fromkeys(step.job for step in results):
+        job_counts = counts.get(job)
+        tests = f"{job_counts.passed}/{job_counts.total}" if job_counts else "not run"
+        passed = all(result == "pass" for step, result in results.items() if step.job == job)
+        print(f"| {job.capitalize()} | {tests} | {PASS_MARK if passed else FAIL_MARK} |")
 
 
 def main() -> int:
@@ -162,6 +200,7 @@ def main() -> int:
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     results: dict[Step, Result] = {step: "not run" for job in jobs for step in STEPS[job]}
+    counts: dict[Job, Counts] = {}
     for step in results:
         print(f"\n==> {step.job} {step.name}: {step.command}", flush=True)
         started = time.monotonic()
@@ -169,12 +208,20 @@ def main() -> int:
         print(f"    log: {step.log}")
         # Report artifacts after a failure too, since a failed step's reports explain it.
         passed = report_artifacts(step) and passed
+        if step.counts is not None:
+            step_counts = step.counts(step.log)
+            if step_counts is None:
+                print("    MISSING test counts")
+                passed = False
+            else:
+                counts[step.job] = step_counts
+                print(f"    tests: {step_counts.passed}/{step_counts.total} passed")
         results[step] = "pass" if passed else "fail"
         print(f"<== {step.job} {step.name}: {results[step]} in {time.monotonic() - started:.1f}s", flush=True)
         if not passed:
             break
 
-    print_table(results)
+    print_table(results, counts)
     return 0 if all(result == "pass" for result in results.values()) else 1
 
 
