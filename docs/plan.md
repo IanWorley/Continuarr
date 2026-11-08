@@ -307,6 +307,7 @@ the Jellyfin API key with every request, and Continuarr warns at startup.
 - `./gradlew bootJar` packages `frontend/dist` as static resources, so run `npm run build` in
   `frontend/` first; it fails if there is no build. Gradle never runs Node, so `test` and
   `bootTestRun` don't need it (tests use a stand-in `index.html`).
+- `python3 scripts/ci_local.py` — runs both CI jobs on your machine; pass `backend` or `frontend` for one.
 - CI runs on every PR and push to `main`: `.github/workflows/backend.yml` runs `./gradlew detektMain
   detektTest` and then `./gradlew test`; `.github/workflows/frontend.yml` runs `npm ci` and `npm run check`.
 
