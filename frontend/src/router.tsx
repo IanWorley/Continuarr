@@ -1,7 +1,8 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { fetchSession, fetchSetupStatus } from './api/client.ts'
 import { LoginPage } from './login/LoginPage.tsx'
-import { SettingsPage } from './settings/SettingsPage.tsx'
+import { JellyfinSettingsPage } from './settings/JellyfinSettingsPage.tsx'
+import { SettingsIndexPage } from './settings/SettingsIndexPage.tsx'
 import { SetupPage } from './setup/SetupPage.tsx'
 import { Shell } from './shell/Shell.tsx'
 
@@ -38,7 +39,13 @@ const indexRoute = createRoute({
 const settingsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings',
-  component: SettingsPage,
+  component: SettingsIndexPage,
+})
+
+const jellyfinSettingsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/jellyfin',
+  component: JellyfinSettingsPage,
 })
 
 const loginRoute = createRoute({
@@ -55,7 +62,7 @@ const setupRoute = createRoute({
   component: SetupPage,
 })
 
-export const routeTree = rootRoute.addChildren([shellRoute.addChildren([indexRoute, settingsRoute]), loginRoute, setupRoute])
+export const routeTree = rootRoute.addChildren([shellRoute.addChildren([indexRoute, settingsRoute, jellyfinSettingsRoute]), loginRoute, setupRoute])
 
 export const router = createRouter({ routeTree })
 

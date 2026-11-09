@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AUTH_PATH, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, JELLYFIN_CONNECTION_PATH } from '../api/client.ts'
 import { queryClient } from '../queryClient.ts'
 import { routeTree } from '../router.tsx'
-import { SettingsScreen } from './SettingsPage.tsx'
+import { JellyfinSettingsScreen } from './JellyfinSettingsPage.tsx'
 
 const HTTP_NO_CONTENT = 204
 const HTTP_BAD_REQUEST = 400
@@ -47,7 +47,7 @@ function cachedMutationVariables(): string {
 }
 
 function openSettings() {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ['/settings'] }) })
+  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ['/settings/jellyfin'] }) })
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -184,7 +184,7 @@ it('starts the URL field from the current saved URL when the admin comes back to
   storedUrl = OTHER_TAB_URL
 
   await act(async () => {
-    await router.navigate({ to: '/settings' })
+    await router.navigate({ to: '/settings/jellyfin' })
   })
 
   await within(await screen.findByRole('region', { name: 'Saved connection' })).findByText(OTHER_TAB_URL)
@@ -218,7 +218,7 @@ it.each([
 
 it('says nothing is saved yet and leaves the URL empty', () => {
   render(
-    <SettingsScreen
+    <JellyfinSettingsScreen
       load={{ status: 'loaded', connection: null }}
       confirmedSaves={0}
       submitting={false}
@@ -232,7 +232,7 @@ it('says nothing is saved yet and leaves the URL empty', () => {
 })
 
 it('says so when the saved connection cannot be loaded', () => {
-  render(<SettingsScreen load={{ status: 'failed' }} confirmedSaves={0} submitting={false} outcome={undefined} onSave={() => undefined} />)
+  render(<JellyfinSettingsScreen load={{ status: 'failed' }} confirmedSaves={0} submitting={false} outcome={undefined} onSave={() => undefined} />)
 
   expect(screen.getByRole('alert').textContent).toMatch(/Couldn't load the saved connection/)
   expect(screen.queryByRole('form')).toBeNull()

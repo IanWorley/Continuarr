@@ -49,7 +49,7 @@ async function outcomeOfBadRequest(response: Response): Promise<JellyfinSaveOutc
   return fields.size > 0 ? { kind: 'invalid', fields } : { kind: 'failed' }
 }
 
-export function SettingsPage() {
+export function JellyfinSettingsPage() {
   const queryClient = useQueryClient()
   const query = useQuery({
     queryKey: JELLYFIN_CONNECTION_QUERY_KEY,
@@ -85,7 +85,7 @@ export function SettingsPage() {
   }
 
   return (
-    <SettingsScreen
+    <JellyfinSettingsScreen
       load={toConnectionLoad(query)}
       confirmedSaves={confirmedSaves}
       submitting={mutation.isPending}
@@ -106,7 +106,7 @@ function toConnectionLoad(query: UseQueryResult<JellyfinConnection | null>): Con
   return { status: 'loaded', connection: query.data }
 }
 
-export interface SettingsScreenProps {
+export interface JellyfinJellyfinSettingsScreenProps {
   load: ConnectionLoad
   confirmedSaves: number
   submitting: boolean
@@ -114,9 +114,9 @@ export interface SettingsScreenProps {
   onSave: (request: JellyfinConnectionRequest) => void
 }
 
-export function SettingsScreen({ load, confirmedSaves, submitting, outcome, onSave }: SettingsScreenProps) {
+export function JellyfinSettingsScreen({ load, confirmedSaves, submitting, outcome, onSave }: JellyfinJellyfinSettingsScreenProps) {
   return (
-    <div className="px-6 py-8">
+    <div className="px-8 py-8">
       <h1 className={HEADING_CLASSES}>Jellyfin connection</h1>
       <p className="mt-2 max-w-md text-sm text-ink-400">
         Continuarr reads your users and libraries from Jellyfin. Saving replaces the URL and the API key together, so
