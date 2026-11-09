@@ -1,6 +1,6 @@
 # Jellyfin connection
 
-The signed-in admin opens `Settings` in the shell's header and lands on `/settings`, which shows the saved Jellyfin server URL and whether an API key is stored, never the key. Saving sends a new URL and key together. A rejected URL or key shows its message under that field and marks only that field invalid. After a save the page shows the URL the server stored, `Stored` for the key, and an empty key field.
+The signed-in admin opens `Settings` in the shell's sidebar, chooses the `Jellyfin` card, and lands on `/settings/jellyfin`, which shows the saved Jellyfin server URL and whether an API key is stored, never the key. Saving sends a new URL and key together. A rejected URL or key shows its message under that field and marks only that field invalid. After a save the page shows the URL the server stored, `Stored` for the key, and an empty key field.
 
 The page calls `PUT /api/v1/jellyfin/connection` to save and `GET` on the same path to read the saved URL back. `GET` never returns the key. A bad URL or key answers `400` and names the field without echoing its value. Saving needs `CONTINUARR_ENCRYPTION_KEY`, because the key is stored encrypted. Without it the save answers `503`. Saving doesn't contact Jellyfin. [Configuration in `docs/plan.md`](../../../../docs/plan.md#configuration) is the source for these rules.
 
@@ -18,8 +18,8 @@ The page calls `PUT /api/v1/jellyfin/connection` to save and `GET` on the same p
 
 ## How to get to it (user POV)
 
-- Sign in, then choose `Settings` in the header.
-- Open `http://localhost:5173/settings` with a session.
+- Sign in, choose `Settings` in the sidebar, then the `Jellyfin` card.
+- Open `http://localhost:5173/settings/jellyfin` with a session.
 - Call the backend on `http://localhost:8080` with `curl`, as a script or an API client would.
 
 ## Driving it with control.sh
@@ -29,11 +29,11 @@ Preconditions:
 - `control.sh drive first-run-setup` passed earlier in this launch, so `$RUN_DIR/admin-credentials.json` holds the admin.
 - Nothing has saved a Jellyfin connection in this launch.
 
-- **Open.** Run `control.sh drive jellyfin-connection`. It signs in and chooses `Settings`. Step `01-nothing-saved` is at `/settings` and shows `Nothing saved yet.`.
-- **Reject.** It saves `ftp://jellyfin.local` with a valid dummy key. Step `02-invalid-url-rejected` shows a message under `Server URL` and none under `API key`. `rejected-save.json` holds `"status": 400` and `"invalidFields": ["URL"]`.
-- **Save.** It saves `http://jellyfin.local:8096` with a dummy key. Step `03-saved` shows `Connection saved.`, the URL, and `Stored`, with an empty `API key`.
+- **Open.** Run `control.sh drive jellyfin-connection`. It signs in and chooses `Settings`. Step `01-settings-cards` is at `/settings` and shows the `Jellyfin`, `Plex`, and `Sync` cards. It then chooses `Jellyfin`. Step `02-nothing-saved` is at `/settings/jellyfin` and shows `Nothing saved yet.`.
+- **Reject.** It saves `ftp://jellyfin.local` with a valid dummy key. Step `03-invalid-url-rejected` shows a message under `Server URL` and none under `API key`. `rejected-save.json` holds `"status": 400` and `"invalidFields": ["URL"]`.
+- **Save.** It saves `http://jellyfin.local:8096` with a dummy key. Step `04-saved` shows `Connection saved.`, the URL, and `Stored`, with an empty `API key`.
 - **Side effect.** `connection-read-back.json` holds `{"url": "http://jellyfin.local:8096"}` read from `GET /api/v1/jellyfin/connection` with the browser's session, and no key.
-- **Reload.** Step `04-after-reload` shows the saved URL in `Server URL` and an empty `API key`.
+- **Reload.** Step `05-after-reload` shows the saved URL in `Server URL` and an empty `API key`.
 
 ## Driving the API with curl
 

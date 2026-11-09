@@ -41,8 +41,12 @@ await runJourney(async ({ page, step, record }) => {
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.getByRole('button', { name: 'Sign out' }).waitFor()
 
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings' }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings', exact: true }).click()
   await page.waitForURL(`${FRONTEND_URL}/settings`)
+  await page.getByRole('heading', { name: 'Settings' }).waitFor()
+  await step('settings-cards')
+  await page.getByRole('main').getByRole('link', { name: 'Jellyfin' }).click()
+  await page.waitForURL(`${FRONTEND_URL}/settings/jellyfin`)
   await savedConnection.getByText('Nothing saved yet.').waitFor()
   assert.equal(await url.inputValue(), '', 'nothing saved leaves the URL empty')
   await step('nothing-saved')

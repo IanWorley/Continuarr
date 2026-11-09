@@ -15,7 +15,7 @@ The admin signs in at `/login` with the username and password from first-run set
 - Open `http://localhost:5173/login`.
 - Create the admin on `/setup`, which moves to `/login`.
 - Open `http://localhost:5173/` without a session.
-- Choose `Sign out` in the shell's header.
+- Choose `Sign out` at the bottom of the shell's sidebar.
 
 ## Driving it with control.sh
 
@@ -27,7 +27,7 @@ Preconditions:
 - **Signed out.** Before the page loads, the journey requests `/v3/api-docs` on the backend with the browser's cookies and expects `401`.
 - **Open.** Run `control.sh drive sign-in`. Step `01-login-page` is at `/login` with the heading `Sign in`.
 - **Reject.** Fill `Username` and a wrong `Password`, then choose `Sign in`. Step `02-bad-credentials-rejected` shows `Wrong username or password` and stays at `/login`.
-- **Sign in.** Fill the right password and choose `Sign in`. Step `03-signed-in` is at `/`, and its banner shows the username and the `Sign out` button.
+- **Sign in.** Fill the right password and choose `Sign in`. Step `03-signed-in` is at `/`, and its sidebar shows the username and the `Sign out` button.
 - **Sign out.** Choose `Sign out`. Step `04-signed-out` is at `/login` with the heading `Sign in`.
 - **Side effect.** `session-probe.json` holds `"before": 401, "signedIn": 200, "signedOut": 401`. The session authenticated a protected endpoint, and signing out ended it.
 - **Session required.** Open `/` again. Step `05-home-needs-session` is at `/login`.
