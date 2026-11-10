@@ -24,6 +24,7 @@ Write commit messages and PR titles as Conventional Commits. Scope them `backend
 - Never make a PR unless the developer explicitly asks you to do so.
 - Conventional commit titles, plain language: `fix(frontend): setup page no longer flashes on reload`.
 - Body: the problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
+- `scripts/ci_local.py` prints that attribution line. Pass `--model` and `--effort` for what it can't detect, replace any `<fill in: ...>` it leaves, and never guess a value.
 - UI changes need before/after images. Motion or timing needs a short video.
 - Upload PR evidence to GitHub. Never commit PR-only screenshots or assets such as `.github/pr-assets/`.
 - One request is one PR. Split it only when the maintainer asks. Outside contributions follow the stricter one problem per PR rule.
