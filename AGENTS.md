@@ -1,7 +1,5 @@
 # Agent notes for Continuarr
 
-Read this before you change the repo. It lists what the docs and failing checks don't tell you up front.
-
 ## Find the commands
 
 - [Setup in `docs/plan.md`](docs/plan.md#setup) lists the prerequisites and the commands to build, run, and test.
@@ -21,6 +19,17 @@ Read this before you change the repo. It lists what the docs and failing checks 
 
 Write commit messages and PR titles as Conventional Commits. Scope them `backend` or `frontend` when the change stays in one, as in `feat(backend): ...`.
 
+## Pull requests
+
+- Never make a PR unless the developer explicitly asks you to do so.
+- Conventional commit titles, plain language: `fix(frontend): setup page no longer flashes on reload`.
+- Body: the problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
+- `scripts/ci_local.py` prints that attribution line. Pass `--model` and `--effort` for what it can't detect, replace any `<fill in: ...>` it leaves, and never guess a value.
+- UI changes need before/after images. Motion or timing needs a short video.
+- Upload PR evidence to GitHub. Never commit PR-only screenshots or assets such as `.github/pr-assets/`.
+- One request is one PR. Split it only when the maintainer asks. Outside contributions follow the stricter one problem per PR rule.
+- When babysitting: call `watch_pull_request` and end your turn. T3 Code wakes you on checks, comments, or conflicts. Do not poll or sleep. Verify each bot finding against the source, fix real ones, dismiss false positives with a written reason. Stay quiet when nothing is new. Stop when the bots are green on the latest commit.
+
 ## Open a PR
 
 - Branch from `main`, keep the PR small, and link the issue it closes when one fits. `.github/pull_request_template.md` lays out the body.
@@ -35,12 +44,20 @@ Write commit messages and PR titles as Conventional Commits. Scope them `backend
 - In the PR body, also show a planted failure for any new check, and list the known gaps.
 - Agents never merge a PR or push to `main`.
 
-## Say when an agent wrote it
+## Documentation
 
-Any issue or PR an agent writes says so in its body with this line, filled in with real values:
+Most code changes do not need an internal documentation change. Agents can read the code.
 
-```
-This was written by an AI agent on behalf of <your GitHub user>. Model: <model> · Harness: <harness> · Effort: <effort>
-```
+- `docs/internals/` is for architectural decisions and their reasons, constraints that span components, and implementation traps that are hard to discover from the source. Before adding a paragraph, ask what a maintainer would get wrong without it. If reading the relevant code answers the question, leave it out.
+- Do not document every feature, enumerate fields or methods, narrate control flow, maintain file catalogs, or append PR summaries. Types, tests, and code already record the implementation.
+- A local reason the code can't show goes in a short nearby code comment. Use an internal doc when the reasoning crosses boundaries or needs context the code cannot carry well. Link to the relevant source instead of copying it.
+- When a documented decision or constraint changes, rewrite or remove the affected text. Do not append another account of the new behavior. A new internal page needs a distinct, durable reason to exist.
+- `docs/user/` helps users accomplish tasks. Give each major feature a concise section explaining what it does, how to start, and anything unintuitive. A settings path is useful; descriptions of visible buttons, icons, layouts, animations, or every UI state are not. Before adding text, ask what task or decision it helps the user with.
+- Keep user docs in the shipped product's voice, without implementation details or contributor tooling. Update the relevant feature section when how to use it changes. A UI tweak does not need a documentation entry, and a new control does not need its own page.
+- `docs/operations/` holds maintainer setup, release, and debugging procedures. Keep instructions for operating an installed Continuarr server in the user guides.
 
-When an agent runs `scripts/ci_local.py`, the script prints this line after the table. It detects the harness and, where the harness sets it, the effort from env vars. It takes the user from `gh api user`, then `git config user.name`, then `GITHUB_ACTOR`. Pass `--model` and `--effort` for what it can't detect. Either one marks the run as an agent's, and `--agent` or `--manual` overrides detection. Replace any `<fill in: ...>` it leaves, and never guess a value.
+## Plans and work artifacts
+
+- Do not commit implementation plans, research notes, or agent scratch files. Keep temporary working material outside the worktree.
+- Track active maintainer work in the GitHub issue or project item that owns it.
+- A merged PR is the implementation record. Close or update its tracking item when the work lands; do not preserve a second checklist in the repository.
