@@ -1,7 +1,5 @@
 # Agent notes for Continuarr
 
-Read this before you change the repo. It lists what the docs and failing checks don't tell you up front.
-
 ## Find the commands
 
 - [Setup in `docs/plan.md`](docs/plan.md#setup) lists the prerequisites and the commands to build, run, and test.
@@ -21,6 +19,14 @@ Read this before you change the repo. It lists what the docs and failing checks 
 
 Write commit messages and PR titles as Conventional Commits. Scope them `backend` or `frontend` when the change stays in one, as in `feat(backend): ...`.
 
+## Pull Requests
+
+- Never make a PR until the user has asked for one.
+- If you're an agent, identify yourself in the PR body as an agent acting on behalf of the user, and note your harness, model, and effort.
+- The body of the PR should explain the problem you're trying to solve and how you solved it, in a couple of sentences.
+- Write the PR title as a Conventional Commit.
+- For UI changes, include screenshots of the changes in the PR description.
+
 ## Open a PR
 
 - Branch from `main`, keep the PR small, and link the issue it closes when one fits. `.github/pull_request_template.md` lays out the body.
@@ -34,13 +40,3 @@ Write commit messages and PR titles as Conventional Commits. Scope them `backend
 - Before you open the PR, attack it with `/interrogate` and `/blast-radius`, and fix the real findings.
 - In the PR body, also show a planted failure for any new check, and list the known gaps.
 - Agents never merge a PR or push to `main`.
-
-## Say when an agent wrote it
-
-Any issue or PR an agent writes says so in its body with this line, filled in with real values:
-
-```
-This was written by an AI agent on behalf of <your GitHub user>. Model: <model> · Harness: <harness> · Effort: <effort>
-```
-
-When an agent runs `scripts/ci_local.py`, the script prints this line after the table. It detects the harness and, where the harness sets it, the effort from env vars. It takes the user from `gh api user`, then `git config user.name`, then `GITHUB_ACTOR`. Pass `--model` and `--effort` for what it can't detect. Either one marks the run as an agent's, and `--agent` or `--manual` overrides detection. Replace any `<fill in: ...>` it leaves, and never guess a value.
