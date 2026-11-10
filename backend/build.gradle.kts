@@ -4,7 +4,6 @@ plugins {
 	kotlin("plugin.jpa") version "2.4.21"
 	id("org.springframework.boot") version "4.1.2"
 	id("io.spring.dependency-management") version "1.1.7"
-	// 2.0.0-alpha.3 is the release built against Kotlin 2.3.21; detekt must match the compiler in use.
 	id("dev.detekt") version "2.0.0-alpha.6"
 }
 
@@ -69,6 +68,16 @@ allOpen {
 detekt {
 	config.setFrom("detekt.yml")
 	buildUponDefaultConfig = false
+}
+
+// Spring's dependency management aligns every Kotlin artifact to the Kotlin plugin's version, detekt's
+// own compiler included, and detekt refuses to run on a compiler other than the one it was built with.
+configurations.matching { it.name == "detekt" }.configureEach {
+	resolutionStrategy.eachDependency {
+		if (requested.group == "org.jetbrains.kotlin") {
+			useVersion(dev.detekt.gradle.plugin.getSupportedKotlinVersion())
+		}
+	}
 }
 
 tasks.withType<Test> {
