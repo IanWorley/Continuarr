@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.mediaproviders.controller
 
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -11,8 +11,8 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RestController
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.json.JsonMapper
-import xyz.ianworley.continuarr.jellyfin.JellyfinConnectionSettings
-import xyz.ianworley.continuarr.jellyfin.JellyfinSaveResult
+import xyz.ianworley.continuarr.mediaproviders.service.JellyfinConnectionSettings
+import xyz.ianworley.continuarr.mediaproviders.service.JellyfinSaveResult
 import java.io.InputStream
 import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBody
 

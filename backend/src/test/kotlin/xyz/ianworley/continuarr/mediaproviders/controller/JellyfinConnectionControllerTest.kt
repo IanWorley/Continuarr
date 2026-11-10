@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.mediaproviders.controller
 
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.put
 import tools.jackson.databind.json.JsonMapper
 import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
+import xyz.ianworley.continuarr.security.putWithCsrf
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFalse

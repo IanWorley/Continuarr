@@ -1,9 +1,9 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import xyz.ianworley.continuarr.server.MediaServer
+import xyz.ianworley.continuarr.mediaproviders.MediaServer
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(EncryptionKeyProperties::class)

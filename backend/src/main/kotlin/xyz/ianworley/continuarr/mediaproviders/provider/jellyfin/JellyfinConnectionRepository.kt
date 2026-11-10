@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import jakarta.persistence.Entity
 import jakarta.persistence.Id

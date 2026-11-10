@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.security.config
 
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -12,6 +12,12 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import xyz.ianworley.continuarr.TestcontainersConfiguration
+import xyz.ianworley.continuarr.security.CSRF_COOKIE
+import xyz.ianworley.continuarr.security.controller.CSRF_PATH
+import xyz.ianworley.continuarr.security.logIn
+import xyz.ianworley.continuarr.security.postWithCsrf
+import xyz.ianworley.continuarr.security.user.User
+import xyz.ianworley.continuarr.security.user.UserRepository
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertNull

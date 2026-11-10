@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.security.config
 
 import jakarta.servlet.DispatcherType
 import jakarta.servlet.http.HttpServletResponse
@@ -22,6 +22,12 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler
 import org.springframework.security.web.savedrequest.NullRequestCache
 import org.springframework.security.web.util.matcher.DispatcherTypeRequestMatcher
+import xyz.ianworley.continuarr.security.controller.CSRF_PATH
+import xyz.ianworley.continuarr.security.controller.SETUP_PATH
+import xyz.ianworley.continuarr.security.user.UserRepository
+import xyz.ianworley.continuarr.web.SPA_ASSETS_PATH
+import xyz.ianworley.continuarr.web.SPA_INDEX_PATH
+import xyz.ianworley.continuarr.web.SpaRouteMatcher
 
 const val LOGIN_PATH = "/api/login"
 const val LOGOUT_PATH = "/api/logout"

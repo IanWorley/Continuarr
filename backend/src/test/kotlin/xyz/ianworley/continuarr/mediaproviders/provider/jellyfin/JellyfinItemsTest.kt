@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
 import com.github.tomakehurst.wiremock.client.WireMock.equalTo
@@ -15,14 +15,14 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
-import xyz.ianworley.continuarr.server.ExternalIds
-import xyz.ianworley.continuarr.server.FileName
-import xyz.ianworley.continuarr.server.ImdbId
-import xyz.ianworley.continuarr.server.ServerItem
-import xyz.ianworley.continuarr.server.ServerItemId
-import xyz.ianworley.continuarr.server.ServerLibraryId
-import xyz.ianworley.continuarr.server.TmdbId
-import xyz.ianworley.continuarr.server.TvdbId
+import xyz.ianworley.continuarr.mediaproviders.ExternalIds
+import xyz.ianworley.continuarr.mediaproviders.FileName
+import xyz.ianworley.continuarr.mediaproviders.ImdbId
+import xyz.ianworley.continuarr.mediaproviders.ServerItem
+import xyz.ianworley.continuarr.mediaproviders.ServerItemId
+import xyz.ianworley.continuarr.mediaproviders.ServerLibraryId
+import xyz.ianworley.continuarr.mediaproviders.TmdbId
+import xyz.ianworley.continuarr.mediaproviders.TvdbId
 import java.io.File
 import java.net.URI
 import kotlin.test.Test

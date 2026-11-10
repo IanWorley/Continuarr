@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.security.controller
 
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping

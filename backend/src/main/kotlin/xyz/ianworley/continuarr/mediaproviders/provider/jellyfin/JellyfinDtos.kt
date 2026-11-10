@@ -1,11 +1,11 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import xyz.ianworley.continuarr.server.LibraryKind
-import xyz.ianworley.continuarr.server.ServerAccount
-import xyz.ianworley.continuarr.server.ServerAccountId
-import xyz.ianworley.continuarr.server.ServerLibrary
-import xyz.ianworley.continuarr.server.ServerLibraryId
+import xyz.ianworley.continuarr.mediaproviders.LibraryKind
+import xyz.ianworley.continuarr.mediaproviders.ServerAccount
+import xyz.ianworley.continuarr.mediaproviders.ServerAccountId
+import xyz.ianworley.continuarr.mediaproviders.ServerLibrary
+import xyz.ianworley.continuarr.mediaproviders.ServerLibraryId
 
 // Each DTO holds only the fields Continuarr reads; Jackson 3 ignores the rest.
 

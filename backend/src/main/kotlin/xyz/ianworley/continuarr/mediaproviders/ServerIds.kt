@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.server
+package xyz.ianworley.continuarr.mediaproviders
 
 @JvmInline
 value class ServerAccountId(val value: String)

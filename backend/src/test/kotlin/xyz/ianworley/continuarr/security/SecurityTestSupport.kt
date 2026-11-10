@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.security
 
 import jakarta.servlet.http.Cookie
 import org.springframework.test.web.servlet.MockHttpServletRequestDsl
@@ -7,6 +7,8 @@ import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
+import xyz.ianworley.continuarr.security.config.LOGIN_PATH
+import xyz.ianworley.continuarr.security.controller.CSRF_PATH
 import kotlin.test.assertNotNull
 
 const val CSRF_COOKIE = "XSRF-TOKEN"

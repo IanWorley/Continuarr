@@ -43,25 +43,28 @@ Spring Modulith modules, one top-level package each. Boundaries are enforced by 
 `ApplicationModules.verify()` test.
 
 ```
-plex, jellyfin ──implement──▶ server (MediaServer interface, shared types)
+mediaproviders (MediaServer interface, shared model; Plex and Jellyfin adapters inside)
        │
        │ ObservedPlayback (server-agnostic)
        ▼
-   matching ──▶ history ──WatchEventRecorded──▶ sync ──uses──▶ server
-                                                  │
-                                    web (reads history / sync / matching)
+   matching ──▶ history ──WatchEventRecorded──▶ sync ──uses──▶ mediaproviders
+
+security (login, CSRF, first-run setup) ──uses──▶ web (serving the SPA)
 ```
 
 | Module | Responsibility |
 |---|---|
-| `server` | `MediaServer` interface and shared types (`ServerKind`, `Duration`-based positions) |
-| `plex` | Plex client and adapter, including Plex Home token switching |
-| `jellyfin` | Jellyfin client and adapter |
+| `mediaproviders` | `MediaServer` interface and shared types (`ServerKind`, `Duration`-based positions), plus one adapter per server: Jellyfin, and Plex with Plex Home token switching |
 | `matching` | External-ID and file-name matching, suggestions, unmatched queue |
 | `history` | Append-only watch events and history queries |
 | `sync` | State resolution, sync mode, echo suppression, write planning and execution |
 | `people` | People, server accounts, merging |
-| `web` | REST API, security, serving the SPA |
+| `security` | Login, logout, CSRF, first-run setup, and the admin account; exposes no types |
+| `web` | Serving the SPA, and redacting request bodies from JSON parse errors |
+
+Each module owns its REST endpoints. Inside a module, `controller/` handles HTTP, `service/` holds the
+logic, and the code beneath them sits in its own packages, such as `mediaproviders/provider/jellyfin/`.
+Only a module's root package is visible to other modules.
 
 REST endpoints are versioned under `/api/v1/...`. Only the security endpoints stay unversioned at
 `/api/...`: login, logout, first-run setup, and CSRF (see [Security](#security)).
@@ -347,7 +350,7 @@ first depends on them.
 
 **Goal:** Continuarr can read everything it needs from Jellyfin.
 
-- `server` module: `MediaServer` interface, `ServerKind`, `Duration`-based positions
+- `mediaproviders` module: `MediaServer` interface, `ServerKind`, `Duration`-based positions
 - Jellyfin client: users, libraries, items (IDs, path, runtime), played state, sessions
 - WireMock fixtures recorded from a real server
 

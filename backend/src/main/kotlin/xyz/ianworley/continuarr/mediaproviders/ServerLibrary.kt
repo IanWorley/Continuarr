@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.server
+package xyz.ianworley.continuarr.mediaproviders
 
 data class ServerLibrary(
 	val id: ServerLibraryId,

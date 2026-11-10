@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.server
+package xyz.ianworley.continuarr.mediaproviders
 
 /**
  * Read-only access to one media server. Every call can throw [MediaServerException].

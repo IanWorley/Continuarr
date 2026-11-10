@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import kotlin.test.Test
 import kotlin.test.assertFalse

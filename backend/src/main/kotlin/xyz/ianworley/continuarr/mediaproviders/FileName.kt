@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.server
+package xyz.ianworley.continuarr.mediaproviders
 
 private const val SEPARATOR = '/'
 private const val WINDOWS_SEPARATOR = '\\'

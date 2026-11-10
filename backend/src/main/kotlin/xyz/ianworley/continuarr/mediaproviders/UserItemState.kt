@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.server
+package xyz.ianworley.continuarr.mediaproviders
 
 import java.time.Instant
 import kotlin.time.Duration

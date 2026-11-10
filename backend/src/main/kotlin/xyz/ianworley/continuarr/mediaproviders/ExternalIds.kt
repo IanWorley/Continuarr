@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.server
+package xyz.ianworley.continuarr.mediaproviders
 
 private val IMDB_ID_PATTERN = Regex("tt[0-9]+")
 private val NUMERIC_ID_PATTERN = Regex("[0-9]+")

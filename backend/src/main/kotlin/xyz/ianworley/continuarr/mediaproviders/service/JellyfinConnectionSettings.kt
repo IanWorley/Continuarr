@@ -1,9 +1,9 @@
-package xyz.ianworley.continuarr.jellyfin
+package xyz.ianworley.continuarr.mediaproviders.service
 
 import org.springframework.stereotype.Service
-import xyz.ianworley.continuarr.jellyfin.internal.JellyfinApiKey
-import xyz.ianworley.continuarr.jellyfin.internal.JellyfinConnectionStore
-import xyz.ianworley.continuarr.jellyfin.internal.parseBaseUrlOrNull
+import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinApiKey
+import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionStore
+import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.parseBaseUrlOrNull
 
 /** A field of a Jellyfin connection that failed validation. The value itself is never reported. */
 enum class JellyfinField {
@@ -38,6 +38,6 @@ class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 				setOfNotNull(JellyfinField.URL.takeIf { baseUrl == null }, JellyfinField.API_KEY.takeIf { key == null }),
 			)
 		}
-		return store.save(baseUrl, key)
+		return if (store.save(baseUrl, key)) JellyfinSaveResult.Saved else JellyfinSaveResult.EncryptionKeyMissing
 	}
 }

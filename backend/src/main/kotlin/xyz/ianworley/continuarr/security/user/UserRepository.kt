@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.security.user
 
 import org.springframework.data.repository.CrudRepository
 

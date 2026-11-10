@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.security.controller
 
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.params.ParameterizedTest
@@ -20,6 +20,10 @@ import org.springframework.test.web.servlet.get
 import tools.jackson.databind.json.JsonMapper
 import xyz.ianworley.continuarr.ContinuarrApplication
 import xyz.ianworley.continuarr.TestcontainersConfiguration
+import xyz.ianworley.continuarr.security.logIn
+import xyz.ianworley.continuarr.security.postWithCsrf
+import xyz.ianworley.continuarr.security.service.SetupToken
+import xyz.ianworley.continuarr.security.user.UserRepository
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContains

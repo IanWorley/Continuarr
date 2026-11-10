@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.security.controller
 
 import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.http.HttpStatus

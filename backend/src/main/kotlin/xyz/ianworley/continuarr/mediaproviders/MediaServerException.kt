@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.server
+package xyz.ianworley.continuarr.mediaproviders
 
 sealed class MediaServerException(message: String, cause: Throwable? = null) : RuntimeException(message, cause) {
 	class Unreachable(message: String, cause: Throwable? = null) : MediaServerException(message, cause)

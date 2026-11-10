@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.jellyfin
+package xyz.ianworley.continuarr.mediaproviders.service
 
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
 import com.github.tomakehurst.wiremock.client.WireMock.equalTo
@@ -17,12 +17,12 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.CannotCreateTransactionException
 import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
-import xyz.ianworley.continuarr.jellyfin.internal.EncryptionKeyProperties
-import xyz.ianworley.continuarr.jellyfin.internal.JellyfinConnectionRepository
-import xyz.ianworley.continuarr.jellyfin.internal.JellyfinConnectionRow
-import xyz.ianworley.continuarr.jellyfin.internal.JellyfinConnectionStore
-import xyz.ianworley.continuarr.jellyfin.internal.StoredConnection
-import xyz.ianworley.continuarr.server.MediaServer
+import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.EncryptionKeyProperties
+import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionRepository
+import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionRow
+import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionStore
+import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.StoredConnection
+import xyz.ianworley.continuarr.mediaproviders.MediaServer
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

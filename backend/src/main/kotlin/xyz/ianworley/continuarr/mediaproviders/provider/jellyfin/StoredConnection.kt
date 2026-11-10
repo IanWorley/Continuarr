@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 sealed interface StoredConnection {
 	data object NotConfigured : StoredConnection

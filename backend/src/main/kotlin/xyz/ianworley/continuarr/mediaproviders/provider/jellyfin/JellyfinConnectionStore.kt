@@ -1,8 +1,7 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import org.springframework.dao.DataAccessException
 import org.springframework.transaction.TransactionException
-import xyz.ianworley.continuarr.jellyfin.JellyfinSaveResult
 import java.net.URI
 
 private const val SINGLE_ROW_ID: Short = 1
@@ -16,11 +15,14 @@ class JellyfinConnectionStore(private val repository: JellyfinConnectionReposito
 
 	private val cipher: ApiKeyCipher? = encryptionKey.secretKey?.let(::ApiKeyCipher)
 
-	/** Two first saves at once both insert, and one fails on the primary key. One admin saves this, so that's accepted. */
-	fun save(url: URI, apiKey: JellyfinApiKey): JellyfinSaveResult {
-		val cipher = cipher ?: return JellyfinSaveResult.EncryptionKeyMissing
+	/**
+	 * Returns false and saves nothing when CONTINUARR_ENCRYPTION_KEY isn't set.
+	 * Two first saves at once both insert, and one fails on the primary key. One admin saves this, so that's accepted.
+	 */
+	fun save(url: URI, apiKey: JellyfinApiKey): Boolean {
+		val cipher = cipher ?: return false
 		repository.save(JellyfinConnectionRow(SINGLE_ROW_ID, url.toString(), cipher.encrypt(apiKey)))
-		return JellyfinSaveResult.Saved
+		return true
 	}
 
 	fun find(): JellyfinConnectionRow? = repository.findById(SINGLE_ROW_ID)

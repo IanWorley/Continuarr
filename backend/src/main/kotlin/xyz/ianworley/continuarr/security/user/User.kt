@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.security.user
 
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue

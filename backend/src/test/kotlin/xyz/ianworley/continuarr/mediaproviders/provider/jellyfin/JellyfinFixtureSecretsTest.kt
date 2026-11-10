@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.jellyfin
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import tools.jackson.databind.json.JsonMapper

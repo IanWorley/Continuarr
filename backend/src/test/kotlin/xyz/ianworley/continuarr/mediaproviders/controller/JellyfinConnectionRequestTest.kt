@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.mediaproviders.controller
 
 import kotlin.test.Test
 import kotlin.test.assertFalse

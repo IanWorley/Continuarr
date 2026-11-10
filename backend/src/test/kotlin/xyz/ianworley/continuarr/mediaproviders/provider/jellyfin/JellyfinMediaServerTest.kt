@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
@@ -16,12 +16,12 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import tools.jackson.databind.json.JsonMapper
-import xyz.ianworley.continuarr.server.LibraryKind
-import xyz.ianworley.continuarr.server.MediaServerException
-import xyz.ianworley.continuarr.server.ServerAccount
-import xyz.ianworley.continuarr.server.ServerAccountId
-import xyz.ianworley.continuarr.server.ServerLibrary
-import xyz.ianworley.continuarr.server.ServerLibraryId
+import xyz.ianworley.continuarr.mediaproviders.LibraryKind
+import xyz.ianworley.continuarr.mediaproviders.MediaServerException
+import xyz.ianworley.continuarr.mediaproviders.ServerAccount
+import xyz.ianworley.continuarr.mediaproviders.ServerAccountId
+import xyz.ianworley.continuarr.mediaproviders.ServerLibrary
+import xyz.ianworley.continuarr.mediaproviders.ServerLibraryId
 import java.net.ServerSocket
 import java.net.URI
 import java.time.Duration

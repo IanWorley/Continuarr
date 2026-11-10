@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.security.crypto.encrypt.AesGcmBytesEncryptor

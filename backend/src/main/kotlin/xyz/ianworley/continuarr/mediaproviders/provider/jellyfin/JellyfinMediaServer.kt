@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import com.fasterxml.jackson.annotation.Nulls
 import org.slf4j.LoggerFactory
@@ -15,16 +15,16 @@ import org.springframework.web.client.ResourceAccessException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import tools.jackson.databind.json.JsonMapper
-import xyz.ianworley.continuarr.server.ActiveSession
-import xyz.ianworley.continuarr.server.MediaServer
-import xyz.ianworley.continuarr.server.MediaServerException
-import xyz.ianworley.continuarr.server.ServerAccount
-import xyz.ianworley.continuarr.server.ServerAccountId
-import xyz.ianworley.continuarr.server.ServerItem
-import xyz.ianworley.continuarr.server.ServerKind
-import xyz.ianworley.continuarr.server.ServerLibrary
-import xyz.ianworley.continuarr.server.ServerLibraryId
-import xyz.ianworley.continuarr.server.UserItemState
+import xyz.ianworley.continuarr.mediaproviders.ActiveSession
+import xyz.ianworley.continuarr.mediaproviders.MediaServer
+import xyz.ianworley.continuarr.mediaproviders.MediaServerException
+import xyz.ianworley.continuarr.mediaproviders.ServerAccount
+import xyz.ianworley.continuarr.mediaproviders.ServerAccountId
+import xyz.ianworley.continuarr.mediaproviders.ServerItem
+import xyz.ianworley.continuarr.mediaproviders.ServerKind
+import xyz.ianworley.continuarr.mediaproviders.ServerLibrary
+import xyz.ianworley.continuarr.mediaproviders.ServerLibraryId
+import xyz.ianworley.continuarr.mediaproviders.UserItemState
 import java.io.CharConversionException
 import java.io.IOException
 import java.net.http.HttpClient
@@ -67,7 +67,7 @@ private fun Throwable.isLostConnection(): Boolean =
  *
  * Each request reads [connection], so a newly saved server takes effect on the next request, even between
  * the pages of one sequence. With no usable connection, calls fail as [MediaServerException.Unreachable].
- * `server`'s sealed exception has no case for that, so only the message ("Jellyfin connection not
+ * [MediaServerException] has no case for that, so only the message ("Jellyfin connection not
  * configured", or the reason a saved row can't be used) tells it apart from a server that's down.
  */
 class JellyfinMediaServer(

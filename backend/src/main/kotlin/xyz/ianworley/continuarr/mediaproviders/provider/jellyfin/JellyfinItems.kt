@@ -1,17 +1,17 @@
-package xyz.ianworley.continuarr.jellyfin.internal
+package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonSetter
 import com.fasterxml.jackson.annotation.Nulls
 import org.slf4j.LoggerFactory
-import xyz.ianworley.continuarr.server.ExternalIds
-import xyz.ianworley.continuarr.server.FileName
-import xyz.ianworley.continuarr.server.ImdbId
-import xyz.ianworley.continuarr.server.ServerItem
-import xyz.ianworley.continuarr.server.ServerItemId
-import xyz.ianworley.continuarr.server.ServerLibraryId
-import xyz.ianworley.continuarr.server.TmdbId
-import xyz.ianworley.continuarr.server.TvdbId
+import xyz.ianworley.continuarr.mediaproviders.ExternalIds
+import xyz.ianworley.continuarr.mediaproviders.FileName
+import xyz.ianworley.continuarr.mediaproviders.ImdbId
+import xyz.ianworley.continuarr.mediaproviders.ServerItem
+import xyz.ianworley.continuarr.mediaproviders.ServerItemId
+import xyz.ianworley.continuarr.mediaproviders.ServerLibraryId
+import xyz.ianworley.continuarr.mediaproviders.TmdbId
+import xyz.ianworley.continuarr.mediaproviders.TvdbId
 import java.util.Locale
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.nanoseconds

@@ -1,9 +1,11 @@
-package xyz.ianworley.continuarr.web
+package xyz.ianworley.continuarr.security.service
 
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
+import xyz.ianworley.continuarr.security.controller.SETUP_PATH
+import xyz.ianworley.continuarr.security.user.UserRepository
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.HexFormat
