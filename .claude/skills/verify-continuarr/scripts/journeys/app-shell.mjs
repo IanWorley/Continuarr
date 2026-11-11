@@ -26,6 +26,8 @@ await runJourney(async ({ page, step, record }) => {
   const signOut = page.getByRole('button', { name: 'Sign out' })
   const drawerSettings = drawer.getByRole('link', { name: 'Settings' })
   const focusedName = () => page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent)
+  // Waits out hover and resize transitions so a screenshot shows where they end.
+  const settle = () => page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished)))
   const pageState = () =>
     page.evaluate(() => ({
       htmlClass: document.documentElement.className,
@@ -48,6 +50,7 @@ await runJourney(async ({ page, step, record }) => {
   await step('desktop-home')
 
   await rail.getByRole('link', { name: 'Settings' }).hover()
+  await settle()
   await step('desktop-rail-tip')
 
   await openNav.click()
@@ -82,6 +85,8 @@ await runJourney(async ({ page, step, record }) => {
   assert.match(page.url(), new RegExp(`${HOME_PATH}$`))
 
   await page.setViewportSize(PHONE)
+  await page.reload()
+  await page.getByRole('heading', { name: 'Media servers' }).waitFor()
   assert.equal(await rail.isVisible(), false, 'phones hide the rail')
   const phoneSignOut = await signOut.boundingBox()
   assert.equal(phoneSignOut?.height, TOUCH_TARGET, 'phone controls are 44px')
