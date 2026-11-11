@@ -34,10 +34,17 @@ export function Shell() {
     root.classList.add(DRAWER_OPEN_CLASS)
     drawer.querySelector('a')?.focus()
 
+    const close = () => {
+      setDrawerOpen(false)
+      hamburger.focus()
+    }
+    // A click on the scrim, or anywhere else outside the drawer and the hamburger, closes it.
+    const onClick = (event: MouseEvent) => {
+      if (event.target instanceof Node && !drawer.contains(event.target) && !hamburger.contains(event.target)) close()
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setDrawerOpen(false)
-        hamburger.focus()
+        close()
         return
       }
       if (event.key !== 'Tab') return
@@ -47,9 +54,11 @@ export function Shell() {
       event.preventDefault()
       stops[next]?.focus()
     }
+    document.addEventListener('click', onClick)
     document.addEventListener('keydown', onKeyDown)
     return () => {
       root.classList.remove(DRAWER_OPEN_CLASS)
+      document.removeEventListener('click', onClick)
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [drawerOpen])
@@ -88,8 +97,7 @@ export function Shell() {
         </div>
       </header>
       <NavRail inert={drawerOpen} />
-      {/* Covers the page below the header. A click on it closes the drawer, and Escape does the same from the keyboard. */}
-      <div hidden={!drawerOpen} onClick={closeDrawer} className="fixed inset-x-0 top-header bottom-0 z-40 bg-black/55" />
+      <div hidden={!drawerOpen} className="fixed inset-x-0 top-header bottom-0 z-40 bg-black/55" />
       <NavDrawer ref={drawerRef} open={drawerOpen} onNavigate={closeDrawer} />
       <main inert={drawerOpen} className="pt-header tablet:ml-rail">
         <Outlet />

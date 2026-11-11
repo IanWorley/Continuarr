@@ -169,3 +169,12 @@ it('closes the drawer when a destination is chosen', async () => {
   expect(drawer.hidden).toBe(true)
   expect(document.activeElement).toBe(hamburger)
 })
+
+it('closes the drawer on a click outside it and returns focus to the hamburger', async () => {
+  const { drawer, hamburger } = await openDrawer()
+
+  fireEvent.click(screen.getByRole('heading', { name: 'Media servers' }))
+
+  expect(drawer.hidden).toBe(true)
+  expect(document.activeElement).toBe(hamburger)
+})

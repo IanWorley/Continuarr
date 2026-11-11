@@ -34,7 +34,7 @@ const LINK_ITEM = `text-ink-400 hover:bg-ink-800 hover:text-ink-100 ${ITEM_FOCUS
 const LATER_ITEM = 'cursor-not-allowed text-ink-500'
 
 function Separator() {
-  return <div role="separator" className="mx-3 my-1.5 h-px bg-ink-700" />
+  return <hr className="mx-3 my-1.5 border-ink-700" />
 }
 
 function LaterTag() {
