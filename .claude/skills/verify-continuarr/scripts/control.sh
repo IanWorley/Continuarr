@@ -70,7 +70,7 @@ launch() {
 	mkdir "$RUN_DIR" 2>/dev/null || die "an instance is already recorded in $RUN_DIR; run doctor, or cleanup first"
 	refuse() { rm -rf "$RUN_DIR"; die "$@"; }
 	local tool
-	for tool in lsof curl docker node npm; do
+	for tool in lsof curl docker node npm openssl; do
 		command -v "$tool" >/dev/null || refuse "$tool is not on PATH; launch needs it"
 	done
 	local port
