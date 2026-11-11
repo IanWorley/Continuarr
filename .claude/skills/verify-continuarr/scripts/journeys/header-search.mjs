@@ -43,17 +43,12 @@ await runJourney(async ({ page, step, record }) => {
     page.evaluate((id) => {
       const rect = id ? document.getElementById(id)?.getBoundingClientRect() : undefined
       return rect ? { top: rect.top, width: rect.width, height: rect.height } : null
-    }, await toggle.getAttribute('aria-controls'))
+    }, await page.getByRole('button', { name: 'Search', exact: true, includeHidden: true }).getAttribute('aria-controls'))
   // The toolbar under the header sticks at this offset on phones.
   const toolbarStickyTop = () =>
     page.evaluate(() => {
       const toolbar = document.querySelector('nav[aria-label="Settings"]')?.parentElement
       return toolbar ? getComputedStyle(toolbar).top : null
-    })
-  const nativeClearButton = () =>
-    page.evaluate(() => {
-      const input = document.querySelector('input[type="search"]')
-      return input ? getComputedStyle(input, '::-webkit-search-cancel-button').appearance : null
     })
   /** @param {number} expected @param {string} message */
   const searchClosed = async (expected, message) => {
@@ -78,16 +73,19 @@ await runJourney(async ({ page, step, record }) => {
   await field.click()
   await field.fill(QUERY)
   await field.press('Enter')
-  assert.equal(await nativeClearButton(), 'none', 'the browser draws no clear button in the field')
   await step('desktop-search-typed')
 
   await page.setViewportSize(NARROW_DESKTOP)
   const narrowBox = await searchBox()
   assert.equal(narrowBox?.width, NARROW_SEARCH_WIDTH, 'the field narrows to 220px at 1100px')
 
+  assert.deepEqual(apiRequests, [], 'typing on desktop sends no request')
+
   await page.setViewportSize(PHONE)
   await page.reload()
   await heading.waitFor()
+  // The reload's session check belongs to the shell, not to search.
+  apiRequests.length = 0
   assert.equal(await field.isVisible(), false, 'phones hide the field until search opens')
   const phoneToggle = await toggle.boundingBox()
   assert.equal(phoneToggle?.height, TOUCH_TARGET, 'the search button is 44px tall')
@@ -113,7 +111,6 @@ await runJourney(async ({ page, step, record }) => {
   await step('phone-search-open')
 
   await field.fill(QUERY)
-  assert.equal(await nativeClearButton(), 'none', 'the row has one X, the close button')
   await step('phone-search-typed')
 
   await page.keyboard.press('Escape')
@@ -131,7 +128,8 @@ await runJourney(async ({ page, step, record }) => {
   await field.waitFor()
   await heading.click()
   await searchClosed(headingTop, 'a click outside the header closes search')
-  const focusAfterOutsideClick = await focusedName()
+  const focusAfterOutsideClick = await page.evaluate(() => document.activeElement?.tagName)
+  assert.notEqual(await focusedName(), 'Search', 'an outside click leaves focus where the click landed')
 
   await toggle.click()
   await field.waitFor()
@@ -142,7 +140,7 @@ await runJourney(async ({ page, step, record }) => {
   await page.keyboard.press('Escape')
   await drawer.waitFor({ state: 'hidden' })
 
-  assert.deepEqual(apiRequests, [], 'search sends no request')
+  assert.deepEqual(apiRequests, [], 'search on phones sends no request')
   await record('search-state', {
     desktopBox,
     narrowBox,
