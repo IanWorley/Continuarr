@@ -4,6 +4,8 @@
 @theme {
   --color-ink-950: #07090f;
   --color-ink-900: #0d111b;
+  --color-ink-850: #121827;
+  --color-ink-800: #182033;
   --color-ink-700: #263047;
   /* Control edges: at least 3:1 against ink-900 and ink-950 (WCAG 1.4.11). */
   --color-ink-500: #5b6680;
@@ -17,10 +19,42 @@
   --color-sync: #8b5cf6;
   --color-danger: #fca5a5;
   --color-danger-surface: #2a1215;
+
+  /* The signed-in frame. Each name generates spacing utilities such as h-header and w-rail. */
+  --spacing-header: 3.5rem;
+  --spacing-rail: 3.75rem;
+  --spacing-drawer: 15rem;
+  --spacing-toolbar: 3.25rem;
+  --spacing-control: 2.25rem;
+  /* Phones get 44px controls, the touch-target size iOS and Android recommend. */
+  --spacing-touch: 2.75rem;
+  --container-page: 100rem;
+  /* The small dashed tag on parts that have no page or endpoint yet. Phones fall back to text-xs. */
+  --text-tag: 0.65625rem;
+  --text-tag--line-height: 1rem;
+
+  /* 721px, so the phone layout covers widths up to 720px. */
+  --breakpoint-tablet: 45.0625rem;
 }
 
 :root {
   color-scheme: dark;
+}
+
+@layer base {
+  /* The amber focus ring is the only tap feedback, so the browser's blue flash stays off. */
+  a,
+  button,
+  summary,
+  input,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* The page behind the open navigation drawer doesn't scroll. */
+  html.drawer-open {
+    overflow: hidden;
+  }
 }
 
 /* Brand-panel backdrop: posters fade out toward the edges under two soft glows. */

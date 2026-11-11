@@ -6,6 +6,8 @@ import { BACKEND_URL, FRONTEND_URL, RUN_DIR, runJourney } from '../journey.mjs'
 const HTTP_OK = 200
 const HTTP_UNAUTHORIZED = 401
 const SESSION_PROBE_PATH = '/v3/api-docs'
+// Home redirects to the only signed-in page so far.
+const HOME_PATH = '/settings/media-servers'
 
 /** @type {{ username: string, password: string }} */
 const admin = JSON.parse(
@@ -37,7 +39,7 @@ await runJourney(async ({ page, step, record }) => {
 
   await password.fill(admin.password)
   await signIn.click()
-  await page.waitForURL(`${FRONTEND_URL}/`)
+  await page.waitForURL(`${FRONTEND_URL}${HOME_PATH}`)
   await signOut.waitFor()
   await page.getByText(admin.username, { exact: true }).waitFor()
   await step('signed-in')
