@@ -15,7 +15,7 @@ const ICON_BUTTON =
 // One ring on the field box, never a second one on the input inside it.
 const SEARCH_FIELD =
   'items-center gap-2 border-ink-700 text-ink-400 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-accent ' +
-  'tablet:flex tablet:h-control tablet:w-55 tablet:rounded-md tablet:border tablet:bg-ink-950 tablet:px-2.5 tablet:has-[input:focus-visible]:-outline-offset-1 wide:w-75'
+  'tablet:flex tablet:h-control tablet:w-55 tablet:flex-none tablet:rounded-md tablet:border tablet:bg-ink-950 tablet:px-2.5 tablet:has-[input:focus-visible]:-outline-offset-1 wide:w-75'
 const SEARCH_ROW =
   'max-tablet:fixed max-tablet:inset-x-0 max-tablet:top-header max-tablet:flex max-tablet:h-header max-tablet:border-b max-tablet:bg-ink-900 max-tablet:pr-1 max-tablet:pl-4 max-tablet:has-[input:focus-visible]:-outline-offset-3'
 // Inside the page, the header is as tall as everything fixed above it. The open search row pushes the page and any
@@ -149,7 +149,7 @@ export function Shell() {
             <Icon name="close" />
           </button>
         </div>
-        <div inert={drawerOpen} className="ml-auto flex items-center gap-1 tablet:gap-3">
+        <div inert={drawerOpen} className="ml-auto flex min-w-0 items-center gap-1 tablet:gap-3">
           <button
             ref={searchToggleRef}
             type="button"
@@ -161,7 +161,8 @@ export function Shell() {
           >
             <Icon name="search" />
           </button>
-          <span className="hidden text-ink-400 tablet:inline">{session.username}</span>
+          {/* A long username truncates, so the search field keeps its width. */}
+          <span className="hidden min-w-0 truncate text-ink-400 tablet:inline">{session.username}</span>
           {/* aria-disabled rather than disabled, so a keyboard user's focus stays on the button. Phones show only the icon. */}
           <button
             type="button"
@@ -169,7 +170,7 @@ export function Shell() {
             onClick={() => {
               if (!mutation.isPending) mutation.mutate()
             }}
-            className="inline-flex size-touch items-center justify-center gap-1.5 rounded-md border border-transparent font-medium transition not-aria-disabled:hover:bg-ink-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-disabled:cursor-wait aria-disabled:opacity-85 tablet:h-control tablet:w-auto tablet:border-ink-500 tablet:px-3 tablet:not-aria-disabled:hover:border-ink-400 tablet:not-aria-disabled:hover:bg-transparent"
+            className="inline-flex size-touch flex-none items-center justify-center gap-1.5 rounded-md border border-transparent font-medium transition not-aria-disabled:hover:bg-ink-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-disabled:cursor-wait aria-disabled:opacity-85 tablet:h-control tablet:w-auto tablet:border-ink-500 tablet:px-3 tablet:not-aria-disabled:hover:border-ink-400 tablet:not-aria-disabled:hover:bg-transparent"
           >
             <Icon name="logout" className="size-3.75" />
             <span className="max-tablet:sr-only">{mutation.isPending ? 'Signing out…' : 'Sign out'}</span>
