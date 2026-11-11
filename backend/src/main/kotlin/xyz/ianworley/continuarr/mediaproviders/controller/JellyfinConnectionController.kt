@@ -22,7 +22,10 @@ const val JELLYFIN_CONNECTION_PATH = "/api/v1/jellyfin/connection"
 class JellyfinConnectionController(private val settings: JellyfinConnectionSettings, private val jsonMapper: JsonMapper) {
 
 	@GetMapping(JELLYFIN_CONNECTION_PATH)
-	fun connection(): JellyfinConnectionResponse = JellyfinConnectionResponse(settings.savedUrl())
+	fun connection(): JellyfinConnectionResponse {
+		val saved = settings.saved()
+		return JellyfinConnectionResponse(saved.url, saved.apiKeyState)
+	}
 
 	@PutMapping(JELLYFIN_CONNECTION_PATH, consumes = [MediaType.APPLICATION_JSON_VALUE])
 	@SwaggerRequestBody(

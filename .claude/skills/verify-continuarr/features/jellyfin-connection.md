@@ -1,40 +1,34 @@
 # Jellyfin connection
 
-The signed-in admin saves the Jellyfin server's URL and API key with `PUT /api/v1/jellyfin/connection` and reads the saved URL back with `GET` on the same path. `GET` never returns the key. A bad URL or key answers `400` and names the field without echoing its value. Saving needs `CONTINUARR_ENCRYPTION_KEY`, because the key is stored encrypted. Without it the save answers `503`. Saving doesn't contact Jellyfin. [Configuration in `docs/plan.md`](../../../../docs/plan.md#configuration) is the source for these rules.
+The admin saves the Jellyfin server URL and API key with `PUT /api/v1/jellyfin/connection`. A bad URL or key answers `400` and names the fields without echoing them. Without `CONTINUARR_ENCRYPTION_KEY` a save answers `503` and stores nothing. `GET` returns the saved URL and `apiKeyState`, never the key. `apiKeyState` is `NONE` before a save, `STORED` when the saved key decrypts, and `UNREADABLE` when it doesn't, such as after the encryption key changed.
 
 ## Sub-features
 
-- `jellyfin-needs-session` answers `401` to `GET` without a session.
-- `jellyfin-empty` answers `{"url":null}` before a save.
-- `jellyfin-csrf` rejects a `PUT` without the CSRF header with `403`.
-- `jellyfin-invalid` answers `400` with `invalidFields`, such as `["URL"]` or `["API_KEY"]`.
-- `jellyfin-no-encryption-key` answers `503` to a valid `PUT` when the launch has no `CONTINUARR_ENCRYPTION_KEY`.
-- `jellyfin-saved` answers `204` to a valid `PUT`, and `GET` then returns the URL and no key.
+- `jellyfin-nothing-saved` answers `{"url": null, "apiKeyState": "NONE"}` on a fresh launch.
+- `jellyfin-save-rejected` answers `400` with `{"invalidFields": ["URL", "API_KEY"]}` and stores nothing.
+- `jellyfin-save` answers `204`. The next `GET` returns the URL with `"apiKeyState": "STORED"`.
+- `jellyfin-key-hidden` keeps the key out of every response and out of the backend log.
+- `jellyfin-no-encryption-key` answers `503` when the server has no encryption key.
 
 ## How to get to it (user POV)
 
-- There is no UI for it yet. Call the backend on `http://localhost:8080` with `curl`, as a script or an API client would.
+- Sign in, then call `/api/v1/jellyfin/connection` with the session cookie, as the settings page does. A `PUT` also needs the CSRF header.
 
 ## Driving it with control.sh
 
 Preconditions:
 
-- `control.sh drive first-run-setup` passed earlier in this launch, so `$RUN_DIR/admin-credentials.json` holds the admin.
-- For `jellyfin-saved`, launch with a key: `CONTINUARR_ENCRYPTION_KEY=$(openssl rand -hex 32) control.sh launch`. A plain `control.sh launch` has no key, so it covers `jellyfin-no-encryption-key` instead.
+- `control.sh drive first-run-setup` passed earlier in this launch.
 
-Run these from a scratch directory. `RUN_DIR` is `~/.local/state/continuarr-verify/run`, or `$CONTINUARR_VERIFY_HOME/run`.
-
-- **Session required.** Run `curl -s -w ' %{http_code}\n' http://localhost:8080/api/v1/jellyfin/connection`. It prints ` 401`.
-- **Sign in.** Fetch the CSRF token with `curl -s -o /dev/null -c cookies.txt http://localhost:8080/api/csrf`. Then run `curl -s -o /dev/null -w '%{http_code}\n' -b cookies.txt -c cookies.txt -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' cookies.txt)" --data-urlencode "username=$(node -p "require('$RUN_DIR/admin-credentials.json').username")" --data-urlencode "password=$(node -p "require('$RUN_DIR/admin-credentials.json').password")" http://localhost:8080/api/login`. It prints `204`. Signing in replaces the CSRF cookie in `cookies.txt`, so the steps below read the token afresh each time. A token read before sign-in answers `403`.
-- **Empty.** Run `curl -s -w ' %{http_code}\n' -b cookies.txt http://localhost:8080/api/v1/jellyfin/connection`. It prints `{"url":null} 200`.
-- **CSRF.** Run `curl -s -o /dev/null -w '%{http_code}\n' -b cookies.txt -X PUT -H 'Content-Type: application/json' -d '{"url":"http://localhost:8096","apiKey":"k"}' http://localhost:8080/api/v1/jellyfin/connection`. It prints `403`.
-- **Invalid.** Send the same `PUT` with `-H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' cookies.txt)"` and `-w ' %{http_code}\n'` instead of `-o /dev/null`, and the body `{"url":"not a url","apiKey":"k"}`. It prints `{"invalidFields":["URL"]} 400`. The body `{"url":"http://localhost:8096","apiKey":""}` prints `{"invalidFields":["API_KEY"]} 400`.
-- **Save.** Send the CSRF `PUT` with the body `{"url":"http://localhost:8096","apiKey":"verify-placeholder-key"}`. With a key in the launch it prints ` 204`. Without one it prints ` 503`, and nothing is saved.
-- **Side effect.** Run the **Empty** `GET` again. After a `204` it prints `{"url":"http://localhost:8096"} 200`, with no key in the body. After a `503` it still prints `{"url":null} 200`.
+- **Journey.** Run `control.sh drive jellyfin-connection`. It signs in through the UI, in step `01-signed-in`, then calls the API with the browser's session.
+- **Nothing saved.** The first `GET` returns `{"url": null, "apiKeyState": "NONE"}`.
+- **Rejected.** A `PUT` with an `ftp://` URL and a key with spaces answers `400` with both fields named, and the next `GET` is unchanged.
+- **Saved.** A `PUT` with a valid URL and a random 32-character key answers `204`. The next `GET` returns the URL with `"apiKeyState": "STORED"`.
+- **Key hidden.** No response and no line of `backend.log` contains the key. The journey makes a new key for each run and never writes it to the evidence.
+- **Side effect.** `jellyfin-connection.json` holds the `GET` before and after, the rejected response, and the save's status.
+- **No encryption key.** Run `cleanup`, then `CONTINUARR_VERIFY_ENCRYPTION_KEY= control.sh launch` and `control.sh drive first-run-setup`. Sign in with `curl` as in [access control](./access-control.md), then send the `PUT` with a valid URL and key. It answers `503`, and `GET` still returns `"apiKeyState": "NONE"`.
 
 ## Gotchas
 
-- Use a placeholder API key, never a real one. Nothing checks it against a Jellyfin server.
-- Never write the encryption key down. Generate it inline at launch, as above. Each launch starts with an empty database, so a new key loses nothing.
-- Without a saved connection, the backend log has a `Jellyfin connection check failed: Jellyfin connection not configured` warning at startup. That is expected on every launch.
-- Keep `cookies.txt` in the scratch directory and delete it afterward. It holds a session cookie once you sign in.
+- Each launch starts with an empty database, so `UNREADABLE` can't be reached live. The backend tests cover it by saving under one encryption key and reading under another.
+- The journey sends its requests through the Vite proxy on `5173`, so they carry the browser's session and CSRF cookies.

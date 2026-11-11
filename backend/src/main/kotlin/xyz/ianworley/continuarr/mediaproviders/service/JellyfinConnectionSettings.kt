@@ -11,6 +11,16 @@ enum class JellyfinField {
 	API_KEY,
 }
 
+/** Whether the saved API key decrypts under the current CONTINUARR_ENCRYPTION_KEY. The key itself is never reported. */
+enum class JellyfinApiKeyState {
+	NONE,
+	STORED,
+	UNREADABLE,
+}
+
+/** [url] is null exactly when [apiKeyState] is [JellyfinApiKeyState.NONE], since every save stores both. */
+data class SavedJellyfinConnection(val url: String?, val apiKeyState: JellyfinApiKeyState)
+
 sealed interface JellyfinSaveResult {
 	data object Saved : JellyfinSaveResult
 
@@ -26,8 +36,12 @@ sealed interface JellyfinSaveResult {
 @Service
 class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 
-	/** The saved server URL, or null before a save. Doesn't decrypt, so it answers even when the key won't. */
-	fun savedUrl(): String? = store.find()?.url
+	/** The URL comes back even when the key won't decrypt, so the admin sees what to save again. */
+	fun saved(): SavedJellyfinConnection {
+		val row = store.find() ?: return SavedJellyfinConnection(null, JellyfinApiKeyState.NONE)
+		val apiKeyState = if (store.apiKeyDecrypts(row)) JellyfinApiKeyState.STORED else JellyfinApiKeyState.UNREADABLE
+		return SavedJellyfinConnection(row.url, apiKeyState)
+	}
 
 	/** Replaces the whole connection. The key is required on every save, so a new URL never gets the old key. */
 	fun save(url: String, apiKey: String): JellyfinSaveResult {

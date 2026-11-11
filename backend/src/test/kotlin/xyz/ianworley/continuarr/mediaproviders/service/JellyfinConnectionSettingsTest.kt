@@ -28,7 +28,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 
 private const val URL = "http://jellyfin:8096"
 private const val OTHER_URL = "https://media.example:8920"
@@ -85,7 +84,7 @@ class JellyfinConnectionSettingsTest(
 		settings.save(OTHER_URL, OTHER_API_KEY)
 
 		assertEquals(1, rowCount())
-		assertEquals(OTHER_URL, settings.savedUrl())
+		assertEquals(OTHER_URL, settings.saved().url)
 		val stored = assertIs<StoredConnection.Usable>(store.load())
 		assertEquals(OTHER_EXPECTED_AUTHORIZATION, stored.connection.apiKey.authorizationHeader())
 	}
@@ -109,7 +108,22 @@ class JellyfinConnectionSettingsTest(
 	@Test
 	fun `with nothing saved the connection loads as NotConfigured`() {
 		assertEquals(StoredConnection.NotConfigured, store.load())
-		assertNull(settings.savedUrl())
+		assertEquals(SavedJellyfinConnection(null, JellyfinApiKeyState.NONE), settings.saved())
+	}
+
+	@Test
+	fun `a saved key that decrypts reads as STORED`() {
+		settings.save(URL, API_KEY)
+
+		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.STORED), settings.saved())
+	}
+
+	@Test
+	fun `a saved key reads as UNREADABLE without an encryption key`() {
+		settings.save(URL, API_KEY)
+		val settingsWithoutKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties()))
+
+		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.UNREADABLE), settingsWithoutKey.saved())
 	}
 
 	@Test
@@ -127,11 +141,11 @@ class JellyfinConnectionSettingsTest(
 	}
 
 	@Test
-	fun `the saved URL still reads when the API key won't decrypt`() {
+	fun `a key saved under another encryption key reads as UNREADABLE with its URL`() {
 		settings.save(URL, API_KEY)
 		val settingsUnderOtherKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)))
 
-		assertEquals(URL, settingsUnderOtherKey.savedUrl())
+		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.UNREADABLE), settingsUnderOtherKey.saved())
 	}
 
 	@Test
