@@ -33,10 +33,12 @@ await runJourney(async ({ page, step, record }) => {
     if (new URL(request.url()).pathname.startsWith('/api')) apiRequests.push(`${request.method()} ${request.url()}`)
   })
 
+  // The Search button and the field share the name Search, so the field reports its role instead.
   const focusedName = () =>
     page.evaluate(() => {
       const active = document.activeElement
-      return active?.getAttribute('aria-label') ?? active?.getAttribute('placeholder') ?? active?.textContent ?? null
+      if (active instanceof HTMLInputElement) return `${active.type} field`
+      return active?.getAttribute('aria-label') ?? active?.textContent ?? null
     })
   // The box the search button controls holds the icon, the field, and the close button.
   const searchBox = async () =>
@@ -97,7 +99,7 @@ await runJourney(async ({ page, step, record }) => {
   await toggle.click()
   await field.waitFor()
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true')
-  assert.equal(await focusedName(), 'Search', 'opening search focuses the field')
+  assert.equal(await focusedName(), 'search field', 'opening search focuses the field')
   const row = await searchBox()
   assert.deepEqual(row, { top: HEADER_HEIGHT, width: PHONE.width, height: HEADER_HEIGHT }, 'search opens as a full-width row under the header')
   const openHeadingTop = (await heading.boundingBox())?.y
