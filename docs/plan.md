@@ -283,8 +283,8 @@ library pairs, and matches live in the database and are edited in the admin UI.
 | `SPRING_DATASOURCE_*` | Postgres connection (Compose only; Testcontainers handles dev and tests) |
 
 The admin saves the Jellyfin URL and API key with `PUT /api/v1/jellyfin/connection`. `GET` on the
-same path returns the URL and never the key. The key is stored encrypted, so saving needs
-`CONTINUARR_ENCRYPTION_KEY`. The app starts without it, as a fresh `docker compose up` from
+same path returns the URL and whether the saved key still decrypts (`apiKeyState`), never the key.
+The key is stored encrypted, so saving needs `CONTINUARR_ENCRYPTION_KEY`. The app starts without it, as a fresh `docker compose up` from
 `.env.example` does, and the save answers 503 until it is set. A malformed key fails startup. Changing
 the key leaves the saved Jellyfin key unreadable until the admin saves the connection again. Until a
 connection is saved, or while the saved key doesn't decrypt, every Jellyfin call fails as unreachable,
