@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { fetchSession, fetchSetupStatus } from './api/client.ts'
 import { LoginPage } from './login/LoginPage.tsx'
+import { MEDIA_SERVERS_PATH, MediaServersPage } from './settings/MediaServersPage.tsx'
 import { SetupPage } from './setup/SetupPage.tsx'
 import { Shell } from './shell/Shell.tsx'
 
@@ -29,9 +30,19 @@ const shellRoute = createRoute({
   component: Shell,
 })
 
+// Settings is the only signed-in page so far, so home opens it.
 const indexRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/',
+  beforeLoad: () => {
+    throw redirect({ to: MEDIA_SERVERS_PATH })
+  },
+})
+
+const mediaServersRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: MEDIA_SERVERS_PATH,
+  component: MediaServersPage,
 })
 
 const loginRoute = createRoute({
@@ -48,7 +59,7 @@ const setupRoute = createRoute({
   component: SetupPage,
 })
 
-export const routeTree = rootRoute.addChildren([shellRoute.addChildren([indexRoute]), loginRoute, setupRoute])
+export const routeTree = rootRoute.addChildren([shellRoute.addChildren([indexRoute, mediaServersRoute]), loginRoute, setupRoute])
 
 export const router = createRouter({ routeTree })
 

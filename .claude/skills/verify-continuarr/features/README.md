@@ -29,5 +29,6 @@ Each feature file starts with an H1 title and one paragraph about the user-visib
 
 - [First-run setup](./first-run-setup.md) covers the setup redirect, token and password errors, admin creation, and the closed setup page.
 - [Sign in](./sign-in.md) covers the login page, rejected credentials, the signed-in shell, sign-out, and the redirect from `/` without a session.
+- [App shell](./app-shell.md) covers the signed-in header, the icon rail, the navigation drawer, and the phone layout.
 - [Access control](./access-control.md) covers which endpoints answer without a session, and the CSRF requirement on state-changing calls.
 - [Jellyfin connection](./jellyfin-connection.md) covers saving the Jellyfin URL and API key through the API, its validation, the missing encryption key, and reading the URL back without the key.
