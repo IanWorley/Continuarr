@@ -178,3 +178,80 @@ it('closes the drawer on a click outside it and returns focus to the hamburger',
   expect(drawer.hidden).toBe(true)
   expect(document.activeElement).toBe(hamburger)
 })
+
+async function openSearch() {
+  stubBackend({ [`GET ${AUTH_PATH}`]: signedIn })
+  openShell()
+  const toggle = await screen.findByRole('button', { name: 'Search' })
+  fireEvent.click(toggle)
+  return { toggle, field: screen.getByRole('searchbox', { name: 'Search' }) }
+}
+
+it('opens the phone search row with focus in the field', async () => {
+  const { toggle, field } = await openSearch()
+
+  expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  expect(document.activeElement).toBe(field)
+})
+
+it('sends no request while the admin types a search', async () => {
+  const { field } = await openSearch()
+  const requestsBefore = fetchMock.mock.calls.length
+
+  fireEvent.change(field, { target: { value: 'api key' } })
+  fireEvent.keyDown(field, { key: 'Enter' })
+
+  expect(fetchMock.mock.calls.length).toBe(requestsBefore)
+})
+
+it('closes search on Escape and returns focus to the search button', async () => {
+  const { toggle } = await openSearch()
+
+  fireEvent.keyDown(document, { key: 'Escape' })
+
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(document.activeElement).toBe(toggle)
+})
+
+it('closes search with its close button and returns focus to the search button', async () => {
+  const { toggle } = await openSearch()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Close search' }))
+
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(document.activeElement).toBe(toggle)
+})
+
+it('closes search when the search button is pressed again', async () => {
+  const { toggle } = await openSearch()
+
+  fireEvent.click(toggle)
+
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+})
+
+it('closes search on a click outside the header without moving focus to the search button', async () => {
+  const { toggle } = await openSearch()
+
+  fireEvent.click(screen.getByRole('heading', { name: 'Media servers' }))
+
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(document.activeElement).not.toBe(toggle)
+})
+
+it('keeps search open on a click inside the header', async () => {
+  const { toggle, field } = await openSearch()
+
+  fireEvent.click(field)
+
+  expect(toggle.getAttribute('aria-expanded')).toBe('true')
+})
+
+it('closes search when the drawer opens', async () => {
+  const { toggle } = await openSearch()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(screen.getByRole('navigation', { name: 'Main menu' }).hidden).toBe(false)
+})
