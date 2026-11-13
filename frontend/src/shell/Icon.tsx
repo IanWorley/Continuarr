@@ -31,6 +31,28 @@ const ICONS = {
   ),
   pulse: <path d="M3 12h4l3-8 4 16 3-8h4" />,
   logout: <path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" />,
+  save: <path d="M5 3h11l3 3v15H5zM8 3v5h7V3M8 21v-7h8v7" />,
+  refresh: <path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" />,
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </>
+  ),
+  unlock: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 7.5-2" />
+    </>
+  ),
+  check: <path d="m5 12 5 5 9-10" />,
+  alert: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v5.5M12 16.5h.01" />
+    </>
+  ),
+  warn: <path d="M12 3 2 20h20zM12 10v4M12 17h.01" />,
   search: (
     <>
       <circle cx="11" cy="11" r="7" />
