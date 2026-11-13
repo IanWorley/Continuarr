@@ -168,6 +168,24 @@
         }
       }
     },
+    "/api/v1/plex/connection" : {
+      "get" : {
+        "tags" : [ "plex-connection-controller" ],
+        "operationId" : "plexConnection",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlexConnectionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth" : {
       "get" : {
         "tags" : [ "session-controller" ],
@@ -269,6 +287,23 @@
             "type" : [ "string", "null" ]
           }
         }
+      },
+      "PlexConnectionResponse" : {
+        "type" : "object",
+        "properties" : {
+          "url" : {
+            "type" : [ "string", "null" ]
+          },
+          "source" : {
+            "type" : [ "string", "null" ],
+            "enum" : [ "ENVIRONMENT", "PLEX_TV" ]
+          },
+          "tokenState" : {
+            "type" : "string",
+            "enum" : [ "NONE", "STORED", "UNREADABLE" ]
+          }
+        },
+        "required" : [ "tokenState" ]
       },
       "JellyfinConnectionResponse" : {
         "type" : "object",

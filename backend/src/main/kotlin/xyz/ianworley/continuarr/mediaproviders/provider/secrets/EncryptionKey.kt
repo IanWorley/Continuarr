@@ -38,9 +38,9 @@ private fun parseSecretKey(hex: String): SecretKey {
 class SecretsConfiguration
 
 /**
- * Encrypts the secrets Continuarr stores, such as the Jellyfin API key and the Plex token, with AES-256-GCM.
- * Each ciphertext carries its own random IV, so saving the same secret twice stores different bytes. The key is
- * random, not a password, so there is no salt and no key derivation.
+ * Encrypts the secrets Continuarr stores with AES-256-GCM. Each ciphertext carries its own random IV, so saving
+ * the same secret twice stores different bytes. The key is random, not a password, so there is no salt and no key
+ * derivation.
  */
 class SecretCipher(secretKey: SecretKey) {
 
