@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication
 import org.springframework.core.env.ConfigurableEnvironment
 import org.springframework.core.env.MapPropertySource
 
-private const val PROPERTY_SOURCE_NAME = "continuarrEncryptionKeyFile"
+internal const val PROPERTY_SOURCE_NAME = "continuarrEncryptionKeyFile"
 
 /**
  * Supplies `continuarr.encryption-key` from the key file in `CONTINUARR_DATA_DIR` when nothing else sets it,

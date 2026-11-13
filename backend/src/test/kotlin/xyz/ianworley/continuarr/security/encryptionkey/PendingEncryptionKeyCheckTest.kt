@@ -85,6 +85,13 @@ class PendingEncryptionKeyCheckTest(
 	}
 
 	@Test
+	fun `a configured key starts even when the pending key file is damaged`() {
+		Files.writeString(dataDir.resolve("encryption.key.pending"), "damaged")
+
+		startAndCheck(ENCRYPTION_KEY_PROPERTY to TEST_ENCRYPTION_KEY)
+	}
+
+	@Test
 	fun `a committed key starts with saved secrets`() {
 		startAndCheck()
 		saveSecret()

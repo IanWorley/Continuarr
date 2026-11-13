@@ -58,6 +58,9 @@ internal class EncryptionKeyFiles(private val dataDir: Path) {
 			key
 		} catch (_: FileAlreadyExistsException) {
 			readOrNull(committed)
+		} catch (_: NoSuchFileException) {
+			// Another start committed this same pending key and deleted the pending file first.
+			readOrNull(committed)
 		}
 		Files.deleteIfExists(pending)
 		return committedKey == key

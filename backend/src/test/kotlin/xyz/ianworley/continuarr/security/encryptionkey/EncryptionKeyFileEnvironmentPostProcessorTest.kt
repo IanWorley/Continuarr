@@ -60,6 +60,15 @@ class EncryptionKeyFileEnvironmentPostProcessorTest {
 	}
 
 	@Test
+	fun `committing a key that another start already committed succeeds`() {
+		val files = EncryptionKeyFiles(dataDir)
+		val key = files.loadOrCreate()
+		assertTrue(files.commit(key))
+
+		assertTrue(files.commit(key))
+	}
+
+	@Test
 	fun `a configured key wins and no file is written`() {
 		val key = start("continuarr.data-dir" to dataDir.toString(), ENCRYPTION_KEY_PROPERTY to TEST_ENCRYPTION_KEY)
 
