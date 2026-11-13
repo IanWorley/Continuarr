@@ -42,8 +42,7 @@ const apiKey = randomBytes(API_KEY_BYTES).toString('hex')
 const invalidApiKey = `${apiKey} with spaces`
 const otherApiKey = randomBytes(API_KEY_BYTES).toString('hex')
 
-/** Stands in for a changed CONTINUARR_ENCRYPTION_KEY, which a launch can't change while it runs. */
-async function corruptSavedCiphertext() {
+async function makeSavedKeyUnreadable() {
   const ids = (await readFile(join(RUN_DIR, 'containers'), 'utf8')).split('\n').filter(Boolean)
   const images = await Promise.all(ids.map(async (id) => (await run('docker', ['inspect', '--format', '{{.Config.Image}}', id])).stdout.trim()))
   const postgres = ids.find((_, index) => images[index].startsWith(POSTGRES_IMAGE_PREFIX))
@@ -51,7 +50,6 @@ async function corruptSavedCiphertext() {
   await run('docker', ['exec', postgres, 'psql', '-U', POSTGRES_USER, '-d', POSTGRES_DATABASE, '-c', CORRUPT_CIPHERTEXT_SQL])
 }
 
-/** A request with a CSRF token but no session, so only the missing login can refuse it. */
 async function matchWithoutSession() {
   const csrf = await fetch(`${BACKEND_URL}${CSRF_PATH}`)
   const cookie = csrf.headers.getSetCookie().map((header) => header.split(';')[0]).find((pair) => pair.startsWith(`${CSRF_COOKIE}=`))
@@ -138,7 +136,7 @@ await runJourney(async ({ page, step, record }) => {
   assert.equal(withoutSession.status, HTTP_UNAUTHORIZED, 'matching without a session answers 401')
   assert.ok(!withoutSession.body.includes(apiKey), 'a refused match never echoes the key')
 
-  await corruptSavedCiphertext()
+  await makeSavedKeyUnreadable()
   const unreadable = await read()
   assert.deepEqual(unreadable, { url: JELLYFIN_URL, apiKeyState: 'UNREADABLE' }, 'GET reports a key that no longer decrypts')
   const matchUnreadable = await match({ data: { apiKey } })
