@@ -1,6 +1,6 @@
 # Jellyfin connection
 
-The signed-in admin saves the Jellyfin server's URL and API key with `PUT /api/v1/jellyfin/connection` and reads back the saved URL and `apiKeyState` with `GET` on the same path. `GET` never returns the key. `apiKeyState` is `NONE` before a save, `STORED` when the saved key decrypts under the current encryption key, and `UNREADABLE` when it doesn't. A bad URL or key answers `400` and names the field without echoing its value. Saving needs `CONTINUARR_ENCRYPTION_KEY`, because the key is stored encrypted. Without it the save answers `503`. Saving doesn't contact Jellyfin. [Configuration in `docs/plan.md`](../../../../docs/plan.md#configuration) is the source for these rules.
+The signed-in admin saves the Jellyfin server's URL and API key with `PUT /api/v1/jellyfin/connection` and reads back the saved URL and `apiKeyState` with `GET` on the same path. `PATCH` changes only the fields it sends, so a new URL keeps the saved key. `GET` never returns the key. `apiKeyState` is `NONE` before a save, `STORED` when the saved key decrypts under the current encryption key, and `UNREADABLE` when it doesn't. A bad URL or key answers `400` and names the field without echoing its value. Saving needs `CONTINUARR_ENCRYPTION_KEY`, because the key is stored encrypted. Without it the save answers `503`. Saving doesn't contact Jellyfin. `POST /api/v1/jellyfin/connection/api-key/match` takes `{"apiKey": "..."}` and answers `{"result": ...}` with `MATCH`, `MISMATCH`, `NONE` when nothing is saved, or `UNREADABLE` when the saved key doesn't decrypt. It never returns either key. [Configuration in `docs/plan.md`](../../../../docs/plan.md#configuration) is the source for these rules.
 
 ## Sub-features
 
@@ -10,7 +10,11 @@ The signed-in admin saves the Jellyfin server's URL and API key with `PUT /api/v
 - `jellyfin-invalid` answers `400` with `invalidFields`, such as `["URL"]` or `["API_KEY"]`.
 - `jellyfin-no-encryption-key` answers `503` to a valid `PUT` when the launch has no `CONTINUARR_ENCRYPTION_KEY`.
 - `jellyfin-saved` answers `204` to a valid `PUT`, and `GET` then returns the URL with `"apiKeyState":"STORED"` and no key.
+- `jellyfin-patch` answers `204` to a `PATCH` that sends only `url`, and the saved key still answers `MATCH`. A first `PATCH` without `url` and `apiKey`, or one that moves the URL from `https` to `http` without `apiKey`, answers `400` naming the missing field.
 - `jellyfin-key-hidden` keeps the key out of every response and out of the backend log.
+- `jellyfin-match` answers `NONE` before a save, `MATCH` for the saved key, and `MISMATCH` for another valid key.
+- `jellyfin-match-invalid` answers `400` with no body to an invalid key or a body that doesn't parse.
+- `jellyfin-match-unreadable` answers `UNREADABLE`, and `GET` reports `"apiKeyState":"UNREADABLE"`, once the saved ciphertext no longer decrypts.
 
 ## How to get to it (user POV)
 
@@ -23,7 +27,7 @@ Preconditions:
 - `control.sh drive first-run-setup` passed earlier in this launch, so `$RUN_DIR/admin-credentials.json` holds the admin.
 - A plain `control.sh launch` has a random encryption key, so it covers `jellyfin-saved`. For `jellyfin-no-encryption-key`, launch with `CONTINUARR_VERIFY_ENCRYPTION_KEY= control.sh launch` instead.
 
-- **Journey.** Run `control.sh drive jellyfin-connection`. It signs in through the UI, then calls the API with the browser's session. It checks `jellyfin-empty`, `jellyfin-invalid`, `jellyfin-saved`, and `jellyfin-key-hidden`, and writes `jellyfin-connection.json`. It needs a launch with a key.
+- **Journey.** Run `control.sh drive jellyfin-connection`. It signs in through the UI, then calls the API with the browser's session. It checks `jellyfin-empty`, `jellyfin-invalid`, `jellyfin-saved`, `jellyfin-patch`, `jellyfin-key-hidden`, every `jellyfin-match` case, and the `401` and `403` refusals of a match. It writes `jellyfin-connection.json`, `jellyfin-connection-patch.json`, and `jellyfin-api-key-match.json`. It needs a launch with a key. It ends by overwriting the saved ciphertext in this run's Postgres container with `docker exec ... psql`, so drive it last in a launch.
 
 To drive the same paths by hand, run these from a scratch directory. `RUN_DIR` is `~/.local/state/continuarr-verify/run`, or `$CONTINUARR_VERIFY_HOME/run`.
 
@@ -39,7 +43,7 @@ To drive the same paths by hand, run these from a scratch directory. `RUN_DIR` i
 
 - Use a placeholder API key, never a real one. Nothing checks it against a Jellyfin server.
 - `control.sh launch` generates the encryption key and never prints it. Each launch starts with an empty database, so a new key loses nothing.
-- `UNREADABLE` can't be reached live, because each launch starts with an empty database. The backend tests cover it by saving under one encryption key and reading under another.
+- A launch can't change its encryption key, so the journey reaches `UNREADABLE` by corrupting the saved ciphertext instead. The backend tests cover a key saved under another encryption key.
 - The journey makes a new API key for each run and never writes it to the evidence.
 - Without a saved connection, the backend log has a `Jellyfin connection check failed: Jellyfin connection not configured` warning at startup. That is expected on every launch.
 - Keep `cookies.txt` in the scratch directory and delete it afterward. It holds a session cookie once you sign in.

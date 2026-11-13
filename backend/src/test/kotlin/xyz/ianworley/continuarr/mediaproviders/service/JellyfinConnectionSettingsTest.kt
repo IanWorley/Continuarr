@@ -149,6 +149,14 @@ class JellyfinConnectionSettingsTest(
 	}
 
 	@Test
+	fun `a key saved under another encryption key matches as UNREADABLE`() {
+		settings.save(URL, API_KEY)
+		val settingsUnderOtherKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)))
+
+		assertEquals(JellyfinApiKeyMatch.UNREADABLE, settingsUnderOtherKey.matchApiKeyOrNull(API_KEY))
+	}
+
+	@Test
 	fun `a database failure loads as Unusable instead of throwing`() {
 		// What the real repository throws when Postgres refuses the connection.
 		val unreachableDatabase = object : JellyfinConnectionRepository {
