@@ -51,6 +51,9 @@ private const val HTTP_URL = "http://jellyfin.example:8096"
 private const val NAME_WITH_CONTROL_CHARACTER = "Basement\u0007Jellyfin"
 private const val MAX_NAME_LENGTH = 100
 private val TOO_LONG_NAME = "n".repeat(MAX_NAME_LENGTH + 1)
+// Blank, but the name rules still apply, so neither clears the saved name.
+private const val BLANK_CONTROL_CHARACTERS = "\t\r\n"
+private val TOO_MANY_SPACES = " ".repeat(MAX_NAME_LENGTH + 1)
 // Sent as a JSON escape, since a lone surrogate can't be written as UTF-8.
 private const val LONE_SURROGATE_NAME_BODY = """{"name": "Basement\uD800Jellyfin"}"""
 // Each emoji is one character but two UTF-16 units, so this name is at the limit, not over it.
@@ -356,7 +359,7 @@ class JellyfinConnectionControllerTest(
 	fun `a name with a control character or over 100 characters answers 400 without echoing it`() {
 		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
 
-		for (name in listOf(NAME_WITH_CONTROL_CHARACTER, TOO_LONG_NAME)) {
+		for (name in listOf(NAME_WITH_CONTROL_CHARACTER, TOO_LONG_NAME, BLANK_CONTROL_CHARACTERS, TOO_MANY_SPACES)) {
 			val response = mockMvc.patchConnection("name" to name)
 				.andExpect { status { isBadRequest() } }
 				.andExpect { content { json(NAME_INVALID_JSON, JsonCompareMode.STRICT) } }

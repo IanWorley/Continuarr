@@ -121,11 +121,11 @@ private value class ConnectionName(val value: String?)
 
 /**
  * Null when [raw] is over [MAX_NAME_LENGTH] characters or holds a control character or a lone surrogate, which
- * Postgres would store as '?'. A blank name clears the saved one.
+ * Postgres would store as '?'. Otherwise a blank name clears the saved one, so tabs and newlines can't clear it.
  */
 private fun parseNameOrNull(raw: String): ConnectionName? = when {
-	raw.isBlank() -> ConnectionName(null)
 	raw.codePointCount(0, raw.length) > MAX_NAME_LENGTH || raw.codePoints().anyMatch(::isControlOrLoneSurrogate) -> null
+	raw.isBlank() -> ConnectionName(null)
 	else -> ConnectionName(raw)
 }
 
