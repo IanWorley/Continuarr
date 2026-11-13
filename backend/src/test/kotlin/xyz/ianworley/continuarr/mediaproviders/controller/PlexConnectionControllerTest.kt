@@ -9,7 +9,6 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
-import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
 import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexConnectionStore
 import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexToken
@@ -25,7 +24,7 @@ private const val TOKEN = "plexControllerToken789"
 private const val NOTHING_SAVED_JSON = """{"url": null, "source": null, "tokenState": "NONE"}"""
 private const val SEEDED_JSON = """{"url": "$URL", "source": "ENVIRONMENT", "tokenState": "STORED"}"""
 
-@SpringBootTest(properties = [TEST_ENCRYPTION_KEY_PROPERTY])
+@SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class PlexConnectionControllerTest(

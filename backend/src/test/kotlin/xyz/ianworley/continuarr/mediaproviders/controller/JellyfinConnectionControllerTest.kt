@@ -21,7 +21,6 @@ import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import tools.jackson.databind.json.JsonMapper
-import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
 import xyz.ianworley.continuarr.security.patchWithCsrf
 import xyz.ianworley.continuarr.security.postWithCsrf
@@ -44,19 +43,17 @@ private const val JSON_NULL_BODY = "null"
 
 private const val NOTHING_SAVED_JSON = """{"url": null, "apiKeyState": "NONE"}"""
 private const val SAVED_JSON = """{"url": "$URL", "apiKeyState": "STORED"}"""
-private const val UNREADABLE_JSON = """{"url": "$URL", "apiKeyState": "UNREADABLE"}"""
+private const val URL_WITHOUT_KEY_JSON = """{"url": "$URL", "apiKeyState": "NONE"}"""
 private const val HTTPS_URL = "https://jellyfin.example:8920"
 private const val HTTP_URL = "http://jellyfin.example:8096"
 private const val MISSPELLED_URL_BODY = """{"URL": "$URL"}"""
 private const val NEW_URL_JSON = """{"url": "$HTTPS_URL", "apiKeyState": "STORED"}"""
 private const val API_KEY_INVALID_JSON = """{"invalidFields": ["API_KEY"]}"""
 private const val UNQUOTED_PATCH_BODY = """{"apiKey": $UNQUOTED_API_KEY}"""
-private val UNDECRYPTABLE_CIPHERTEXT = "not AES-GCM ciphertext".toByteArray()
 private const val BOTH_FIELDS_INVALID_JSON = """{"invalidFields": ["URL", "API_KEY"]}"""
 private const val MATCH_JSON = """{"result": "MATCH"}"""
 private const val MISMATCH_JSON = """{"result": "MISMATCH"}"""
 private const val NO_KEY_SAVED_JSON = """{"result": "NONE"}"""
-private const val UNREADABLE_KEY_JSON = """{"result": "UNREADABLE"}"""
 private const val UNQUOTED_MATCH_BODY = """{"apiKey": $UNQUOTED_API_KEY}"""
 private const val BOOLEAN_TEXT_API_KEY = "true"
 private const val BOOLEAN_MATCH_BODY = """{"apiKey": true}"""
@@ -95,7 +92,7 @@ private fun MockMvc.matchApiKey(apiKey: String): ResultActionsDsl = postWithCsrf
 	matchBody(apiKey)
 }
 
-@SpringBootTest(properties = [TEST_ENCRYPTION_KEY_PROPERTY])
+@SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 @ExtendWith(OutputCaptureExtension::class)
@@ -125,6 +122,15 @@ class JellyfinConnectionControllerTest(
 			.andReturn()
 		assertFalse(saved.response.contentAsString.contains(API_KEY))
 		assertFalse(read.response.contentAsString.contains(API_KEY))
+	}
+
+	@Test
+	fun `GET returns a saved URL with no key as NONE`() {
+		jdbcClient.sql("INSERT INTO jellyfin_connection (id, url) VALUES (1, :url)").param("url", URL).update()
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { status { isOk() } }
+			.andExpect { content { json(URL_WITHOUT_KEY_JSON, JsonCompareMode.STRICT) } }
 	}
 
 	@Test
@@ -369,65 +375,5 @@ class JellyfinConnectionControllerTest(
 	private fun MockMvc.saveConnection(url: String, apiKey: String): ResultActionsDsl = putWithCsrf(JELLYFIN_CONNECTION_PATH) {
 		with(user(ADMIN_USERNAME))
 		jsonBody(url, apiKey)
-	}
-}
-
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration::class)
-class JellyfinConnectionControllerWithoutEncryptionKeyTest(
-	@Autowired private val mockMvc: MockMvc,
-	@Autowired private val jdbcClient: JdbcClient,
-) {
-
-	@BeforeTest
-	fun startWithNothingSaved() {
-		jdbcClient.sql("DELETE FROM jellyfin_connection").update()
-	}
-
-	@Test
-	fun `GET reports a saved key it can't decrypt as UNREADABLE`() {
-		jdbcClient.sql("INSERT INTO jellyfin_connection (id, url, api_key_ciphertext) VALUES (1, :url, :ciphertext)")
-			.param("url", URL)
-			.param("ciphertext", UNDECRYPTABLE_CIPHERTEXT)
-			.update()
-
-		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
-			.andExpect { status { isOk() } }
-			.andExpect { content { json(UNREADABLE_JSON, JsonCompareMode.STRICT) } }
-	}
-
-	@Test
-	fun `matching against a saved key it can't decrypt answers UNREADABLE`() {
-		jdbcClient.sql("INSERT INTO jellyfin_connection (id, url, api_key_ciphertext) VALUES (1, :url, :ciphertext)")
-			.param("url", URL)
-			.param("ciphertext", UNDECRYPTABLE_CIPHERTEXT)
-			.update()
-
-		mockMvc.matchApiKey(API_KEY)
-			.andExpect { status { isOk() } }
-			.andExpect { content { json(UNREADABLE_KEY_JSON, JsonCompareMode.STRICT) } }
-	}
-
-	@Test
-	fun `a new URL works without an encryption key, because the saved key isn't touched`() {
-		jdbcClient.sql("INSERT INTO jellyfin_connection (id, url, api_key_ciphertext) VALUES (1, :url, :ciphertext)")
-			.param("url", URL)
-			.param("ciphertext", UNDECRYPTABLE_CIPHERTEXT)
-			.update()
-
-		mockMvc.patchConnection("url" to HTTPS_URL).andExpect { status { isNoContent() } }
-		mockMvc.patchConnection("apiKey" to API_KEY).andExpect { status { isServiceUnavailable() } }
-	}
-
-	@Test
-	fun `PUT answers 503 and stores nothing without an encryption key`() {
-		mockMvc.putWithCsrf(JELLYFIN_CONNECTION_PATH) {
-			with(user(ADMIN_USERNAME))
-			jsonBody(URL, API_KEY)
-		}.andExpect { status { isServiceUnavailable() } }
-
-		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
-			.andExpect { content { json(NOTHING_SAVED_JSON, JsonCompareMode.STRICT) } }
 	}
 }

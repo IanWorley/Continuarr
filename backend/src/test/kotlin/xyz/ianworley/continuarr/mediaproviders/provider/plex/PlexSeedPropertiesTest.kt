@@ -58,7 +58,7 @@ class PlexSeedPropertiesTest {
 		withEnvironment(URL_VARIABLE to URL, TOKEN_VARIABLE to TOKEN).run { context ->
 			val seed = assertNotNull(context.getBean(PlexSeedProperties::class.java).seed)
 			assertEquals(URL, seed.url.toString())
-			assertEquals(TOKEN, String(seed.token.plaintext(), Charsets.US_ASCII))
+			assertEquals(TOKEN, seed.token.plaintext())
 		}
 	}
 

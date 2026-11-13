@@ -15,18 +15,15 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.CannotCreateTransactionException
-import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionRepository
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionRow
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionStore
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.StoredConnection
-import xyz.ianworley.continuarr.mediaproviders.provider.secrets.EncryptionKeyProperties
 import xyz.ianworley.continuarr.mediaproviders.MediaServer
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
 private const val URL = "http://jellyfin:8096"
@@ -38,20 +35,17 @@ private const val INVALID_API_KEY = "has a space"
 private const val EXPECTED_AUTHORIZATION = """MediaBrowser Client="Continuarr", Token="$API_KEY""""
 private const val OTHER_EXPECTED_AUTHORIZATION = """MediaBrowser Client="Continuarr", Token="$OTHER_API_KEY""""
 
-private const val OTHER_ENCRYPTION_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-
 private const val UNREACHABLE_DATABASE_MESSAGE = "Could not open JPA EntityManager for transaction"
 
 private const val USERS_PATH = "/Users"
 private const val USERS_BODY = """[{"Id": "valid-user", "Name": "valid", "Policy": {"IsDisabled": false}}]"""
 
-@SpringBootTest(properties = [TEST_ENCRYPTION_KEY_PROPERTY])
+@SpringBootTest
 @Import(TestcontainersConfiguration::class)
 class JellyfinConnectionSettingsTest(
 	@Autowired private val settings: JellyfinConnectionSettings,
 	@Autowired private val store: JellyfinConnectionStore,
 	@Autowired private val mediaServer: MediaServer,
-	@Autowired private val repository: JellyfinConnectionRepository,
 	@Autowired private val jdbcClient: JdbcClient,
 ) {
 
@@ -65,14 +59,14 @@ class JellyfinConnectionSettingsTest(
 
 	private fun rowCount(): Long = jdbcClient.sql("SELECT count(*) FROM jellyfin_connection").query(Long::class.java).single()
 
-	private fun storedCiphertext(): ByteArray =
-		jdbcClient.sql("SELECT api_key_ciphertext FROM jellyfin_connection").query(ByteArray::class.java).single()
+	private fun saveUrlWithoutKey() {
+		jdbcClient.sql("INSERT INTO jellyfin_connection (id, url) VALUES (1, :url)").param("url", URL).update()
+	}
 
 	@Test
-	fun `save stores the API key encrypted`() {
+	fun `save stores the API key the adapter then sends`() {
 		assertEquals(JellyfinSaveResult.Saved, settings.save(URL, API_KEY))
 
-		assertFalse(String(storedCiphertext(), Charsets.ISO_8859_1).contains(API_KEY))
 		val stored = assertIs<StoredConnection.Usable>(store.load())
 		assertEquals(EXPECTED_AUTHORIZATION, stored.connection.apiKey.authorizationHeader())
 	}
@@ -98,62 +92,45 @@ class JellyfinConnectionSettingsTest(
 	}
 
 	@Test
-	fun `save without an encryption key returns EncryptionKeyMissing and stores nothing`() {
-		val settingsWithoutKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties()))
-
-		assertEquals(JellyfinSaveResult.EncryptionKeyMissing, settingsWithoutKey.save(URL, API_KEY))
-		assertEquals(0, rowCount())
-	}
-
-	@Test
 	fun `with nothing saved the connection loads as NotConfigured`() {
 		assertEquals(StoredConnection.NotConfigured, store.load())
 		assertEquals(SavedJellyfinConnection(null, JellyfinApiKeyState.NONE), settings.saved())
 	}
 
 	@Test
-	fun `a saved key that decrypts reads as STORED`() {
+	fun `a saved key reads as STORED`() {
 		settings.save(URL, API_KEY)
 
 		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.STORED), settings.saved())
 	}
 
 	@Test
-	fun `a saved key reads as UNREADABLE without an encryption key`() {
-		settings.save(URL, API_KEY)
-		val settingsWithoutKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties()))
+	fun `a saved URL with no key reads as NONE with its URL`() {
+		saveUrlWithoutKey()
 
-		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.UNREADABLE), settingsWithoutKey.saved())
+		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.NONE), settings.saved())
 	}
 
 	@Test
-	fun `a saved row loads as Unusable without an encryption key`() {
-		settings.save(URL, API_KEY)
+	fun `a saved URL with no key loads as Unusable`() {
+		saveUrlWithoutKey()
 
-		assertIs<StoredConnection.Unusable>(JellyfinConnectionStore(repository, EncryptionKeyProperties()).load())
+		assertIs<StoredConnection.Unusable>(store.load())
 	}
 
 	@Test
-	fun `a row saved under another encryption key loads as Unusable`() {
-		settings.save(URL, API_KEY)
+	fun `a saved URL with no key matches as NONE`() {
+		saveUrlWithoutKey()
 
-		assertIs<StoredConnection.Unusable>(JellyfinConnectionStore(repository, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)).load())
+		assertEquals(JellyfinApiKeyMatch.NONE, settings.matchApiKeyOrNull(API_KEY))
 	}
 
 	@Test
-	fun `a key saved under another encryption key reads as UNREADABLE with its URL`() {
-		settings.save(URL, API_KEY)
-		val settingsUnderOtherKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)))
+	fun `a patch that sends only a URL needs the key when none is saved`() {
+		saveUrlWithoutKey()
 
-		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.UNREADABLE), settingsUnderOtherKey.saved())
-	}
-
-	@Test
-	fun `a key saved under another encryption key matches as UNREADABLE`() {
-		settings.save(URL, API_KEY)
-		val settingsUnderOtherKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)))
-
-		assertEquals(JellyfinApiKeyMatch.UNREADABLE, settingsUnderOtherKey.matchApiKeyOrNull(API_KEY))
+		assertEquals(JellyfinSaveResult.Invalid(setOf(JellyfinField.API_KEY)), settings.patch(JellyfinConnectionPatch(OTHER_URL, null)))
+		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.NONE), settings.saved())
 	}
 
 	@Test
@@ -165,7 +142,7 @@ class JellyfinConnectionSettingsTest(
 			override fun save(row: JellyfinConnectionRow): JellyfinConnectionRow = throw CannotCreateTransactionException(UNREACHABLE_DATABASE_MESSAGE)
 		}
 
-		assertIs<StoredConnection.Unusable>(JellyfinConnectionStore(unreachableDatabase, EncryptionKeyProperties()).load())
+		assertIs<StoredConnection.Unusable>(JellyfinConnectionStore(unreachableDatabase).load())
 	}
 
 	@Test

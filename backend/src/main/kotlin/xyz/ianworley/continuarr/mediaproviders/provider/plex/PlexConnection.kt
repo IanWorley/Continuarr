@@ -14,8 +14,8 @@ enum class PlexConnectionSource {
 /** Keeps the token out of logs: [toString] hides it, and only [plaintext] reads it. */
 class PlexToken private constructor(private val value: String) {
 
-	/** For the store to encrypt before the token is saved. */
-	fun plaintext(): ByteArray = value.toByteArray(Charsets.US_ASCII)
+	/** For the store to save. */
+	fun plaintext(): String = value
 
 	override fun toString(): String = "PlexToken(hidden)"
 

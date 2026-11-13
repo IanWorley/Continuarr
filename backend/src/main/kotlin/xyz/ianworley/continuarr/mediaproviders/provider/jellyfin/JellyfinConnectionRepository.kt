@@ -13,7 +13,7 @@ import java.time.Instant
 class JellyfinConnectionRow(
 	@Id val id: Short,
 	val url: String,
-	val apiKeyCiphertext: ByteArray,
+	val apiKey: String?,
 	@UpdateTimestamp val updatedAt: Instant? = null,
 )
 

@@ -44,8 +44,6 @@ class PlexEnvironmentSeed(private val properties: PlexSeedProperties, private va
 			PlexSeedResult.SAVED -> log.info("Saved the Plex connection from {} and {}", URL_VARIABLE, TOKEN_VARIABLE)
 			PlexSeedResult.KEPT_PLEX_TV_LINK ->
 				log.info("Kept the Plex connection linked through plex.tv; {} and {} are ignored", URL_VARIABLE, TOKEN_VARIABLE)
-			PlexSeedResult.ENCRYPTION_KEY_MISSING ->
-				log.warn("{} is set but CONTINUARR_ENCRYPTION_KEY isn't, so the Plex connection wasn't saved", TOKEN_VARIABLE)
 		}
 	}
 }

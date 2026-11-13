@@ -52,9 +52,6 @@
                 }
               }
             }
-          },
-          "503" : {
-            "description" : "CONTINUARR_ENCRYPTION_KEY isn't set, so the API key can't be stored"
           }
         }
       },
@@ -84,9 +81,6 @@
                 }
               }
             }
-          },
-          "503" : {
-            "description" : "The request sends apiKey and CONTINUARR_ENCRYPTION_KEY isn't set, so the key can't be stored"
           }
         }
       }
@@ -257,7 +251,7 @@
         "properties" : {
           "result" : {
             "type" : "string",
-            "enum" : [ "MATCH", "MISMATCH", "NONE", "UNREADABLE" ]
+            "enum" : [ "MATCH", "MISMATCH", "NONE" ]
           }
         },
         "required" : [ "result" ]
@@ -300,7 +294,7 @@
           },
           "tokenState" : {
             "type" : "string",
-            "enum" : [ "NONE", "STORED", "UNREADABLE" ]
+            "enum" : [ "NONE", "STORED" ]
           }
         },
         "required" : [ "tokenState" ]
@@ -313,7 +307,7 @@
           },
           "apiKeyState" : {
             "type" : "string",
-            "enum" : [ "NONE", "STORED", "UNREADABLE" ]
+            "enum" : [ "NONE", "STORED" ]
           }
         },
         "required" : [ "apiKeyState" ]

@@ -5,8 +5,6 @@ import org.springframework.boot.DefaultApplicationArguments
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.simple.JdbcClient
-import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY
-import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
 import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexConnectionRepository
 import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexConnectionRow
@@ -14,20 +12,17 @@ import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexConnectionSourc
 import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexConnectionStore
 import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexEnvironmentSeed
 import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexSeedProperties
-import xyz.ianworley.continuarr.mediaproviders.provider.secrets.EncryptionKeyProperties
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 
 private const val URL = "http://plex:32400"
 private const val OTHER_URL = "https://plex.example:32400"
 private const val TOKEN = "plexSeedToken123"
 private const val OTHER_TOKEN = "otherPlexToken456"
-private const val OTHER_ENCRYPTION_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-private val PLEX_TV_CIPHERTEXT = "a plex.tv link's ciphertext".toByteArray()
+private const val PLEX_TV_TOKEN = "plexTvLinkToken789"
 
-@SpringBootTest(properties = [TEST_ENCRYPTION_KEY_PROPERTY])
+@SpringBootTest
 @Import(TestcontainersConfiguration::class)
 class PlexConnectionSettingsTest(
 	@Autowired private val settings: PlexConnectionSettings,
@@ -42,12 +37,10 @@ class PlexConnectionSettingsTest(
 
 	private fun rowCount(): Long = jdbcClient.sql("SELECT count(*) FROM plex_connection").query(Long::class.java).single()
 
-	private fun storedCiphertext(): ByteArray =
-		jdbcClient.sql("SELECT token_ciphertext FROM plex_connection").query(ByteArray::class.java).single()
+	private fun storedToken(): String? = jdbcClient.sql("SELECT token FROM plex_connection").query(String::class.java).single()
 
-	private fun seed(url: String, token: String, encryptionKey: String = TEST_ENCRYPTION_KEY) =
-		PlexEnvironmentSeed(PlexSeedProperties(url, token), PlexConnectionStore(repository, EncryptionKeyProperties(encryptionKey)))
-			.run(DefaultApplicationArguments())
+	private fun seed(url: String, token: String) =
+		PlexEnvironmentSeed(PlexSeedProperties(url, token), PlexConnectionStore(repository)).run(DefaultApplicationArguments())
 
 	@Test
 	fun `with nothing saved the connection reads as NONE`() {
@@ -55,11 +48,11 @@ class PlexConnectionSettingsTest(
 	}
 
 	@Test
-	fun `the seed saves the URL and the token encrypted, from the environment`() {
+	fun `the seed saves the URL and the token from the environment`() {
 		seed(URL, TOKEN)
 
 		assertEquals(SavedPlexConnection(URL, PlexConnectionSource.ENVIRONMENT, PlexTokenState.STORED), settings.saved())
-		assertFalse(String(storedCiphertext(), Charsets.ISO_8859_1).contains(TOKEN))
+		assertEquals(TOKEN, storedToken())
 	}
 
 	@Test
@@ -74,20 +67,13 @@ class PlexConnectionSettingsTest(
 
 	@Test
 	fun `the seed never replaces a connection linked through plex tv`() {
-		repository.save(PlexConnectionRow(1, OTHER_URL, PLEX_TV_CIPHERTEXT, PlexConnectionSource.PLEX_TV))
+		repository.save(PlexConnectionRow(1, OTHER_URL, PLEX_TV_TOKEN, PlexConnectionSource.PLEX_TV))
 
 		seed(URL, TOKEN)
 
 		assertEquals(OTHER_URL, settings.saved().url)
 		assertEquals(PlexConnectionSource.PLEX_TV, settings.saved().source)
-		assertEquals(PLEX_TV_CIPHERTEXT.toList(), storedCiphertext().toList())
-	}
-
-	@Test
-	fun `without an encryption key the seed saves nothing`() {
-		seed(URL, TOKEN, encryptionKey = "")
-
-		assertEquals(0, rowCount())
+		assertEquals(PLEX_TV_TOKEN, storedToken())
 	}
 
 	@Test
@@ -98,9 +84,9 @@ class PlexConnectionSettingsTest(
 	}
 
 	@Test
-	fun `a token saved under another encryption key reads as UNREADABLE with its URL and source`() {
-		seed(URL, TOKEN, encryptionKey = OTHER_ENCRYPTION_KEY)
+	fun `a saved row with no token reads as NONE with its URL and source`() {
+		repository.save(PlexConnectionRow(1, URL, null, PlexConnectionSource.ENVIRONMENT))
 
-		assertEquals(SavedPlexConnection(URL, PlexConnectionSource.ENVIRONMENT, PlexTokenState.UNREADABLE), settings.saved())
+		assertEquals(SavedPlexConnection(URL, PlexConnectionSource.ENVIRONMENT, PlexTokenState.NONE), settings.saved())
 	}
 }
