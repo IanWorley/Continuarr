@@ -25,7 +25,6 @@ const POSTGRES_IMAGE_PREFIX = 'postgres:'
 const POSTGRES_USER = 'test'
 const POSTGRES_DATABASE = 'test'
 const CORRUPT_CIPHERTEXT_SQL = "UPDATE jellyfin_connection SET api_key_ciphertext = 'not AES-GCM ciphertext'::bytea"
-const UNREADABLE_BODY = '{"apiKey": unquoted}'
 
 const run = promisify(execFile)
 
@@ -41,6 +40,8 @@ const backendLog = join((await readFile(join(RUN_DIR, 'evidence-dir'), 'utf8')).
 const apiKey = randomBytes(API_KEY_BYTES).toString('hex')
 const invalidApiKey = `${apiKey} with spaces`
 const otherApiKey = randomBytes(API_KEY_BYTES).toString('hex')
+// Jackson quotes the bad token in its parse error, so an unquoted key is the one most likely to leak.
+const unreadableBody = `{"apiKey": ${otherApiKey}}`
 
 async function makeSavedKeyUnreadable() {
   const ids = (await readFile(join(RUN_DIR, 'containers'), 'utf8')).split('\n').filter(Boolean)
@@ -128,8 +129,8 @@ await runJourney(async ({ page, step, record }) => {
   assert.deepEqual(mismatched, { status: HTTP_OK, body: { result: 'MISMATCH' } }, 'another key answers MISMATCH')
   const invalidKey = await match({ data: { apiKey: invalidApiKey } })
   assert.deepEqual(invalidKey, { status: HTTP_BAD_REQUEST, body: null }, 'an invalid key answers 400 with no body')
-  const unreadableBody = await match({ body: UNREADABLE_BODY })
-  assert.deepEqual(unreadableBody, { status: HTTP_BAD_REQUEST, body: null }, 'a body that does not parse answers 400 with no body')
+  const unparsed = await match({ body: unreadableBody })
+  assert.deepEqual(unparsed, { status: HTTP_BAD_REQUEST, body: null }, 'a body that does not parse answers 400 with no body')
   const withoutCsrf = await match({ data: { apiKey }, csrf: false })
   assert.equal(withoutCsrf.status, HTTP_FORBIDDEN, 'matching without the CSRF header answers 403')
   const withoutSession = await matchWithoutSession()
@@ -159,9 +160,9 @@ await runJourney(async ({ page, step, record }) => {
     match: matched,
     mismatch: mismatched,
     invalidKey,
-    unreadableBody,
-    withoutCsrf: { status: withoutCsrf.status },
-    withoutSession: { status: withoutSession.status },
+    unreadableBody: unparsed,
+    withoutCsrf,
+    withoutSession,
     unreadableSavedKey: matchUnreadable,
     eitherKeyInResponsesOrBackendLog: false,
   })
