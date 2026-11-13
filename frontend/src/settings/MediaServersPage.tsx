@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { JellyfinCard } from './JellyfinCard.tsx'
 
 export const MEDIA_SERVERS_PATH = '/settings/media-servers'
 
@@ -21,6 +22,10 @@ export function MediaServersPage() {
         <p className="mt-0.5 text-ink-400">
           The servers Continuarr reads watch history from. Each card saves on its own.
         </p>
+        {/* Two cards side by side above 1100px once Plex joins, stacked below. */}
+        <div className="mt-4 grid items-start gap-4 wide:grid-cols-2">
+          <JellyfinCard />
+        </div>
       </div>
     </>
   )

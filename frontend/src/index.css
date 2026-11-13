@@ -19,6 +19,12 @@
   --color-sync: #8b5cf6;
   --color-danger: #fca5a5;
   --color-danger-surface: #2a1215;
+  --color-ok: #4ade80;
+  --color-ok-surface: #0f2a1a;
+  --color-warn: #fbbf24;
+  --color-warn-surface: #2a2108;
+  /* Brand colors stay on a card's mark letter, so Plex amber never reads as an action or a warning. */
+  --color-jellyfin: #aa5cc3;
 
   /* The signed-in frame. Each name generates spacing utilities such as h-header and w-rail. */
   --spacing-header: 3.5rem;
@@ -31,6 +37,13 @@
   /* Phones get 44px controls, the touch-target size iOS and Android recommend. */
   --spacing-touch: 2.75rem;
   --container-page: 100rem;
+  /* Settings cards put field labels in a right-aligned column this wide, above the fields on phones. */
+  --spacing-label: 8rem;
+  /* Settings card text sizes from v9. On phones each grows to at least text-xs or text-help. */
+  --text-card-title: 0.9375rem;
+  --text-section: 0.6875rem;
+  --text-pill: 0.71875rem;
+  --text-help: 0.8125rem;
   /* The small dashed tag on parts that have no page or endpoint yet. Phones fall back to text-xs. */
   --text-tag: 0.65625rem;
   --text-tag--line-height: 1rem;
@@ -53,6 +66,11 @@
   input,
   select {
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* A field focused after a failed save scrolls clear of the fixed header, and of the sticky toolbar on phones. */
+  html {
+    scroll-padding-top: calc(var(--spacing-header) + var(--spacing-toolbar) + 0.75rem);
   }
 
   /* The page behind the open navigation drawer doesn't scroll. */

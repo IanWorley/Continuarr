@@ -10,6 +10,7 @@ export const CSRF_PATH = '/api/csrf'
 export const LOGIN_PATH = '/api/login'
 export const LOGOUT_PATH = '/api/logout'
 export const SETUP_PATH = '/api/setup'
+export const JELLYFIN_CONNECTION_PATH = '/api/v1/jellyfin/connection'
 export const API_TIMEOUT_MS = 10_000
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -26,6 +27,9 @@ export interface Credentials {
 export type Session = components['schemas']['Session']
 export type SetupRequest = components['schemas']['SetupRequest']
 export type SetupStatus = components['schemas']['SetupStatus']
+export type JellyfinConnection = components['schemas']['JellyfinConnectionResponse']
+export type JellyfinConnectionRequest = components['schemas']['JellyfinConnectionRequest']
+export type JellyfinConnectionProblem = components['schemas']['JellyfinConnectionProblem']
 
 /**
  * Sends a request to the backend. State-changing methods carry the CSRF token, fetching it
@@ -75,6 +79,25 @@ export async function fetchSetupStatus(): Promise<SetupStatus> {
 export function setUp(request: SetupRequest): Promise<Response> {
   return apiFetch(SETUP_PATH, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+}
+
+/** The saved Jellyfin URL and whether its API key decrypts. Never the key itself. */
+export async function fetchJellyfinConnection(): Promise<JellyfinConnection> {
+  const response = await apiFetch(JELLYFIN_CONNECTION_PATH)
+  if (!response.ok) {
+    throw new Error(`GET ${JELLYFIN_CONNECTION_PATH} returned ${response.status}`)
+  }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the generated types and OpenApiSpecTest pin the shape.
+  return (await response.json()) as JellyfinConnection
+}
+
+/** Replaces the saved connection; answers 204, or 400 or 503 as documented in openapi.json. */
+export function saveJellyfinConnection(request: JellyfinConnectionRequest): Promise<Response> {
+  return apiFetch(JELLYFIN_CONNECTION_PATH, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   })
