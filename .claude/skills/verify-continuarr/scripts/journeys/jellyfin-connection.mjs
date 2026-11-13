@@ -14,6 +14,9 @@ const CSRF_HEADER = 'X-XSRF-TOKEN'
 const HOME_PATH = '/settings/media-servers'
 const JELLYFIN_URL = 'http://jellyfin.verify.local:8096'
 const INVALID_URL = 'ftp://jellyfin.verify.local'
+const NAME = 'Basement Jellyfin'
+const HTTPS_URL = 'https://jellyfin.verify.example:8920'
+const HTTP_URL = 'http://jellyfin.verify.example:8096'
 const API_KEY_BYTES = 16
 const HTTP_OK = 200
 const HTTP_NO_CONTENT = 204
@@ -88,6 +91,16 @@ await runJourney(async ({ page, step, record }) => {
     assert.ok(!text.includes(apiKey), 'PUT never echoes the API key')
     return { status: response.status(), body: text ? JSON.parse(text) : null }
   }
+  /** @param {Record<string, string>} data */
+  const patch = async (data) => {
+    const response = await api.patch(`${FRONTEND_URL}${CONNECTION_PATH}`, {
+      headers: { [CSRF_HEADER]: await csrfToken() },
+      data,
+    })
+    const text = await response.text()
+    assert.ok(!text.includes(apiKey), 'PATCH never echoes the API key')
+    return { status: response.status(), body: text ? JSON.parse(text) : null }
+  }
   /** @param {{ data?: unknown, body?: string, csrf?: boolean }} request */
   const match = async ({ data, body, csrf = true }) => {
     const response = await api.post(`${FRONTEND_URL}${MATCH_PATH}`, {
@@ -107,7 +120,7 @@ await runJourney(async ({ page, step, record }) => {
   await step('signed-in')
 
   const before = await read()
-  assert.deepEqual(before, { url: null, apiKeyState: 'NONE' }, 'nothing is saved on a fresh launch')
+  assert.deepEqual(before, { name: null, url: null, apiKeyState: 'NONE' }, 'nothing is saved on a fresh launch')
 
   const matchBeforeSave = await match({ data: { apiKey } })
   assert.deepEqual(matchBeforeSave, { status: HTTP_OK, body: { result: 'NONE' } }, 'matching with nothing saved answers NONE')
@@ -121,7 +134,7 @@ await runJourney(async ({ page, step, record }) => {
   assert.equal(saved.status, HTTP_NO_CONTENT)
 
   const after = await read()
-  assert.deepEqual(after, { url: JELLYFIN_URL, apiKeyState: 'STORED' }, 'GET reports the saved URL and a stored key')
+  assert.deepEqual(after, { name: null, url: JELLYFIN_URL, apiKeyState: 'STORED' }, 'GET reports the saved URL and a stored key')
 
   const matched = await match({ data: { apiKey } })
   assert.deepEqual(matched, { status: HTTP_OK, body: { result: 'MATCH' } }, 'the saved key answers MATCH')
@@ -137,9 +150,28 @@ await runJourney(async ({ page, step, record }) => {
   assert.equal(withoutSession.status, HTTP_UNAUTHORIZED, 'matching without a session answers 401')
   assert.ok(!withoutSession.body.includes(apiKey), 'a refused match never echoes the key')
 
+  const renamed = await patch({ name: NAME })
+  assert.equal(renamed.status, HTTP_NO_CONTENT)
+  const afterRename = await read()
+  assert.deepEqual(afterRename, { name: NAME, url: JELLYFIN_URL, apiKeyState: 'STORED' }, 'a rename keeps the URL and key')
+  const keptAfterRename = await match({ data: { apiKey } })
+  assert.deepEqual(keptAfterRename.body, { result: 'MATCH' }, 'the saved key is unchanged after a rename')
+
+  const moved = await patch({ url: HTTPS_URL })
+  assert.equal(moved.status, HTTP_NO_CONTENT)
+  const afterMove = await read()
+  assert.deepEqual(afterMove, { name: NAME, url: HTTPS_URL, apiKeyState: 'STORED' }, 'a new URL alone saves')
+  const keptAfterMove = await match({ data: { apiKey } })
+  assert.deepEqual(keptAfterMove.body, { result: 'MATCH' }, 'the saved key is unchanged after a URL change')
+
+  const downgrade = await patch({ url: HTTP_URL })
+  assert.deepEqual(downgrade, { status: HTTP_BAD_REQUEST, body: { invalidFields: ['API_KEY'] } }, 'https to http needs a new key')
+  const downgradeWithKey = await patch({ url: JELLYFIN_URL, apiKey })
+  assert.equal(downgradeWithKey.status, HTTP_NO_CONTENT, 'https to http saves once the key is sent')
+
   await makeSavedKeyUnreadable()
   const unreadable = await read()
-  assert.deepEqual(unreadable, { url: JELLYFIN_URL, apiKeyState: 'UNREADABLE' }, 'GET reports a key that no longer decrypts')
+  assert.deepEqual(unreadable, { name: NAME, url: JELLYFIN_URL, apiKeyState: 'UNREADABLE' }, 'GET reports a key that no longer decrypts')
   const matchUnreadable = await match({ data: { apiKey } })
   assert.deepEqual(matchUnreadable, { status: HTTP_OK, body: { result: 'UNREADABLE' } }, 'matching a key that no longer decrypts answers UNREADABLE')
 
@@ -154,6 +186,16 @@ await runJourney(async ({ page, step, record }) => {
     after,
     unreadable,
     apiKeyInResponsesOrBackendLog: false,
+  })
+  await record('jellyfin-connection-patch', {
+    renamed: renamed.status,
+    afterRename,
+    keptAfterRename: keptAfterRename.body,
+    moved: moved.status,
+    afterMove,
+    keptAfterMove: keptAfterMove.body,
+    downgrade,
+    downgradeWithKey: downgradeWithKey.status,
   })
   await record('jellyfin-api-key-match', {
     noKeySaved: matchBeforeSave,

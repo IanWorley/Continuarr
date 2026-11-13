@@ -17,11 +17,13 @@ import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import tools.jackson.databind.json.JsonMapper
 import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
+import xyz.ianworley.continuarr.security.patchWithCsrf
 import xyz.ianworley.continuarr.security.postWithCsrf
 import xyz.ianworley.continuarr.security.putWithCsrf
 import kotlin.test.BeforeTest
@@ -40,9 +42,20 @@ private const val UNQUOTED_KEY_BODY = """{"url": "$URL", "apiKey": $UNQUOTED_API
 private const val SPRING_WEB_LOGGER = "org.springframework.web"
 private const val JSON_NULL_BODY = "null"
 
-private const val NOTHING_SAVED_JSON = """{"url": null, "apiKeyState": "NONE"}"""
-private const val SAVED_JSON = """{"url": "$URL", "apiKeyState": "STORED"}"""
-private const val UNREADABLE_JSON = """{"url": "$URL", "apiKeyState": "UNREADABLE"}"""
+private const val NOTHING_SAVED_JSON = """{"name": null, "url": null, "apiKeyState": "NONE"}"""
+private const val SAVED_JSON = """{"name": null, "url": "$URL", "apiKeyState": "STORED"}"""
+private const val UNREADABLE_JSON = """{"name": null, "url": "$URL", "apiKeyState": "UNREADABLE"}"""
+private const val NAME = "Basement Jellyfin"
+private const val HTTPS_URL = "https://jellyfin.example:8920"
+private const val HTTP_URL = "http://jellyfin.example:8096"
+private const val NAME_WITH_CONTROL_CHARACTER = "Basement\u0007Jellyfin"
+private const val MAX_NAME_LENGTH = 100
+private val TOO_LONG_NAME = "n".repeat(MAX_NAME_LENGTH + 1)
+private const val RENAMED_JSON = """{"name": "$NAME", "url": "$URL", "apiKeyState": "STORED"}"""
+private const val NEW_URL_JSON = """{"name": null, "url": "$HTTPS_URL", "apiKeyState": "STORED"}"""
+private const val API_KEY_INVALID_JSON = """{"invalidFields": ["API_KEY"]}"""
+private const val NAME_INVALID_JSON = """{"invalidFields": ["NAME"]}"""
+private const val UNQUOTED_PATCH_BODY = """{"apiKey": $UNQUOTED_API_KEY}"""
 private val UNDECRYPTABLE_CIPHERTEXT = "not AES-GCM ciphertext".toByteArray()
 private const val BOTH_FIELDS_INVALID_JSON = """{"invalidFields": ["URL", "API_KEY"]}"""
 private const val MATCH_JSON = """{"result": "MATCH"}"""
@@ -74,6 +87,13 @@ private fun MockHttpServletRequestDsl.matchBody(apiKey: String) {
 	contentType = MediaType.APPLICATION_JSON
 	content = JsonMapper().writeValueAsString(mapOf("apiKey" to apiKey))
 }
+
+private fun MockMvc.patchConnection(vararg fields: Pair<String, String?>): ResultActionsDsl =
+	patchWithCsrf(JELLYFIN_CONNECTION_PATH) {
+		with(user(ADMIN_USERNAME))
+		contentType = MediaType.APPLICATION_JSON
+		content = JsonMapper().writeValueAsString(mapOf(*fields))
+	}
 
 private fun MockMvc.matchApiKey(apiKey: String): ResultActionsDsl = postWithCsrf(JELLYFIN_API_KEY_MATCH_PATH) {
 	with(user(ADMIN_USERNAME))
@@ -264,6 +284,128 @@ class JellyfinConnectionControllerTest(
 		}.andExpect { status { isForbidden() } }
 	}
 
+	@Test
+	fun `a first PATCH with a URL and a key saves both`() {
+		mockMvc.patchConnection("url" to URL, "apiKey" to API_KEY).andExpect { status { isNoContent() } }
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(SAVED_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `a first PATCH without a key answers 400 and stores nothing`() {
+		mockMvc.patchConnection("url" to URL)
+			.andExpect { status { isBadRequest() } }
+			.andExpect { content { json(API_KEY_INVALID_JSON, JsonCompareMode.STRICT) } }
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(NOTHING_SAVED_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `renaming keeps the saved URL and key`() {
+		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
+
+		mockMvc.patchConnection("name" to NAME).andExpect { status { isNoContent() } }
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(RENAMED_JSON, JsonCompareMode.STRICT) } }
+		mockMvc.matchApiKey(API_KEY).andExpect { content { json(MATCH_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `a new URL alone keeps the saved key`() {
+		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
+
+		mockMvc.patchConnection("url" to HTTPS_URL).andExpect { status { isNoContent() } }
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(NEW_URL_JSON, JsonCompareMode.STRICT) } }
+		mockMvc.matchApiKey(API_KEY).andExpect { content { json(MATCH_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `moving the URL from https to http needs a new key`() {
+		mockMvc.saveConnection(HTTPS_URL, API_KEY).andExpect { status { isNoContent() } }
+
+		mockMvc.patchConnection("url" to HTTP_URL)
+			.andExpect { status { isBadRequest() } }
+			.andExpect { content { json(API_KEY_INVALID_JSON, JsonCompareMode.STRICT) } }
+		mockMvc.patchConnection("url" to HTTP_URL, "apiKey" to OTHER_API_KEY).andExpect { status { isNoContent() } }
+
+		mockMvc.matchApiKey(OTHER_API_KEY).andExpect { content { json(MATCH_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `a blank name clears the saved one`() {
+		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
+		mockMvc.patchConnection("name" to NAME).andExpect { status { isNoContent() } }
+
+		mockMvc.patchConnection("name" to " ").andExpect { status { isNoContent() } }
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(SAVED_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `a name with a control character or over 100 characters answers 400 without echoing it`() {
+		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
+
+		for (name in listOf(NAME_WITH_CONTROL_CHARACTER, TOO_LONG_NAME)) {
+			val response = mockMvc.patchConnection("name" to name)
+				.andExpect { status { isBadRequest() } }
+				.andExpect { content { json(NAME_INVALID_JSON, JsonCompareMode.STRICT) } }
+				.andReturn().response.contentAsString
+			assertFalse(response.contains(name))
+		}
+	}
+
+	@Test
+	fun `PUT keeps the saved name`() {
+		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
+		mockMvc.patchConnection("name" to NAME).andExpect { status { isNoContent() } }
+
+		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(RENAMED_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `an unreadable PATCH body answers 400 and keeps an unquoted key out of the log at every level`(output: CapturedOutput) {
+		withSpringWebTraceLogging {
+			mockMvc.patchWithCsrf(JELLYFIN_CONNECTION_PATH) {
+				with(user(ADMIN_USERNAME))
+				contentType = MediaType.APPLICATION_JSON
+				content = UNQUOTED_PATCH_BODY
+			}.andExpect { status { isBadRequest() } }
+		}
+
+		assertFalse(output.all.contains(UNQUOTED_API_KEY))
+	}
+
+	@Test
+	fun `a PATCHed key stays out of the log at every level`(output: CapturedOutput) {
+		withSpringWebTraceLogging {
+			mockMvc.patchConnection("url" to URL, "apiKey" to API_KEY).andExpect { status { isNoContent() } }
+		}
+
+		assertFalse(output.all.contains(API_KEY))
+	}
+
+	@Test
+	fun `PATCH needs a login`() {
+		mockMvc.patchWithCsrf(JELLYFIN_CONNECTION_PATH) { jsonBody(URL, API_KEY) }.andExpect { status { isUnauthorized() } }
+	}
+
+	@Test
+	fun `PATCH needs a CSRF token`() {
+		mockMvc.patch(JELLYFIN_CONNECTION_PATH) {
+			with(user(ADMIN_USERNAME))
+			jsonBody(URL, API_KEY)
+		}.andExpect { status { isForbidden() } }
+	}
+
 	private fun MockMvc.saveConnection(url: String, apiKey: String): ResultActionsDsl = putWithCsrf(JELLYFIN_CONNECTION_PATH) {
 		with(user(ADMIN_USERNAME))
 		jsonBody(url, apiKey)
@@ -305,6 +447,17 @@ class JellyfinConnectionControllerWithoutEncryptionKeyTest(
 		mockMvc.matchApiKey(API_KEY)
 			.andExpect { status { isOk() } }
 			.andExpect { content { json(UNREADABLE_KEY_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `renaming works without an encryption key, because the saved key isn't touched`() {
+		jdbcClient.sql("INSERT INTO jellyfin_connection (id, url, api_key_ciphertext) VALUES (1, :url, :ciphertext)")
+			.param("url", URL)
+			.param("ciphertext", UNDECRYPTABLE_CIPHERTEXT)
+			.update()
+
+		mockMvc.patchConnection("name" to NAME).andExpect { status { isNoContent() } }
+		mockMvc.patchConnection("apiKey" to API_KEY).andExpect { status { isServiceUnavailable() } }
 	}
 
 	@Test
