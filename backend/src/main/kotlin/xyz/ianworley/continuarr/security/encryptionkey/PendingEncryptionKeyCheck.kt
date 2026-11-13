@@ -30,7 +30,8 @@ class PendingEncryptionKeyCheck(private val entityManager: EntityManager, privat
 		val files = EncryptionKeyFiles.from(environment) ?: return
 		val key = files.pendingOrNull()
 		if (key == null || key != environment.getProperty(ENCRYPTION_KEY_PROPERTY)) return
-		check(!savedSecretsExist()) {
+		// Another start may have committed this key, and saved a secret under it, while this one queried.
+		check(!savedSecretsExist() || files.pendingOrNull() != key) {
 			"The database holds saved secrets, but CONTINUARR_ENCRYPTION_KEY isn't set and ${files.committed} doesn't " +
 				"exist, so there's no key to read them. Set CONTINUARR_ENCRYPTION_KEY to the key they were saved with, " +
 				"or restore ${files.committed} from a backup. To start over, set CONTINUARR_ENCRYPTION_KEY to a new " +
