@@ -210,7 +210,8 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
   const [pendingHost, setPendingHost] = useState<{ host: string; patch: JellyfinConnectionPatch }>()
 
   const urlChanged = draft.url.trim() !== savedUrl
-  const dirty = urlChanged || draft.apiKey !== ''
+  const keyTyped = draft.apiKey.trim() !== ''
+  const dirty = urlChanged || keyTyped
   const saveUnavailable = saving || encryptionKeyMissing
 
   function report(next: Outcome) {
@@ -314,7 +315,7 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
   const savedPill = SAVED_PILLS[saved.apiKeyState]
   const keySaved = saved.apiKeyState === 'STORED'
   const keyState =
-    keySaved && draft.apiKey !== ''
+    keySaved && keyTyped
       ? { ...KEY_STATES.STORED, text: 'Your typed key replaces the saved one when you save.' }
       : KEY_STATES[saved.apiKeyState]
   const keyHelp = keySaved

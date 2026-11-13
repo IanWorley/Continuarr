@@ -194,6 +194,16 @@ it('needs the key again to move from https to http, and sends nothing until then
   expect(patchBodies()).toHaveLength(0)
 })
 
+it('does not promise to replace the saved key when only spaces are typed', async () => {
+  stubBackend({ get: [answer(STORED)] })
+  openCard()
+
+  type(await screen.findByLabelText('API key'), '   ')
+
+  expect(screen.getByText(KEY_SAVED)).toBeDefined()
+  expect(screen.queryByText(/replaces the saved one/)).toBeNull()
+})
+
 it('says the session ended when a save answers 401', async () => {
   stubBackend({ get: [answer(STORED)], patch: status(HTTP_UNAUTHORIZED) })
   openCard()

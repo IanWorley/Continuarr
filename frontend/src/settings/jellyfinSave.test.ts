@@ -50,6 +50,17 @@ describe('planSave', () => {
     })
   })
 
+  it.each([
+    { saved: 'http://127.0.0.1:8296', typed: 'http://0127.0.0.1:8297', host: '0127.0.0.1' },
+    { saved: 'http://0192.168.1.10:8096', typed: 'http://0192.168.1.99:8096', host: '0192.168.1.99' },
+    { saved: 'http://127.0.0.1:8096', typed: 'http://99999999999:8096', host: '99999999999' },
+  ])('asks and names $host when the browser would misread the address', ({ saved, typed, host }) => {
+    expect(planSave({ url: saved, apiKeyState: 'STORED' }, { url: typed, apiKey: '' })).toMatchObject({
+      kind: 'confirm-host',
+      host,
+    })
+  })
+
   it('treats a hostname written in another case as the same server', () => {
     expect(planSave(STORED, { url: 'https://JellyFin.Home.Lan:8920/jf', apiKey: '' })).toMatchObject({ kind: 'send' })
   })
