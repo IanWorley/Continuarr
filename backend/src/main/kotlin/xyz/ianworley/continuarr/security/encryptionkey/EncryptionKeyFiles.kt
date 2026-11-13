@@ -43,9 +43,9 @@ internal class EncryptionKeyFiles(private val dataDir: Path) {
 	/** The committed key, or else the pending one, created if it doesn't exist yet. */
 	fun loadOrCreate(): String {
 		readOrNull(committed)?.let { return it }
-		val pendingKey = readOrNull(pending) ?: publish(pending, newKey())
-		// Another start may have committed its pending key, and deleted it, before this one created a new one.
-		return readOrNull(committed) ?: pendingKey
+		val pendingKey = readOrNull(pending) ?: createPending()
+		// Another start may have committed the pending key, and deleted it, while this one read or created one.
+		return readOrNull(committed) ?: checkNotNull(pendingKey) { "$pending disappeared while Continuarr was reading it" }
 	}
 
 	/** The pending key, unless it has already been committed or there is none. */
@@ -66,32 +66,38 @@ internal class EncryptionKeyFiles(private val dataDir: Path) {
 		return committedKey == key
 	}
 
-	/** Writes [key] to [target] unless it already exists, and returns whichever key [target] then holds. */
-	private fun publish(target: Path, key: String): String {
+	/** Creates the pending key unless another start already has. Null when that one is gone again. */
+	private fun createPending(): String? {
 		val temp = try {
 			Files.createDirectories(dataDir, *ownerOnly(OWNER_ONLY_DIR))
 			Files.createTempFile(dataDir, PENDING_FILE_NAME, TEMP_FILE_SUFFIX, *ownerOnly(OWNER_ONLY_FILE))
 		} catch (e: IOException) {
-			throw IllegalStateException(
-				"Can't create an encryption key in $dataDir (${e.javaClass.simpleName}). Make CONTINUARR_DATA_DIR " +
-					"writable by the user that runs Continuarr, or set CONTINUARR_ENCRYPTION_KEY.",
-				e,
-			)
+			throw cantCreateKey(e)
 		}
 		try {
+			val key = newKey()
 			FileChannel.open(temp, StandardOpenOption.WRITE).use { channel ->
 				channel.write(ByteBuffer.wrap(key.toByteArray(Charsets.US_ASCII)))
 				channel.force(true)
 			}
 			// A hard link appears complete and never replaces an existing file, unlike a rename.
-			Files.createLink(target, temp)
+			Files.createLink(pending, temp)
 			return key
 		} catch (_: FileAlreadyExistsException) {
-			return checkNotNull(readOrNull(target)) { "$target disappeared while Continuarr was reading it" }
+			return readOrNull(pending)
+		} catch (e: IOException) {
+			throw cantCreateKey(e)
 		} finally {
 			Files.deleteIfExists(temp)
 		}
 	}
+
+	private fun cantCreateKey(cause: IOException) = IllegalStateException(
+		"Can't create an encryption key in $dataDir (${cause.javaClass.simpleName}). Make CONTINUARR_DATA_DIR a " +
+			"directory that the user running Continuarr can write, on a filesystem with hard links, or set " +
+			"CONTINUARR_ENCRYPTION_KEY.",
+		cause,
+	)
 
 	private fun readOrNull(file: Path): String? {
 		val key = try {

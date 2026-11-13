@@ -18,6 +18,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private const val CONCURRENT_STARTS = 8
+private const val CONCURRENT_ROUNDS = 200
 private val HEX_KEY = Regex("[0-9a-f]{64}")
 
 class EncryptionKeyFileEnvironmentPostProcessorTest {
@@ -89,16 +90,29 @@ class EncryptionKeyFileEnvironmentPostProcessorTest {
 	}
 
 	@Test
-	fun `concurrent first starts agree on one key`() {
-		val barrier = CyclicBarrier(CONCURRENT_STARTS)
+	fun `concurrent first starts agree on one key and commit it`() {
 		val executor = Executors.newFixedThreadPool(CONCURRENT_STARTS)
-		val keys = try {
-			executor.invokeAll(List(CONCURRENT_STARTS) { Callable { barrier.await(); startWithDataDir() } }).map { it.get() }
+		try {
+			repeat(CONCURRENT_ROUNDS) { round ->
+				val files = EncryptionKeyFiles(dataDir.resolve("round-$round"))
+				val barrier = CyclicBarrier(CONCURRENT_STARTS)
+				// Each start does what startup does: load or create the key, then commit it if it's still pending.
+				val keys = executor.invokeAll(
+					List(CONCURRENT_STARTS) {
+						Callable {
+							barrier.await()
+							val key = files.loadOrCreate()
+							if (files.pendingOrNull() == key) assertTrue(files.commit(key))
+							key
+						}
+					},
+				).map { it.get() }
+
+				assertEquals(setOf(Files.readString(files.committed)), keys.toSet())
+			}
 		} finally {
 			executor.shutdown()
 		}
-
-		assertEquals(1, keys.toSet().size)
 	}
 
 	@Test
