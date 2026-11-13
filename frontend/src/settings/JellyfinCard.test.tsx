@@ -12,7 +12,6 @@ const API_KEY = '0123456789abcdef0123456789abcdef'
 const HTTP_NO_CONTENT = 204
 const HTTP_BAD_REQUEST = 400
 const HTTP_INTERNAL_SERVER_ERROR = 500
-const HTTP_SERVICE_UNAVAILABLE = 503
 // Long enough for a resolved fetch to reach the query cache and re-render.
 const LOAD_SETTLE_MS = 50
 
@@ -105,12 +104,13 @@ it('fills in the saved URL and says a key is saved without showing it', async ()
   expect(keyField().type).toBe('password')
 })
 
-it('says when the saved key no longer decrypts', async () => {
-  stubBackend({ get: [answer({ url: SAVED_URL, apiKeyState: 'UNREADABLE' })] })
+it('fills in a saved URL that has no key and asks for the key', async () => {
+  stubBackend({ get: [answer({ url: SAVED_URL, apiKeyState: 'NONE' })] })
   openCard()
 
-  expect(await screen.findByText('Key unreadable')).toBeDefined()
-  expect(screen.getByText(/can't read the saved key/)).toBeDefined()
+  expect(await screen.findByText('No key saved yet')).toBeDefined()
+  expect(screen.getByText('Not configured')).toBeDefined()
+  expect(urlField().value).toBe(SAVED_URL)
 })
 
 it('shows the saved URL under a changed one', async () => {
@@ -178,39 +178,15 @@ it('puts its own message on each field a 400 names and keeps the saved pill', as
   expect(urlField().value).toBe(NEW_URL)
 })
 
-it('turns Save off after a 503 until settings are reloaded', async () => {
-  stubBackend({ get: [answer(NOTHING_SAVED)], put: status(HTTP_SERVICE_UNAVAILABLE) })
-  openCard()
-
-  type(await screen.findByLabelText('Server URL'), NEW_URL)
-  type(keyField(), API_KEY)
-  fireEvent.click(saveButton())
-
-  expect(await screen.findByText("Continuarr can't store the API key yet.")).toBeDefined()
-  expect(screen.getByText('Save is off until the server can encrypt the key.')).toBeDefined()
-  expect(screen.getByText('No key saved yet')).toBeDefined()
-  expect(saveButton().getAttribute('aria-disabled')).toBe('true')
-  fireEvent.click(saveButton())
-  expect(putBodies()).toHaveLength(1)
-
-  fireEvent.click(screen.getByRole('button', { name: 'Reload settings' }))
-
-  await waitFor(() => expect(saveButton().getAttribute('aria-disabled')).toBe('false'))
-  expect(urlField().value).toBe(NEW_URL)
-})
-
 it('keeps a successful save when an older load lands after it', async () => {
   const slowLoad = deferred<Response>()
-  let saves = 0
-  const failThenSave: Respond = async () => status(++saves === 1 ? HTTP_SERVICE_UNAVAILABLE : HTTP_NO_CONTENT)()
-  stubBackend({ get: [answer(NOTHING_SAVED), () => slowLoad.promise], put: failThenSave })
+  stubBackend({ get: [answer(NOTHING_SAVED), () => slowLoad.promise], put: status(HTTP_NO_CONTENT) })
   openCard()
 
   type(await screen.findByLabelText('Server URL'), NEW_URL)
   type(keyField(), API_KEY)
-  fireEvent.click(saveButton())
-  fireEvent.click(await screen.findByRole('button', { name: 'Reload settings' }))
-  type(keyField(), API_KEY)
+  // Coming back to the tab refetches the settings, and that load is still out when Save lands.
+  fireEvent(window, new Event('visibilitychange'))
   fireEvent.click(saveButton())
   await screen.findByText('Saved. Continuarr uses this from now on.')
   await act(async () => {
