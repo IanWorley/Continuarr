@@ -1,6 +1,8 @@
-package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
+package xyz.ianworley.continuarr.mediaproviders.provider.secrets
 
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.context.annotation.Configuration
 import org.springframework.security.crypto.encrypt.AesGcmBytesEncryptor
 import java.util.HexFormat
 import javax.crypto.SecretKey
@@ -31,15 +33,20 @@ private fun parseSecretKey(hex: String): SecretKey {
 	return SecretKeySpec(HexFormat.of().parseHex(hex), AES_ALGORITHM)
 }
 
+@Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(EncryptionKeyProperties::class)
+class SecretsConfiguration
+
 /**
- * Encrypts with AES-256-GCM. Each ciphertext carries its own random IV, so saving the same key twice stores
- * different bytes. The key is random, not a password, so there is no salt and no key derivation.
+ * Encrypts the secrets Continuarr stores with AES-256-GCM. Each ciphertext carries its own random IV, so saving
+ * the same secret twice stores different bytes. The key is random, not a password, so there is no salt and no key
+ * derivation.
  */
-class ApiKeyCipher(secretKey: SecretKey) {
+class SecretCipher(secretKey: SecretKey) {
 
 	private val encryptor: AesGcmBytesEncryptor = AesGcmBytesEncryptor.withSecretKey(secretKey).build()
 
-	fun encrypt(apiKey: JellyfinApiKey): ByteArray = encryptor.encrypt(apiKey.plaintext())
+	fun encrypt(plaintext: ByteArray): ByteArray = encryptor.encrypt(plaintext)
 
 	/** Null when the GCM tag doesn't verify, as when the ciphertext was made under another key. */
 	// The bytes come from the database, so any failure, such as a row too short to hold the IV, means

@@ -1,12 +1,11 @@
 package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
-import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import xyz.ianworley.continuarr.mediaproviders.MediaServer
+import xyz.ianworley.continuarr.mediaproviders.provider.secrets.EncryptionKeyProperties
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(EncryptionKeyProperties::class)
 class JellyfinConfiguration {
 
 	@Bean

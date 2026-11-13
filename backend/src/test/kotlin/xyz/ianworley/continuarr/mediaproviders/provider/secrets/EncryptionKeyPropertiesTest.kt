@@ -1,4 +1,4 @@
-package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
+package xyz.ianworley.continuarr.mediaproviders.provider.secrets
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.runner.ApplicationContextRunner

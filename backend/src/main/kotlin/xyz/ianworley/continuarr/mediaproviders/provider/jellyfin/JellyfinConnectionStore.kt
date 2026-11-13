@@ -2,6 +2,8 @@ package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import org.springframework.dao.DataAccessException
 import org.springframework.transaction.TransactionException
+import xyz.ianworley.continuarr.mediaproviders.provider.secrets.EncryptionKeyProperties
+import xyz.ianworley.continuarr.mediaproviders.provider.secrets.SecretCipher
 import java.net.URI
 
 private const val SINGLE_ROW_ID: Short = 1
@@ -20,7 +22,7 @@ sealed interface ApiKeyChange {
 
 class JellyfinConnectionStore(private val repository: JellyfinConnectionRepository, encryptionKey: EncryptionKeyProperties) {
 
-	private val cipher: ApiKeyCipher? = encryptionKey.secretKey?.let(::ApiKeyCipher)
+	private val cipher: SecretCipher? = encryptionKey.secretKey?.let(::SecretCipher)
 
 	/**
 	 * Returns false and saves nothing when [apiKey] is a new key and CONTINUARR_ENCRYPTION_KEY isn't set.
@@ -28,7 +30,7 @@ class JellyfinConnectionStore(private val repository: JellyfinConnectionReposito
 	 */
 	fun save(url: URI, apiKey: ApiKeyChange): Boolean {
 		val ciphertext = when (apiKey) {
-			is ApiKeyChange.Replace -> cipher?.encrypt(apiKey.key) ?: return false
+			is ApiKeyChange.Replace -> cipher?.encrypt(apiKey.key.plaintext()) ?: return false
 			is ApiKeyChange.Keep -> apiKey.current.apiKeyCiphertext
 		}
 		repository.save(JellyfinConnectionRow(SINGLE_ROW_ID, url.toString(), ciphertext))
