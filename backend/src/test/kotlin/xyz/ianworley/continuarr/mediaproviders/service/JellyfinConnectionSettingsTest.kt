@@ -17,11 +17,11 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.CannotCreateTransactionException
 import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
-import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.EncryptionKeyProperties
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionRepository
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionRow
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionStore
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.StoredConnection
+import xyz.ianworley.continuarr.mediaproviders.provider.secrets.EncryptionKeyProperties
 import xyz.ianworley.continuarr.mediaproviders.MediaServer
 import kotlin.test.BeforeTest
 import kotlin.test.Test
