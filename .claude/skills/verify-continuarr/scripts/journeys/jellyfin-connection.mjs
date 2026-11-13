@@ -26,7 +26,8 @@ const POSTGRES_IMAGE_PREFIX = 'postgres:'
 // Testcontainers' PostgreSQLContainer defaults.
 const POSTGRES_USER = 'test'
 const POSTGRES_DATABASE = 'test'
-const CORRUPT_CIPHERTEXT_SQL = "UPDATE jellyfin_connection SET api_key_ciphertext = 'not AES-GCM ciphertext'::bytea"
+// The state a database upgrade from encrypted storage leaves: the URL stays, the key is gone.
+const CLEAR_KEY_SQL = 'UPDATE jellyfin_connection SET api_key = NULL'
 
 const run = promisify(execFile)
 
@@ -45,12 +46,12 @@ const otherApiKey = randomBytes(API_KEY_BYTES).toString('hex')
 // Jackson quotes the bad token in its parse error, so an unquoted key is the one most likely to leak.
 const unreadableBody = `{"apiKey": ${otherApiKey}}`
 
-async function makeSavedKeyUnreadable() {
+async function clearSavedKey() {
   const ids = (await readFile(join(RUN_DIR, 'containers'), 'utf8')).split('\n').filter(Boolean)
   const images = await Promise.all(ids.map(async (id) => (await run('docker', ['inspect', '--format', '{{.Config.Image}}', id])).stdout.trim()))
   const postgres = ids.find((_, index) => images[index].startsWith(POSTGRES_IMAGE_PREFIX))
   assert.ok(postgres, 'this run recorded its Postgres container')
-  await run('docker', ['exec', postgres, 'psql', '-U', POSTGRES_USER, '-d', POSTGRES_DATABASE, '-c', CORRUPT_CIPHERTEXT_SQL])
+  await run('docker', ['exec', postgres, 'psql', '-U', POSTGRES_USER, '-d', POSTGRES_DATABASE, '-c', CLEAR_KEY_SQL])
 }
 
 async function matchWithoutSession() {
@@ -161,11 +162,13 @@ await runJourney(async ({ page, step, record }) => {
   const downgradeWithKey = await patch({ url: JELLYFIN_URL, apiKey })
   assert.equal(downgradeWithKey.status, HTTP_NO_CONTENT, 'https to http saves once the key is sent')
 
-  await makeSavedKeyUnreadable()
-  const unreadable = await read()
-  assert.deepEqual(unreadable, { url: JELLYFIN_URL, apiKeyState: 'UNREADABLE' }, 'GET reports a key that no longer decrypts')
-  const matchUnreadable = await match({ data: { apiKey } })
-  assert.deepEqual(matchUnreadable, { status: HTTP_OK, body: { result: 'UNREADABLE' } }, 'matching a key that no longer decrypts answers UNREADABLE')
+  await clearSavedKey()
+  const keyCleared = await read()
+  assert.deepEqual(keyCleared, { url: JELLYFIN_URL, apiKeyState: 'NONE' }, 'GET keeps the URL and reports no key once the key is gone')
+  const matchKeyCleared = await match({ data: { apiKey } })
+  assert.deepEqual(matchKeyCleared, { status: HTTP_OK, body: { result: 'NONE' } }, 'matching with the key gone answers NONE')
+  const urlOnlyKeyCleared = await patch({ url: HTTPS_URL })
+  assert.deepEqual(urlOnlyKeyCleared, { status: HTTP_BAD_REQUEST, body: { invalidFields: ['API_KEY'] } }, 'a new URL alone needs a key once the key is gone')
 
   const log = await readFile(backendLog, 'utf8')
   assert.ok(!log.includes(apiKey), 'the backend log never holds the API key')
@@ -176,7 +179,7 @@ await runJourney(async ({ page, step, record }) => {
     rejected,
     savedStatus: saved.status,
     after,
-    unreadable,
+    keyCleared,
     apiKeyInResponsesOrBackendLog: false,
   })
   await record('jellyfin-connection-patch', {
@@ -185,6 +188,7 @@ await runJourney(async ({ page, step, record }) => {
     keptAfterMove: keptAfterMove.body,
     downgrade,
     downgradeWithKey: downgradeWithKey.status,
+    urlOnlyKeyCleared,
   })
   await record('jellyfin-api-key-match', {
     noKeySaved: matchBeforeSave,
@@ -194,7 +198,7 @@ await runJourney(async ({ page, step, record }) => {
     unreadableBody: unparsed,
     withoutCsrf,
     withoutSession,
-    unreadableSavedKey: matchUnreadable,
+    keyCleared: matchKeyCleared,
     eitherKeyInResponsesOrBackendLog: false,
   })
 })

@@ -1,6 +1,6 @@
 # Jellyfin card
 
-The Media servers page has a Jellyfin card for the server URL and API key. The key field is an empty password box and never shows the saved key. Under the key, the card says `A key is saved`, `No key saved yet`, or that the saved key can't be read, from the server's `apiKeyState`. Save checks both fields first, with the same rules as the server. It focuses the first bad field and keeps what the admin typed. A `400` puts the card's own message on each field the server names. A `503` turns Save off until the admin reloads settings. Any other failure keeps the entries and offers `Try again`. The pill always shows what is saved, never the result of the last try.
+The Media servers page has a Jellyfin card for the server URL and API key. The key field is an empty password box and never shows the saved key. Under the key, the card says `A key is saved` or `No key saved yet`, from the server's `apiKeyState`. Save checks both fields first, with the same rules as the server. It focuses the first bad field and keeps what the admin typed. A `400` puts the card's own message on each field the server names. Any other failure keeps the entries and offers `Try again`. The pill always shows what is saved, never the result of the last try.
 
 ## Sub-features
 
@@ -11,7 +11,6 @@ The Media servers page has a Jellyfin card for the server URL and API key. The k
 - `card-unsaved` shows `Unsaved changes` and `Saved: <old URL>` while the URL differs from what is saved.
 - `card-save-failed` keeps the entries and shows `Couldn't save your settings.` when the save fails.
 - `card-load-failed` shows `Couldn't load settings.` and the `Unknown` pill, and `Retry` loads again.
-- `card-no-encryption-key` shows `Continuarr can't store the API key yet.` and turns Save off after a `503`.
 - `card-layout` uses 36px controls with labels in a 128px column on desktop, and 44px controls with labels above the fields at 720px and below.
 
 ## How to get to it (user POV)
@@ -32,7 +31,6 @@ Preconditions:
 - **Failures.** Steps `07-desktop-save-failed-stubbed-500` and `08-desktop-load-failed-stubbed-500` answer the request with a `500` from the browser's network layer, because a live server can't be made to fail on demand. `Retry` then loads the real settings.
 - **Phone.** Step `09-phone-stored` checks 44px controls, labels above fields, and a full-width Save. Step `10-phone-url-wrong` shows a field message.
 - **Side effect.** `jellyfin-card.json` holds the measured sizes and the `GET` after the save. No response and no line of `backend.log` holds the key.
-- **No encryption key.** Run `cleanup`, then `CONTINUARR_VERIFY_ENCRYPTION_KEY= control.sh launch`, `control.sh drive first-run-setup`, and `control.sh drive jellyfin-card-no-encryption-key`. Steps `01-desktop-503` and `02-phone-503` show the banner with Save off. Step `03-phone-after-reload-settings` turns Save back on. `jellyfin-card-no-encryption-key.json` shows nothing was stored.
 
 ## Gotchas
 

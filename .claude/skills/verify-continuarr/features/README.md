@@ -32,5 +32,5 @@ Each feature file starts with an H1 title and one paragraph about the user-visib
 - [App shell](./app-shell.md) covers the signed-in header, the icon rail, the navigation drawer, and the phone layout.
 - [Header search](./header-search.md) covers the header search field, the phone search row, and its close paths.
 - [Access control](./access-control.md) covers which endpoints answer without a session, and the CSRF requirement on state-changing calls.
-- [Jellyfin connection](./jellyfin-connection.md) covers saving the Jellyfin URL and API key through the API, its validation, the missing encryption key, and reading back the URL and the key's state without the key.
+- [Jellyfin connection](./jellyfin-connection.md) covers saving the Jellyfin URL and API key through the API, its validation, and reading back the URL and the key's state without the key.
 - [Jellyfin card](./jellyfin-card.md) covers the Media servers page's Jellyfin card: the key state, the field checks, saving, and the failure states at desktop and phone widths.
