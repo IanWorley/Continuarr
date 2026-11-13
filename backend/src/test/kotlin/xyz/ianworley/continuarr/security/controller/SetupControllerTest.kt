@@ -42,6 +42,8 @@ private const val PASSWORD_CANARY = "PasswordCanary"
 private const val UNQUOTED_PASSWORD_JSON = """{"token":"$WRONG_TOKEN","username":"$ADMIN_USERNAME","password":$PASSWORD_CANARY}"""
 private const val BARE_PASSWORD_JSON = """"$PASSWORD_CANARY""""
 private const val NULL_JSON = "null"
+// The quoted scalar never closes, so SnakeYAML's parse error quotes the line that holds the password.
+private const val UNCLOSED_PASSWORD_YAML = "token: $WRONG_TOKEN\nusername: $ADMIN_USERNAME\npassword: \"$PASSWORD_CANARY\n"
 private const val SETUP_REQUIRED_JSON_PATH = "$.required"
 private const val SPRING_LOGGERS = "org.springframework"
 
@@ -93,13 +95,7 @@ class SetupControllerTest(
 	@ParameterizedTest
 	@ValueSource(strings = [UNQUOTED_PASSWORD_JSON, BARE_PASSWORD_JSON])
 	fun `setup rejects unreadable JSON without logging the password at any level`(json: String, output: CapturedOutput) {
-		val configuredLevels = TRACED_LOGGERS.associateWith { loggingSystem.getLoggerConfiguration(it)?.configuredLevel }
-		TRACED_LOGGERS.forEach { loggingSystem.setLogLevel(it, LogLevel.TRACE) }
-		val rejection = try {
-			postSetup(json).andExpect { status { isBadRequest() } }.andReturn().resolvedException
-		} finally {
-			configuredLevels.forEach { (name, level) -> loggingSystem.setLogLevel(name, level) }
-		}
+		val rejection = atTraceLevel { postSetup(json).andExpect { status { isBadRequest() } }.andReturn().resolvedException }
 
 		assertContains(output.all, HttpMessageNotReadableException::class.java.name)
 		assertFalse(PASSWORD_CANARY in output.all, "The password reached the log")
@@ -107,6 +103,18 @@ class SetupControllerTest(
 			PASSWORD_CANARY in assertNotNull(rejection).stackTraceToString(),
 			"The password is in the stack trace a logger would print",
 		)
+	}
+
+	@Test
+	fun `setup refuses a YAML body without logging the password at any level`(output: CapturedOutput) {
+		atTraceLevel {
+			mockMvc.postWithCsrf(SETUP_PATH) {
+				contentType = MediaType.APPLICATION_YAML
+				content = UNCLOSED_PASSWORD_YAML
+			}.andExpect { status { isUnsupportedMediaType() } }
+		}
+
+		assertFalse(PASSWORD_CANARY in output.all, "The password reached the log")
 	}
 
 	@Test
@@ -121,6 +129,16 @@ class SetupControllerTest(
 		setUp(SetupRequest(setupToken.value, ADMIN_USERNAME, ADMIN_PASSWORD))
 
 		mockMvc.get(SETUP_PATH).andExpect { jsonPath(SETUP_REQUIRED_JSON_PATH) { value(false) } }
+	}
+
+	private fun <T> atTraceLevel(block: () -> T): T {
+		val configuredLevels = TRACED_LOGGERS.associateWith { loggingSystem.getLoggerConfiguration(it)?.configuredLevel }
+		TRACED_LOGGERS.forEach { loggingSystem.setLogLevel(it, LogLevel.TRACE) }
+		try {
+			return block()
+		} finally {
+			configuredLevels.forEach { (name, level) -> loggingSystem.setLogLevel(name, level) }
+		}
 	}
 
 	private fun setUp(request: SetupRequest): ResultActionsDsl = postSetup(jsonMapper.writeValueAsString(request))
