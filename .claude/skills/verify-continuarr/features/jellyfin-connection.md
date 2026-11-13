@@ -28,7 +28,7 @@ The signed-in admin saves the Jellyfin server's URL and API key with `PUT /api/v
 Preconditions:
 
 - `control.sh drive first-run-setup` passed earlier in this launch, so `$RUN_DIR/admin-credentials.json` holds the admin.
-- A plain `control.sh launch` lets the backend create its key, so it covers `jellyfin-saved`. For `jellyfin-no-encryption-key`, launch with `CONTINUARR_VERIFY_DATA_DIR= control.sh launch` instead. The restart sub-features need `CONTINUARR_VERIFY_RESTARTABLE=1 control.sh launch`.
+- A plain `control.sh launch` lets the backend create its key, so it covers `jellyfin-saved`. For `jellyfin-no-encryption-key`, launch with `CONTINUARR_VERIFY_ENCRYPTION_KEY= control.sh launch` instead. The restart sub-features need `CONTINUARR_VERIFY_RESTARTABLE=1 control.sh launch`.
 
 - **Journey.** Run `control.sh drive jellyfin-connection`. It signs in through the UI, then calls the API with the browser's session. It checks `jellyfin-empty`, `jellyfin-invalid`, `jellyfin-saved`, `jellyfin-patch`, `jellyfin-key-hidden`, every `jellyfin-match` case, and the `401` and `403` refusals of a match. It writes `jellyfin-connection.json`, `jellyfin-connection-patch.json`, and `jellyfin-api-key-match.json`. It needs a launch with a key. It ends by overwriting the saved ciphertext in this run's Postgres container with `docker exec ... psql`, so drive it last in a launch.
 

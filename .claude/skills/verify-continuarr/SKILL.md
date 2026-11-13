@@ -17,7 +17,7 @@ Run `python3 scripts/ci_local.py` from the repo root first. It runs the lint, te
 .claude/skills/verify-continuarr/scripts/control.sh launch
 ```
 
-It needs Docker running, a JDK 17+ for Gradle, Node and npm, `curl`, `lsof`, and Google Chrome. It runs `npm ci` in `frontend/`, starts `./gradlew bootTestRun`, and starts `npm run dev`. `frontend/.nvmrc` pins the Node that CI uses. An older npm can reject the lock file, so a failed `npm ci` stops the launch before anything starts and prints the Node version next to the pin. Each launch gets a new, empty Postgres, and Liquibase migrates it at startup. Like a fresh install, a launch sets no `CONTINUARR_ENCRYPTION_KEY`, so the backend creates its own key in the run's data directory and saving a secret works. To set a key instead, export `CONTINUARR_VERIFY_ENCRYPTION_KEY`. To start with no key at all, so a save answers 503, set `CONTINUARR_VERIFY_DATA_DIR=` (empty). Cleanup deletes the data directory with the run state.
+It needs Docker running, a JDK 17+ for Gradle, Node and npm, `curl`, `lsof`, and Google Chrome. It runs `npm ci` in `frontend/`, starts `./gradlew bootTestRun`, and starts `npm run dev`. `frontend/.nvmrc` pins the Node that CI uses. An older npm can reject the lock file, so a failed `npm ci` stops the launch before anything starts and prints the Node version next to the pin. Each launch gets a new, empty Postgres, and Liquibase migrates it at startup. Like a fresh install, a launch sets no `CONTINUARR_ENCRYPTION_KEY`, so the backend creates its own key in the run's data directory and saving a secret works. To set a key instead, export `CONTINUARR_VERIFY_ENCRYPTION_KEY`. To start with no key at all, so a save answers 503, set `CONTINUARR_VERIFY_ENCRYPTION_KEY=` (empty). Cleanup deletes the data directory with the run state.
 
 The instance is ready when the command prints `Ready: http://localhost:5173`. By then actuator health reports `UP` and `GET /api/setup` answers through both ports. A fresh launch has no admin. Run `control.sh token` to print its setup token. The first launch on a machine compiles the backend and pulls Postgres, so it can take minutes. Later launches take seconds.
 
@@ -30,7 +30,7 @@ CONTINUARR_VERIFY_RESTARTABLE=1 .claude/skills/verify-continuarr/scripts/control
 .claude/skills/verify-continuarr/scripts/control.sh restart
 ```
 
-`restart` kills the backend and starts it again with `./gradlew bootRun` on the same Postgres and data directory, so saved data survives. It kills rather than stops, because a graceful shutdown closes the Postgres container with the Spring context. It needs a launch with `CONTINUARR_VERIFY_RESTARTABLE=1`, which turns off Testcontainers' reaper so Postgres outlives the backend. A restart reads `CONTINUARR_VERIFY_ENCRYPTION_KEY` and `CONTINUARR_VERIFY_DATA_DIR` afresh, so it can change or drop the key. The restarted backend appends to the same `backend.log`.
+`restart` kills the backend and starts it again with `./gradlew bootRun` on the same Postgres and data directory, so saved data survives. It kills rather than stops, because a graceful shutdown closes the Postgres container with the Spring context. It needs a launch with `CONTINUARR_VERIFY_RESTARTABLE=1`, which turns off Testcontainers' reaper so Postgres outlives the backend. A restart reads `CONTINUARR_VERIFY_ENCRYPTION_KEY` afresh, so it can change or drop the key. The restarted backend appends to the same `backend.log`.
 
 ## Doctor
 

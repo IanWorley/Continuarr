@@ -57,16 +57,17 @@ frontend_ready() {
 
 # Each start reads the encryption key settings afresh, so a restart can drop or change the key.
 # CONTINUARR_VERIFY_ENCRYPTION_KEY sets CONTINUARR_ENCRYPTION_KEY. Unset, the backend creates its own key in the
-# run's data directory, as a fresh install does. CONTINUARR_VERIFY_DATA_DIR= (empty) starts with no data directory,
-# so without a key every save of a secret answers 503. No key is ever printed.
+# run's data directory, as a fresh install does. Set but empty, there is no data directory either, so every save
+# of a secret answers 503. No key is ever printed.
 start_backend() {
-	local task="$1" evidence_dir
+	local task="$1" evidence_dir data_dir="$RUN_DIR/data"
 	shift
 	evidence_dir="$(read_state evidence-dir)"
+	[[ -n "${CONTINUARR_VERIFY_ENCRYPTION_KEY+set}" && -z "$CONTINUARR_VERIFY_ENCRYPTION_KEY" ]] && data_dir=""
 	(cd "$REPO_ROOT/backend" || exit 1
 		env "$@" \
 			CONTINUARR_ENCRYPTION_KEY="${CONTINUARR_VERIFY_ENCRYPTION_KEY-}" \
-			CONTINUARR_DATA_DIR="${CONTINUARR_VERIFY_DATA_DIR-$RUN_DIR/data}" \
+			CONTINUARR_DATA_DIR="$data_dir" \
 			nohup ./gradlew "$task" --console=plain >>"$evidence_dir/backend.log" 2>&1 &
 		echo $! >"$RUN_DIR/backend-gradle.pid")
 	record_pid backend-gradle "$(read_state backend-gradle.pid)"
