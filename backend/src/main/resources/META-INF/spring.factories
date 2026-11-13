@@ -1,0 +1,2 @@
+org.springframework.boot.EnvironmentPostProcessor=\
+xyz.ianworley.continuarr.security.encryptionkey.EncryptionKeyFileEnvironmentPostProcessor

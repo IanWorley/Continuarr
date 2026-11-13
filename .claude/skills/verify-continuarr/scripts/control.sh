@@ -55,6 +55,25 @@ frontend_ready() {
 		curl -sf --max-time "$PROBE_TIMEOUT_SECONDS" "$FRONTEND_URL/api/setup" | grep -q '"required"'
 }
 
+# Each start reads the encryption key settings afresh, so a restart can drop or change the key.
+# CONTINUARR_VERIFY_ENCRYPTION_KEY sets CONTINUARR_ENCRYPTION_KEY. Unset, the backend creates its own key in the
+# run's data directory, as a fresh install does. CONTINUARR_VERIFY_DATA_DIR= (empty) starts with no data directory,
+# so without a key every save of a secret answers 503. No key is ever printed.
+start_backend() {
+	local task="$1" evidence_dir
+	shift
+	evidence_dir="$(read_state evidence-dir)"
+	(cd "$REPO_ROOT/backend" || exit 1
+		env "$@" \
+			CONTINUARR_ENCRYPTION_KEY="${CONTINUARR_VERIFY_ENCRYPTION_KEY-}" \
+			CONTINUARR_DATA_DIR="${CONTINUARR_VERIFY_DATA_DIR-$RUN_DIR/data}" \
+			nohup ./gradlew "$task" --console=plain >>"$evidence_dir/backend.log" 2>&1 &
+		echo $! >"$RUN_DIR/backend-gradle.pid")
+	record_pid backend-gradle "$(read_state backend-gradle.pid)"
+	wait_for "$BACKEND_COLD_START_TIMEOUT_SECONDS" "$(read_state backend-gradle.pid)" backend backend_ready
+	record_pid backend-app "$(port_owner "$BACKEND_PORT")"
+}
+
 containers_connected_to() {
 	local port
 	for port in $(lsof -nP -a -p "$1" -iTCP -sTCP:ESTABLISHED 2>/dev/null | awk 'NR > 1 {
@@ -70,7 +89,7 @@ launch() {
 	mkdir "$RUN_DIR" 2>/dev/null || die "an instance is already recorded in $RUN_DIR; run doctor, or cleanup first"
 	refuse() { rm -rf "$RUN_DIR"; die "$@"; }
 	local tool
-	for tool in lsof curl docker node npm openssl; do
+	for tool in lsof curl docker node npm; do
 		command -v "$tool" >/dev/null || refuse "$tool is not on PATH; launch needs it"
 	done
 	local port
@@ -94,15 +113,14 @@ launch() {
 		refuse "npm ci failed with node $(node --version 2>/dev/null || echo unknown), and frontend/.nvmrc pins $(cat "$REPO_ROOT/frontend/.nvmrc"); see $evidence_dir/npm-ci.log"
 
 	echo "Starting the backend (log: $evidence_dir/backend.log)"
-	(cd "$REPO_ROOT/backend" || exit 1
-		# Without an encryption key every save of a secret answers 503. Set CONTINUARR_VERIFY_ENCRYPTION_KEY to ""
-		# to launch without one. The key is never printed.
-		CONTINUARR_ENCRYPTION_KEY="${CONTINUARR_VERIFY_ENCRYPTION_KEY-$(openssl rand -hex 32)}" \
-			nohup ./gradlew bootTestRun --console=plain >"$evidence_dir/backend.log" 2>&1 &
-		echo $! >"$RUN_DIR/backend-gradle.pid")
-	record_pid backend-gradle "$(read_state backend-gradle.pid)"
-	wait_for "$BACKEND_COLD_START_TIMEOUT_SECONDS" "$(read_state backend-gradle.pid)" backend backend_ready
-	record_pid backend-app "$(port_owner "$BACKEND_PORT")"
+	if [[ -n "${CONTINUARR_VERIFY_RESTARTABLE:-}" ]]; then
+		# Testcontainers' reaper would remove Postgres when the backend stops, so restart needs it off.
+		# Cleanup then removes the container by ID.
+		touch "$RUN_DIR/restartable"
+		start_backend bootTestRun TESTCONTAINERS_RYUK_DISABLED=true
+	else
+		start_backend bootTestRun
+	fi
 	containers_connected_to "$(read_state backend-app.pid)" >"$RUN_DIR/containers"
 
 	echo "Starting the frontend (log: $evidence_dir/frontend.log)"
@@ -153,6 +171,29 @@ ensure_playwright() {
 	npm install --prefix "$TOOLS_DIR" --no-audit --no-fund "playwright-core@$PLAYWRIGHT_CORE_VERSION" >/dev/null
 }
 
+# bootTestRun always starts a new Postgres, so the restarted backend runs bootRun against the one from launch.
+restart() {
+	[[ -f "$RUN_DIR/restartable" ]] || die "this launch would lose its database on a restart; launch with CONTINUARR_VERIFY_RESTARTABLE=1"
+	local id port
+	id="$(read_state containers | head -n 1)"
+	[[ -n "$id" ]] || die "no Postgres container recorded for this launch"
+	# A graceful stop closes the Spring context, which stops the Postgres container bean with it.
+	if is_ours backend-app; then
+		kill -9 "$(read_state backend-app.pid)"
+		while is_ours backend-app; do sleep 1; done
+	fi
+	stop_process backend-gradle
+	port="$(docker port "$id" 5432/tcp | head -n 1 | awk -F: '{ print $NF }')"
+	container_env() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$id" | sed -n "s/^$1=//p"; }
+	echo "Restarting the backend on the same database (log: $(read_state evidence-dir)/backend.log)"
+	echo "--- control.sh restart $(date -u +%Y-%m-%dT%H:%M:%SZ) ---" >>"$(read_state evidence-dir)/backend.log"
+	start_backend bootRun \
+		SPRING_DATASOURCE_URL="jdbc:postgresql://localhost:$port/$(container_env POSTGRES_DB)" \
+		SPRING_DATASOURCE_USERNAME="$(container_env POSTGRES_USER)" \
+		SPRING_DATASOURCE_PASSWORD="$(container_env POSTGRES_PASSWORD)"
+	echo "Ready: $FRONTEND_URL (run $(read_state run-id), restarted)"
+}
+
 drive() {
 	local journey="${1:-}"
 	local script="$SCRIPT_DIR/journeys/$journey.mjs"
@@ -186,7 +227,9 @@ cleanup() {
 		stop_process "$process"
 	done
 	# Testcontainers' reaper removes them once the app exits; force only the ones this run recorded.
+	# A restartable launch has no reaper, so there is nothing to wait for.
 	local deadline=$((SECONDS + CONTAINER_REAP_TIMEOUT_SECONDS))
+	[[ -f "$RUN_DIR/restartable" ]] && deadline=$SECONDS
 	for id in $(read_state containers); do
 		while [[ -n "$(docker ps -q --filter "id=$id")" ]] && ((SECONDS < deadline)); do sleep 1; done
 		[[ -z "$(docker ps -q --filter "id=$id")" ]] || docker rm -f "$id" >/dev/null
@@ -199,7 +242,8 @@ case "${1:-}" in
 	launch) launch ;;
 	doctor) doctor ;;
 	token) token ;;
+	restart) restart ;;
 	drive) drive "${2:-}" ;;
 	cleanup) cleanup ;;
-	*) die "usage: control.sh launch | doctor | token | drive <journey> | cleanup" ;;
+	*) die "usage: control.sh launch | doctor | token | restart | drive <journey> | cleanup" ;;
 esac

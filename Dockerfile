@@ -24,7 +24,10 @@ COPY --from=frontend /workspace/frontend/dist ../frontend/dist
 RUN --mount=type=cache,target=/root/.gradle ./gradlew bootJar --no-daemon
 
 FROM eclipse-temurin:${JAVA_VERSION}-jre-alpine
-RUN addgroup -S continuarr && adduser -S continuarr -G continuarr
+# The app user must own /data before a volume mounts there, or Docker gives the new volume to root.
+RUN addgroup -S continuarr && adduser -S continuarr -G continuarr \
+	&& mkdir -m 700 /data && chown continuarr:continuarr /data
+ENV CONTINUARR_DATA_DIR=/data
 USER continuarr
 WORKDIR /app
 COPY --from=build /workspace/backend/build/libs/*.jar app.jar
