@@ -296,7 +296,7 @@
           },
           "source" : {
             "type" : [ "string", "null" ],
-            "enum" : [ "ENVIRONMENT", "PLEX_TV" ]
+            "enum" : [ "ENVIRONMENT", "PLEX_TV", null ]
           },
           "tokenState" : {
             "type" : "string",
