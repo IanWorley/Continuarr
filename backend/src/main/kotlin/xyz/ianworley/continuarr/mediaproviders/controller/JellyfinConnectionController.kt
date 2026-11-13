@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RestController
 import tools.jackson.core.JacksonException
+import tools.jackson.databind.cfg.CoercionAction
+import tools.jackson.databind.cfg.CoercionInputShape
 import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.type.LogicalType
 import xyz.ianworley.continuarr.mediaproviders.service.JellyfinConnectionSettings
 import xyz.ianworley.continuarr.mediaproviders.service.JellyfinSaveResult
 import java.io.InputStream
@@ -20,8 +23,15 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBod
 const val JELLYFIN_CONNECTION_PATH = "/api/v1/jellyfin/connection"
 const val JELLYFIN_API_KEY_MATCH_PATH = "$JELLYFIN_CONNECTION_PATH/api-key/match"
 
+private val SCALAR_SHAPES = listOf(CoercionInputShape.Integer, CoercionInputShape.Float, CoercionInputShape.Boolean)
+
 @RestController
-class JellyfinConnectionController(private val settings: JellyfinConnectionSettings, private val jsonMapper: JsonMapper) {
+class JellyfinConnectionController(private val settings: JellyfinConnectionSettings, jsonMapper: JsonMapper) {
+
+	// Jackson would read `true` or `123` as the string "true" or "123", a key the API schema says can't be sent.
+	private val bodyMapper: JsonMapper = jsonMapper.rebuild()
+		.withCoercionConfig(LogicalType.Textual) { config -> SCALAR_SHAPES.forEach { config.setCoercion(it, CoercionAction.Fail) } }
+		.build()
 
 	@GetMapping(JELLYFIN_CONNECTION_PATH)
 	fun connection(): JellyfinConnectionResponse {
@@ -78,7 +88,7 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 
 	/** Null when the body doesn't parse, or is the JSON literal `null`, which Jackson reads as null. */
 	private fun <T> readOrNull(body: InputStream, type: Class<T>): T? = try {
-		jsonMapper.readValue(body, type)
+		bodyMapper.readValue(body, type)
 	} catch (_: JacksonException) {
 		null
 	}

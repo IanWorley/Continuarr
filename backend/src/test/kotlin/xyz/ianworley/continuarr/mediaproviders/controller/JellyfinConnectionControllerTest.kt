@@ -50,6 +50,9 @@ private const val MISMATCH_JSON = """{"result": "MISMATCH"}"""
 private const val NO_KEY_SAVED_JSON = """{"result": "NONE"}"""
 private const val UNREADABLE_KEY_JSON = """{"result": "UNREADABLE"}"""
 private const val UNQUOTED_MATCH_BODY = """{"apiKey": $UNQUOTED_API_KEY}"""
+private const val BOOLEAN_TEXT_API_KEY = "true"
+private const val BOOLEAN_MATCH_BODY = """{"apiKey": true}"""
+private const val NUMBER_SAVE_BODY = """{"url": "$URL", "apiKey": 123}"""
 
 // TRACE is Spring's most verbose level, so nothing it logs at DEBUG can be missed.
 private fun withSpringWebTraceLogging(request: () -> Unit) {
@@ -197,6 +200,29 @@ class JellyfinConnectionControllerTest(
 		mockMvc.matchApiKey(INVALID_API_KEY)
 			.andExpect { status { isBadRequest() } }
 			.andExpect { content { string("") } }
+	}
+
+	@Test
+	fun `a JSON boolean is not a key, even when the saved key is its text`() {
+		mockMvc.saveConnection(URL, BOOLEAN_TEXT_API_KEY)
+
+		mockMvc.postWithCsrf(JELLYFIN_API_KEY_MATCH_PATH) {
+			with(user(ADMIN_USERNAME))
+			contentType = MediaType.APPLICATION_JSON
+			content = BOOLEAN_MATCH_BODY
+		}.andExpect { status { isBadRequest() } }
+	}
+
+	@Test
+	fun `PUT with a JSON number for the key answers 400 and stores nothing`() {
+		mockMvc.putWithCsrf(JELLYFIN_CONNECTION_PATH) {
+			with(user(ADMIN_USERNAME))
+			contentType = MediaType.APPLICATION_JSON
+			content = NUMBER_SAVE_BODY
+		}.andExpect { status { isBadRequest() } }
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(NOTHING_SAVED_JSON, JsonCompareMode.STRICT) } }
 	}
 
 	@Test
