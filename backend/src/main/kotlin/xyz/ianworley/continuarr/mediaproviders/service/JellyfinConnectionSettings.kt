@@ -119,12 +119,18 @@ class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 @JvmInline
 private value class ConnectionName(val value: String?)
 
-/** Null when [raw] is too long or holds a control character. A blank name clears the saved one. */
+/**
+ * Null when [raw] is over [MAX_NAME_LENGTH] characters or holds a control character or a lone surrogate, which
+ * Postgres would store as '?'. A blank name clears the saved one.
+ */
 private fun parseNameOrNull(raw: String): ConnectionName? = when {
 	raw.isBlank() -> ConnectionName(null)
-	raw.length > MAX_NAME_LENGTH || raw.any(Char::isISOControl) -> null
+	raw.codePointCount(0, raw.length) > MAX_NAME_LENGTH || raw.codePoints().anyMatch(::isControlOrLoneSurrogate) -> null
 	else -> ConnectionName(raw)
 }
+
+private fun isControlOrLoneSurrogate(codePoint: Int): Boolean =
+	Character.isISOControl(codePoint) || Character.getType(codePoint) == Character.SURROGATE.toInt()
 
 private fun downgradesToHttp(currentUrl: String, newUrl: URI?): Boolean =
 	newUrl != null && currentUrl.startsWith("$HTTPS:", ignoreCase = true) && !newUrl.scheme.equals(HTTPS, ignoreCase = true)

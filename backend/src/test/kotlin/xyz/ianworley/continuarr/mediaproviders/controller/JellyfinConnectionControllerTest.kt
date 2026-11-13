@@ -51,6 +51,11 @@ private const val HTTP_URL = "http://jellyfin.example:8096"
 private const val NAME_WITH_CONTROL_CHARACTER = "Basement\u0007Jellyfin"
 private const val MAX_NAME_LENGTH = 100
 private val TOO_LONG_NAME = "n".repeat(MAX_NAME_LENGTH + 1)
+// Sent as a JSON escape, since a lone surrogate can't be written as UTF-8.
+private const val LONE_SURROGATE_NAME_BODY = """{"name": "Basement\uD800Jellyfin"}"""
+// Each emoji is one character but two UTF-16 units, so this name is at the limit, not over it.
+private val LONGEST_EMOJI_NAME = "\uD83D\uDE00".repeat(MAX_NAME_LENGTH)
+private const val MISSPELLED_URL_BODY = """{"URL": "$URL"}"""
 private const val RENAMED_JSON = """{"name": "$NAME", "url": "$URL", "apiKeyState": "STORED"}"""
 private const val NEW_URL_JSON = """{"name": null, "url": "$HTTPS_URL", "apiKeyState": "STORED"}"""
 private const val API_KEY_INVALID_JSON = """{"invalidFields": ["API_KEY"]}"""
@@ -358,6 +363,36 @@ class JellyfinConnectionControllerTest(
 				.andReturn().response.contentAsString
 			assertFalse(response.contains(name))
 		}
+	}
+
+	@Test
+	fun `a name with a lone surrogate answers 400 instead of saving a question mark`() {
+		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
+
+		mockMvc.patchWithCsrf(JELLYFIN_CONNECTION_PATH) {
+			with(user(ADMIN_USERNAME))
+			contentType = MediaType.APPLICATION_JSON
+			content = LONE_SURROGATE_NAME_BODY
+		}.andExpect { status { isBadRequest() } }
+			.andExpect { content { json(NAME_INVALID_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `a name of 100 emoji is within the limit`() {
+		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
+
+		mockMvc.patchConnection("name" to LONGEST_EMOJI_NAME).andExpect { status { isNoContent() } }
+	}
+
+	@Test
+	fun `a misspelled PATCH field answers 400 instead of saving nothing`() {
+		mockMvc.saveConnection(HTTPS_URL, API_KEY).andExpect { status { isNoContent() } }
+
+		mockMvc.patchWithCsrf(JELLYFIN_CONNECTION_PATH) {
+			with(user(ADMIN_USERNAME))
+			contentType = MediaType.APPLICATION_JSON
+			content = MISSPELLED_URL_BODY
+		}.andExpect { status { isBadRequest() } }
 	}
 
 	@Test

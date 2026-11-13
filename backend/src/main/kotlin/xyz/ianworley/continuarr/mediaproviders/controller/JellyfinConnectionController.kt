@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RestController
 import tools.jackson.core.JacksonException
+import tools.jackson.databind.DeserializationFeature
 import tools.jackson.databind.cfg.CoercionAction
 import tools.jackson.databind.cfg.CoercionInputShape
 import tools.jackson.databind.json.JsonMapper
@@ -31,7 +32,9 @@ private val SCALAR_SHAPES = listOf(CoercionInputShape.Integer, CoercionInputShap
 class JellyfinConnectionController(private val settings: JellyfinConnectionSettings, jsonMapper: JsonMapper) {
 
 	// Jackson would read `true` or `123` as the string "true" or "123", a key the API schema says can't be sent.
+	// An unknown field fails too, so a misspelled PATCH field is a 400 rather than a save that changes nothing.
 	private val bodyMapper: JsonMapper = jsonMapper.rebuild()
+		.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
 		.withCoercionConfig(LogicalType.Textual) { config -> SCALAR_SHAPES.forEach { config.setCoercion(it, CoercionAction.Fail) } }
 		.build()
 
