@@ -284,6 +284,8 @@ library pairs, and matches live in the database and are edited in the admin UI.
 
 The admin saves the Jellyfin URL and API key with `PUT /api/v1/jellyfin/connection`. `GET` on the
 same path returns the URL and whether the saved key still decrypts (`apiKeyState`), never the key.
+`POST /api/v1/jellyfin/connection/api-key/match` compares a submitted key with the saved one on the
+server and answers only `MATCH`, `MISMATCH`, `NONE`, or `UNREADABLE`.
 The key is stored encrypted, so saving needs `CONTINUARR_ENCRYPTION_KEY`. The app starts without it, as a fresh `docker compose up` from
 `.env.example` does, and the save answers 503 until it is set. A malformed key fails startup. Changing
 the key leaves the saved Jellyfin key unreadable until the admin saves the connection again. Until a
