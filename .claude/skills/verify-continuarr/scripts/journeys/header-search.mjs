@@ -7,6 +7,7 @@ const HOME_PATH = '/settings/media-servers'
 const DESKTOP = { width: 1440, height: 900 }
 const NARROW_DESKTOP = { width: 1100, height: 900 }
 const PHONE = { width: 390, height: 844 }
+const PHONE_LANDSCAPE = { width: 844, height: 390 }
 const DESKTOP_CONTROL_HEIGHT = 36
 const TOUCH_TARGET = 44
 const HEADER_HEIGHT = 56
@@ -141,6 +142,20 @@ await runJourney(async ({ page, step, record }) => {
   await step('phone-drawer-over-search')
   await page.keyboard.press('Escape')
   await drawer.waitFor({ state: 'hidden' })
+
+  await toggle.click()
+  await field.waitFor()
+  await page.keyboard.type(QUERY)
+  await page.setViewportSize(PHONE_LANDSCAPE)
+  await page.getByRole('button', { name: 'Search', exact: true, includeHidden: true, expanded: false }).waitFor({ state: 'attached' })
+  assert.equal(await focusedName(), 'search field', 'rotating keeps focus in the field, now the desktop field')
+  assert.equal(await field.inputValue(), QUERY, 'rotating keeps what the admin typed')
+  await step('landscape-after-rotate')
+  await page.setViewportSize(PHONE)
+  await searchClosed(headingTop, 'rotating back leaves search closed')
+  // A screenshot taken right after a resize can still show the landscape header's pixels at the bottom.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await step('phone-after-rotate-back')
 
   assert.deepEqual(apiRequests, [], 'search on phones sends no request')
   await record('search-state', {

@@ -103,11 +103,17 @@ export function Shell() {
       setOverlay(null)
       toggle.focus()
     }
+    // A button hidden by CSS has no client rects. checkVisibility says so more plainly, but Safari before 17.4 lacks it.
+    const closeWhenToggleHidden = () => {
+      if (toggle.getClientRects().length === 0) setOverlay(null)
+    }
     document.addEventListener('click', onClick)
     document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('resize', closeWhenToggleHidden)
     return () => {
       document.removeEventListener('click', onClick)
       document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('resize', closeWhenToggleHidden)
     }
   }, [searchOpen])
 
