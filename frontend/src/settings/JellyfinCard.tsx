@@ -1,9 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useId, useRef, useState, type ReactNode, type SubmitEvent } from 'react'
 import {
   fetchJellyfinConnection,
-  saveJellyfinConnection,
+  HttpStatusError,
+  patchJellyfinConnection,
   type JellyfinConnection,
+  type JellyfinConnectionPatch,
   type JellyfinConnectionProblem,
 } from '../api/client.ts'
 import {
@@ -18,10 +21,12 @@ import {
 import { Icon, type IconName } from '../shell/Icon.tsx'
 import { FieldRow, Pill, ROW, ROW_LABEL, SectionTitle, SMALL_TEXT, type PillTone } from './cardParts.tsx'
 import { checkApiKey, checkUrl } from './jellyfinChecks.ts'
+import { planSave, type Draft, type Field, type FieldErrors } from './jellyfinSave.ts'
 
 const JELLYFIN_CONNECTION_QUERY_KEY = ['jellyfin-connection'] as const
 
 const HTTP_BAD_REQUEST = 400
+const HTTP_UNAUTHORIZED = 401
 const HTTP_SERVICE_UNAVAILABLE = 503
 
 const URL_PLACEHOLDER = 'http://jellyfin.local:8096'
@@ -29,10 +34,9 @@ const URL_HELP = 'The address Continuarr uses to reach Jellyfin, like http://jel
 // The server named a field the card's own check let through. Unlikely while the checks mirror the parsers.
 const URL_REFUSED = "Continuarr couldn't use this address. Check it, then save again."
 const KEY_REFUSED = "Continuarr couldn't use this key. Copy it again from Dashboard › API Keys."
+// Shown as placeholder text, never as the field's value, so nothing secret can be submitted or copied.
+const SAVED_KEY_DOTS = '••••••••••••••••••••••••'
 
-type Field = 'url' | 'apiKey'
-type Draft = Record<Field, string>
-type FieldErrors = Partial<Record<Field, string>>
 type ApiKeyState = JellyfinConnection['apiKeyState']
 type ServerField = JellyfinConnectionProblem['invalidFields'][number]
 
@@ -47,6 +51,7 @@ type Outcome =
   | { kind: 'unchanged' }
   | { kind: 'invalid'; count: number }
   | { kind: 'failed' }
+  | { kind: 'session-ended' }
 
 /** The pill always shows what is saved, so a failed save never changes it. */
 const SAVED_PILLS: Record<ApiKeyState, { tone: PillTone; text: string }> = {
@@ -57,7 +62,7 @@ const SAVED_PILLS: Record<ApiKeyState, { tone: PillTone; text: string }> = {
 
 const KEY_STATES: Record<ApiKeyState, { icon: IconName; text: string; tone: string }> = {
   NONE: { icon: 'unlock', text: 'No key saved yet', tone: 'text-ink-400' },
-  STORED: { icon: 'lock', text: 'A key is saved', tone: 'text-ink-100' },
+  STORED: { icon: 'lock', text: 'A key is saved. Leave this empty to keep it.', tone: 'text-ink-100' },
   UNREADABLE: {
     icon: 'warn',
     text: "Continuarr can't read the saved key. It was saved under a different CONTINUARR_ENCRYPTION_KEY, or none is set now. Paste the key and save again.",
@@ -103,6 +108,8 @@ export function JellyfinCard() {
     <section aria-labelledby={titleId} className="min-w-0 rounded-lg border border-ink-700 bg-ink-900">
       {query.data ? (
         <JellyfinForm titleId={titleId} saved={query.data} reload={() => void query.refetch()} />
+      ) : query.error instanceof HttpStatusError && query.error.status === HTTP_UNAUTHORIZED ? (
+        <SessionEnded titleId={titleId} />
       ) : query.isError ? (
         <LoadFailed titleId={titleId} retry={() => void query.refetch()} retrying={query.isFetching} />
       ) : (
@@ -158,6 +165,27 @@ function LoadFailed({ titleId, retry, retrying }: { titleId: string; retry: () =
   )
 }
 
+function SignInLink() {
+  return (
+    <Link to="/login" className={SECONDARY_BUTTON_CLASSES}>
+      Sign in
+    </Link>
+  )
+}
+
+function SessionEnded({ titleId }: { titleId: string }) {
+  return (
+    <>
+      <CardHead titleId={titleId} meta="Settings not loaded" pill={<Pill tone="warn">Unknown</Pill>} />
+      <div role="alert" className="mx-3.5 my-2.5">
+        <Banner tone="danger" title="Your session ended." action={<SignInLink />}>
+          Sign in again to see these settings.
+        </Banner>
+      </div>
+    </>
+  )
+}
+
 interface JellyfinFormProps {
   titleId: string
   saved: JellyfinConnection
@@ -177,6 +205,8 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
   const [outcomeSerial, setOutcomeSerial] = useState(0)
   const [saving, setSaving] = useState(false)
   const [encryptionKeyMissing, setEncryptionKeyMissing] = useState(false)
+  // A save that would send the saved key to a different server waits here for the admin to confirm.
+  const [pendingHost, setPendingHost] = useState<{ host: string; patch: JellyfinConnectionPatch }>()
 
   const urlChanged = draft.url.trim() !== savedUrl
   const dirty = urlChanged || draft.apiKey !== ''
@@ -190,6 +220,7 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
   function edit(field: Field, value: string) {
     setDraft((current) => ({ ...current, [field]: value }))
     setOutcome(undefined)
+    setPendingHost(undefined)
     // A field already marked wrong rechecks as you type, so the message goes away once it's fixed.
     if (errors[field]) setErrors((current) => ({ ...current, [field]: CHECKS[field](value.trim()) ?? undefined }))
   }
@@ -206,37 +237,49 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
   async function save(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (saveUnavailable) return
-    const sent: Draft = { url: draft.url.trim(), apiKey: draft.apiKey.trim() }
-    if (!dirty) {
-      setErrors({})
-      report({ kind: 'unchanged' })
-      return
+    setPendingHost(undefined)
+    const plan = planSave(saved, draft)
+    switch (plan.kind) {
+      case 'unchanged':
+        setErrors({})
+        report({ kind: 'unchanged' })
+        return
+      case 'invalid':
+        showErrors(plan.errors)
+        return
+      case 'confirm-host':
+        setErrors({})
+        setOutcome(undefined)
+        setPendingHost({ host: plan.host, patch: plan.patch })
+        return
+      case 'send':
+        await send(plan.patch)
     }
-    const found: FieldErrors = {}
-    for (const field of FIELDS) {
-      const message = CHECKS[field](sent[field])
-      if (message) found[field] = message
-    }
-    if (Object.keys(found).length > 0) {
-      showErrors(found)
-      return
-    }
+  }
 
+  async function send(patch: JellyfinConnectionPatch) {
+    setPendingHost(undefined)
     setSaving(true)
-    const response = await saveJellyfinConnection(sent).catch(() => undefined)
+    const response = await patchJellyfinConnection(patch).catch(() => undefined)
     setSaving(false)
     if (response?.ok) {
       // A GET still in flight, from Reload settings or a window refocus, may hold what was saved before this.
       await queryClient.cancelQueries({ queryKey: JELLYFIN_CONNECTION_QUERY_KEY })
+      const url = patch.url ?? saved.url ?? null
       setErrors({})
-      setDraft({ url: sent.url, apiKey: '' })
-      queryClient.setQueryData<JellyfinConnection>(JELLYFIN_CONNECTION_QUERY_KEY, { url: sent.url, apiKeyState: 'STORED' })
+      setDraft({ url: url ?? '', apiKey: '' })
+      // Without a new key the server kept the saved one, so its state is what it was.
+      const apiKeyState = patch.apiKey ? 'STORED' : saved.apiKeyState
+      queryClient.setQueryData<JellyfinConnection>(JELLYFIN_CONNECTION_QUERY_KEY, { url, apiKeyState })
       report({ kind: 'saved' })
+    } else if (response?.status === HTTP_UNAUTHORIZED) {
+      report({ kind: 'session-ended' })
     } else if (response?.status === HTTP_SERVICE_UNAVAILABLE) {
       setOutcome(undefined)
       setEncryptionKeyMissing(true)
     } else if (response?.status === HTTP_BAD_REQUEST) {
       const named = await namedFields(response)
+      const sent: Draft = { url: patch.url ?? draft.url.trim(), apiKey: patch.apiKey ?? '' }
       if (named.length > 0) {
         showErrors(Object.fromEntries(named.map((field) => [field, CHECKS[field](sent[field]) ?? REFUSED[field]])))
       } else {
@@ -254,6 +297,8 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
 
   const meta = saving ? (
     'Saving…'
+  ) : outcome?.kind === 'session-ended' ? (
+    'Not saved. Sign in again.'
   ) : outcome?.kind === 'failed' ? (
     saved.url ? 'Last save failed. The saved settings still apply.' : 'Last save failed.'
   ) : encryptionKeyMissing ? (
@@ -266,14 +311,14 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
     (saved.url ?? 'Not connected yet')
   )
   const savedPill = SAVED_PILLS[saved.apiKeyState]
+  const keySaved = saved.apiKeyState === 'STORED'
   const keyState =
-    saved.apiKeyState === 'STORED' && draft.apiKey !== ''
-      ? { ...KEY_STATES.STORED, text: 'Your saved key is unchanged.' }
+    keySaved && draft.apiKey !== ''
+      ? { ...KEY_STATES.STORED, text: 'Your typed key replaces the saved one when you save.' }
       : KEY_STATES[saved.apiKeyState]
-  const keyHelp =
-    saved.apiKeyState === 'NONE'
-      ? 'Create one in Jellyfin under Dashboard › API Keys.'
-      : 'Every save needs the key, so a new URL never receives the old one.'
+  const keyHelp = keySaved
+    ? 'Type a key only to replace the saved one.'
+    : 'Create one in Jellyfin under Dashboard › API Keys.'
   const note = encryptionKeyMissing
     ? 'Save is off until the server can encrypt the key.'
     : outcome?.kind === 'unchanged'
@@ -302,6 +347,33 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
             >
               Set <code className="rounded-sm border border-ink-700 bg-ink-800 px-1 text-xs text-ink-100">CONTINUARR_ENCRYPTION_KEY</code>{' '}
               in your server's environment and restart Continuarr. Then reload settings and save again.
+            </Banner>
+          </div>
+        )}
+        {pendingHost && (
+          <div className="mx-3.5 mt-2.5">
+            <Banner
+              tone="warn"
+              title={`Send the saved key to ${pendingHost.host}?`}
+              action={
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setPendingHost(undefined)} className={SECONDARY_BUTTON_CLASSES}>
+                    Cancel
+                  </button>
+                  <button type="button" onClick={() => void send(pendingHost.patch)} className={PRIMARY_BUTTON_CLASSES}>
+                    Send saved key
+                  </button>
+                </div>
+              }
+            >
+              Only do this if it's the same Jellyfin server. Continuarr sends the key with every request to this address.
+            </Banner>
+          </div>
+        )}
+        {outcome?.kind === 'session-ended' && (
+          <div className="mx-3.5 mt-2.5">
+            <Banner tone="danger" title="Your session ended." action={<SignInLink />}>
+              Sign in again, then save.
             </Banner>
           </div>
         )}
@@ -376,7 +448,7 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder={saved.apiKeyState === 'NONE' ? 'Paste the API key' : 'Paste the API key to save'}
+              placeholder={keySaved ? SAVED_KEY_DOTS : 'Paste the API key'}
               value={draft.apiKey}
               readOnly={saving}
               aria-invalid={errors.apiKey ? true : undefined}
@@ -384,7 +456,7 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
                 .filter(Boolean)
                 .join(' ')}
               onChange={(event) => edit('apiKey', event.target.value)}
-              className={COMPACT_FIELD_CLASSES}
+              className={`${COMPACT_FIELD_CLASSES} ${keySaved ? 'placeholder:tracking-widest placeholder:text-ink-100' : ''}`}
             />
           </FieldRow>
         </div>

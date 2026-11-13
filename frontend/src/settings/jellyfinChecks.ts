@@ -37,7 +37,7 @@ export const URL_MESSAGES = {
 } as const
 
 export const API_KEY_MESSAGES = {
-  empty: 'Paste the API key. Continuarr needs it on every save. Copy it from Jellyfin under Dashboard › API Keys.',
+  empty: 'Paste the API key. Copy it from Jellyfin under Dashboard › API Keys.',
   characters:
     'Jellyfin keys never contain spaces, quotes, backslashes, or accented letters. Copy the key again from Dashboard › API Keys.',
 } as const

@@ -15,6 +15,12 @@ const LABEL_GAP = 12
 const HTTP_INTERNAL_SERVER_ERROR = 500
 const JELLYFIN_URL = 'http://jellyfin.verify.local:8096'
 const NEW_URL = 'https://jf.verify.example'
+const SAME_SERVER_URL = 'http://jellyfin.verify.local:8097/jellyfin'
+const MATCH_PATH = `${CONNECTION_PATH}/api-key/match`
+const CSRF_PATH = '/api/csrf'
+const CSRF_COOKIE = 'XSRF-TOKEN'
+const CSRF_HEADER = 'X-XSRF-TOKEN'
+const SAVED_KEY_DOTS = /^•+$/
 const API_KEY_BYTES = 16
 
 /** @type {{ username: string, password: string }} */
@@ -40,6 +46,17 @@ await runJourney(async ({ page, step, record }) => {
     return found
   }
   const settle = () => page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished)))
+  // The match endpoint answers MATCH without returning the key, so it proves the saved key was kept.
+  const savedKeyMatches = async () => {
+    await page.request.get(`${FRONTEND_URL}${CSRF_PATH}`)
+    const cookie = (await page.context().cookies()).find(({ name }) => name === CSRF_COOKIE)
+    assert.ok(cookie, 'the backend set the CSRF cookie')
+    const response = await page.request.post(`${FRONTEND_URL}${MATCH_PATH}`, {
+      headers: { [CSRF_HEADER]: decodeURIComponent(cookie.value) },
+      data: { apiKey },
+    })
+    return (await response.json()).result
+  }
   const readConnection = async () => {
     const response = await page.request.get(`${FRONTEND_URL}${CONNECTION_PATH}`)
     const text = await response.text()
@@ -103,23 +120,45 @@ await runJourney(async ({ page, step, record }) => {
   await card.getByText('A key is saved').waitFor()
   assert.equal(await urlField.inputValue(), JELLYFIN_URL, 'a reload shows the saved URL')
   assert.equal(await keyField.inputValue(), '', 'a reload never shows the saved key')
+  assert.match((await keyField.getAttribute('placeholder')) ?? '', SAVED_KEY_DOTS, 'a saved key shows as placeholder dots')
   await step('desktop-stored-after-reload')
 
   await save.click()
   await card.getByText('No changes to save.').waitFor()
+
+  await urlField.fill(SAME_SERVER_URL)
+  await save.click()
+  await card.getByText('Saved. Continuarr uses this from now on.').waitFor()
+  const sameServer = { connection: await readConnection(), savedKey: await savedKeyMatches() }
+  assert.deepEqual(sameServer, { connection: { url: SAME_SERVER_URL, apiKeyState: 'STORED' }, savedKey: 'MATCH' }, 'a same-server URL keeps the key')
+  await step('desktop-same-server-kept-key')
+
   await urlField.fill(NEW_URL)
-  await card.getByText(`Saved: ${JELLYFIN_URL}`).waitFor()
+  await save.click()
+  await card.getByText('Send the saved key to jf.verify.example?').waitFor()
+  await step('desktop-new-host-prompt')
+  await card.getByRole('button', { name: 'Cancel' }).click()
+  assert.deepEqual(await readConnection(), sameServer.connection, 'Cancel sends nothing')
+  await save.click()
+  await card.getByRole('button', { name: 'Send saved key' }).click()
+  await card.getByText('Saved. Continuarr uses this from now on.').waitFor()
+  const newHost = { connection: await readConnection(), savedKey: await savedKeyMatches() }
+  assert.deepEqual(newHost, { connection: { url: NEW_URL, apiKeyState: 'STORED' }, savedKey: 'MATCH' }, 'confirming sends the saved key to the new host')
+  await step('desktop-new-host-saved')
+
+  await urlField.fill(JELLYFIN_URL)
+  await card.getByText(`Saved: ${NEW_URL}`).waitFor()
   await card.getByText('Unsaved changes').waitFor()
   await step('desktop-unsaved-changes')
 
   await page.route(`**${CONNECTION_PATH}`, (route) =>
-    route.request().method() === 'PUT' ? route.fulfill({ status: HTTP_INTERNAL_SERVER_ERROR }) : route.continue(),
+    route.request().method() === 'PATCH' ? route.fulfill({ status: HTTP_INTERNAL_SERVER_ERROR }) : route.continue(),
   )
   await keyField.fill(apiKey)
   await save.click()
   await card.getByText("Couldn't save your settings.").waitFor()
   await card.getByText('Last save failed. The saved settings still apply.').waitFor()
-  assert.equal(await urlField.inputValue(), NEW_URL, 'a failed save keeps the entries')
+  assert.equal(await urlField.inputValue(), JELLYFIN_URL, 'a failed save keeps the entries')
   await step('desktop-save-failed-stubbed-500')
   await page.unroute(`**${CONNECTION_PATH}`)
 
@@ -131,7 +170,7 @@ await runJourney(async ({ page, step, record }) => {
   await page.unroute(`**${CONNECTION_PATH}`)
   await card.getByRole('button', { name: 'Retry' }).click()
   await card.getByText('A key is saved').waitFor()
-  assert.equal(await urlField.inputValue(), JELLYFIN_URL, 'Retry loads what is saved, not the failed edit')
+  assert.equal(await urlField.inputValue(), NEW_URL, 'Retry loads what is saved, not the failed edit')
 
   await page.setViewportSize(PHONE)
   await page.reload()
@@ -154,5 +193,5 @@ await runJourney(async ({ page, step, record }) => {
 
   const log = await readFile(backendLog, 'utf8')
   assert.ok(!log.includes(apiKey), 'the backend log never holds the API key')
-  await record('jellyfin-card', { desktop, phone, afterSave, apiKeyInResponsesOrBackendLog: false })
+  await record('jellyfin-card', { desktop, phone, afterSave, sameServer, newHost, apiKeyInResponsesOrBackendLog: false })
 })

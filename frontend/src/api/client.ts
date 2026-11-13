@@ -28,7 +28,7 @@ export type Session = components['schemas']['Session']
 export type SetupRequest = components['schemas']['SetupRequest']
 export type SetupStatus = components['schemas']['SetupStatus']
 export type JellyfinConnection = components['schemas']['JellyfinConnectionResponse']
-export type JellyfinConnectionRequest = components['schemas']['JellyfinConnectionRequest']
+export type JellyfinConnectionPatch = components['schemas']['JellyfinConnectionPatchRequest']
 export type JellyfinConnectionProblem = components['schemas']['JellyfinConnectionProblem']
 
 /**
@@ -85,21 +85,34 @@ export function setUp(request: SetupRequest): Promise<Response> {
 }
 
 /** The saved Jellyfin URL and whether its API key decrypts. Never the key itself. */
+/** A response outside 2xx, so a caller can tell an ended session (401) from other failures. */
+export class HttpStatusError extends Error {
+  readonly status: number
+
+  constructor(request: string, status: number) {
+    super(`${request} returned ${status}`)
+    this.status = status
+  }
+}
+
 export async function fetchJellyfinConnection(): Promise<JellyfinConnection> {
   const response = await apiFetch(JELLYFIN_CONNECTION_PATH)
   if (!response.ok) {
-    throw new Error(`GET ${JELLYFIN_CONNECTION_PATH} returned ${response.status}`)
+    throw new HttpStatusError(`GET ${JELLYFIN_CONNECTION_PATH}`, response.status)
   }
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the generated types and OpenApiSpecTest pin the shape.
   return (await response.json()) as JellyfinConnection
 }
 
-/** Replaces the saved connection; answers 204, or 400 or 503 as documented in openapi.json. */
-export function saveJellyfinConnection(request: JellyfinConnectionRequest): Promise<Response> {
+/**
+ * Changes only the fields `patch` sends; a missing apiKey keeps the saved key on the server. Answers 204, or
+ * 400 or 503 as documented in openapi.json.
+ */
+export function patchJellyfinConnection(patch: JellyfinConnectionPatch): Promise<Response> {
   return apiFetch(JELLYFIN_CONNECTION_PATH, {
-    method: 'PUT',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
+    body: JSON.stringify(patch),
   })
 }
 
