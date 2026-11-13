@@ -14,7 +14,7 @@ The signed-in header holds a search field. It searches nothing yet, so typing in
 
 - Sign in at `http://localhost:5173/login`.
 - On desktop, click the `Search` field in the header.
-- On a phone, choose the `Search` button at the right of the header.
+- On a phone, choose the `Search` button next to `Sign out` in the header.
 
 ## Driving it with control.sh
 
@@ -24,9 +24,9 @@ Preconditions:
 
 - **Desktop.** Run `control.sh drive header-search`. It signs in at 1440 by 900, types into the field, and presses Enter. Step `01-desktop-search-typed` shows the field with text and no clear button. At 1100 wide the field is 220px.
 - **Phone.** At 390 by 844, step `02-phone-home` shows the `Search` button. Step `03-phone-search-open` shows the row with focus in the field, the heading 56px lower, and the toolbar's sticky offset at 112px. Step `04-phone-search-typed` shows one X.
-- **Close.** Escape closes the row in step `05-phone-search-escape`. `Close search`, a click on the heading, and `Open navigation` each close it too, and the heading moves back up. Step `06-phone-drawer-over-search` shows the drawer with the row closed.
-- **Rotate.** With search open at 390 by 844, the journey switches to 844 by 390. The admin types a query first. Step `07-landscape-after-rotate` shows the wide header field with the query and focus in it, and search closed. Step `08-phone-after-rotate-back` shows the phone header with no search row and the heading back in place.
-- **Side effect.** `search-state.json` holds the measured sizes, the heading's position with the row open and closed, the toolbar's sticky offset, and every `/api` request the page made during the journey, which must be none.
+- **Close.** Escape closes the row in step `05-phone-search-escape`. `Close search`, the `Search` button again, a click on the heading, and `Open navigation` each close it too, and the heading moves back up. Step `06-phone-drawer-over-search` shows the drawer with the row closed.
+- **Rotate.** With search open at 390 by 844, the journey switches to 844 by 390. The admin types a query first. Step `07-landscape-after-rotate` shows the 220px desktop field with the query and focus in it, and search closed. Step `08-phone-after-rotate-back` shows the phone header with no search row and the heading back in place.
+- **Side effect.** `search-state.json` holds the measured sizes, the heading's position with the row open and closed, the toolbar's sticky offset, and every `/api` request the page made while search was in use, which must be none.
 
 ## Gotchas
 

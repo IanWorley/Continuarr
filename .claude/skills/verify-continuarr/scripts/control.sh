@@ -73,6 +73,11 @@ launch() {
 	for tool in lsof curl docker node npm openssl; do
 		command -v "$tool" >/dev/null || refuse "$tool is not on PATH; launch needs it"
 	done
+	# An older Node fails npm ci with a misleading lock-file error, after the backend has already started.
+	local node_pin node_major
+	node_pin="$(cat "$REPO_ROOT/frontend/.nvmrc")"
+	node_major="$(node --version | sed 's/^v//; s/\..*//')"
+	((node_major >= ${node_pin%%.*})) || refuse "node $(node --version) is older than frontend/.nvmrc ($node_pin); put a newer Node first on PATH"
 	local port
 	for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
 		[[ -z "$(port_owner "$port")" ]] || refuse "port $port is in use by pid $(port_owner "$port"); this run will not drive an instance it did not start"

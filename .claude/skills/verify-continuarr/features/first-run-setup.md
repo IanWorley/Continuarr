@@ -33,5 +33,5 @@ Preconditions:
 ## Gotchas
 
 - The setup token changes on every launch. `control.sh token` reads the current one from the launch's backend log. It keeps printing that token after the admin exists, but `POST /api/setup` answers `409` by then.
-- The journey stores the admin's random password in the run state for `sign-in`. The ARIA snapshots show it in plain text. It belongs to a throwaway database, so never point a journey at a real install.
+- The journey stores the admin's random password in the run state for the journeys that sign in. The ARIA snapshots show it in plain text. It belongs to a throwaway database, so never point a journey at a real install.
 - A wrong token and a missing CSRF header both answer `403` on the API path. Check the CSRF header before you report a token bug.

@@ -1,6 +1,6 @@
 # Access control
 
-Everything on the backend requires a session except the health endpoint, `GET /api/csrf`, `GET` and `POST /api/setup`, `POST /api/login`, `POST /api/logout`, and the SPA's pages and assets. Every state-changing request, meaning any method other than `GET`, `HEAD`, `OPTIONS`, or `TRACE`, also needs the CSRF token, sent back in the `X-XSRF-TOKEN` header. That includes login and logout, and the CSRF check runs before the session check. [Security in `docs/plan.md`](../../../../docs/plan.md#security) is the source for these rules.
+Everything on the backend requires a session except the health endpoint, `/api/csrf` and `/api/setup` with any method, `POST /api/login`, `POST /api/logout`, and the SPA's pages and assets. Every state-changing request, meaning any method other than `GET`, `HEAD`, `OPTIONS`, or `TRACE`, also needs the CSRF token, sent back in the `X-XSRF-TOKEN` header. That includes login and logout, and the CSRF check runs before the session check. [Security in `docs/plan.md`](../../../../docs/plan.md#security) is the source for these rules.
 
 ## Sub-features
 

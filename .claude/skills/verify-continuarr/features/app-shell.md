@@ -8,7 +8,7 @@ Once signed in, every page sits in one frame. A fixed header holds the menu butt
 - `drawer-open` opens the drawer, focuses its first link, and makes the page and the other header controls unreachable.
 - `drawer-focus-trap` keeps Tab on the menu button and the drawer's links.
 - `drawer-close` closes the drawer on Escape, on a click outside it, on the menu button, or on choosing a destination, and focus returns to the menu button.
-- `phone-layout` hides the rail below 721px and turns `Sign out` into a 44px icon button.
+- `phone-layout` hides the rail and the username below 721px, and turns `Sign out` into a 44px icon button.
 
 ## How to get to it (user POV)
 
@@ -31,5 +31,5 @@ Preconditions:
 
 ## Gotchas
 
-- The drawer's `Main menu` navigation and the rail's `Main` navigation both hold a `Settings` link. Scope a locator to one of them.
+- The drawer's `Main menu` navigation and the rail's `Main` navigation both hold a `Settings` link, and the Media servers page adds a third `Settings` navigation whose link is `Media servers`. Scope a locator to one of them.
 - The rail is hidden on phones, so a rail locator there finds no visible element.
