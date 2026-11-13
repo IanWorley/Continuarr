@@ -41,6 +41,19 @@ describe('planSave', () => {
     })
   })
 
+  it('asks when an address only looks the same to the browser', () => {
+    // The browser reads 010 as octal 8, and java.net.URI reads it as decimal 10, so these are two machines.
+    const saved: JellyfinConnection = { url: 'https://192.168.1.8', apiKeyState: 'STORED' }
+    expect(planSave(saved, { url: 'https://192.168.001.010', apiKey: '' })).toMatchObject({
+      kind: 'confirm-host',
+      host: '192.168.001.010',
+    })
+  })
+
+  it('treats a hostname written in another case as the same server', () => {
+    expect(planSave(STORED, { url: 'https://JellyFin.Home.Lan:8920/jf', apiKey: '' })).toMatchObject({ kind: 'send' })
+  })
+
   it('sends a typed key with a new server without asking', () => {
     expect(planSave(STORED, { url: 'https://jf.example.net', apiKey: API_KEY })).toEqual({
       kind: 'send',

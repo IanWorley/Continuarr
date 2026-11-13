@@ -106,10 +106,11 @@ export function JellyfinCard() {
 
   return (
     <section aria-labelledby={titleId} className="min-w-0 rounded-lg border border-ink-700 bg-ink-900">
-      {query.data ? (
-        <JellyfinForm titleId={titleId} saved={query.data} reload={() => void query.refetch()} />
-      ) : query.error instanceof HttpStatusError && query.error.status === HTTP_UNAUTHORIZED ? (
+      {/* Checked before the data, because a failed refetch keeps the last data it loaded. */}
+      {query.error instanceof HttpStatusError && query.error.status === HTTP_UNAUTHORIZED ? (
         <SessionEnded titleId={titleId} />
+      ) : query.data ? (
+        <JellyfinForm titleId={titleId} saved={query.data} reload={() => void query.refetch()} />
       ) : query.isError ? (
         <LoadFailed titleId={titleId} retry={() => void query.refetch()} retrying={query.isFetching} />
       ) : (

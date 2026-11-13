@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -204,6 +204,21 @@ it('says the session ended when a save answers 401', async () => {
   expect(await screen.findByText('Your session ended.')).toBeDefined()
   expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toBe('/login')
   expect(screen.getByText('Configured')).toBeDefined()
+})
+
+it('says the session ended when a refetch answers 401 after settings loaded', async () => {
+  stubBackend({ get: [answer(STORED), status(HTTP_UNAUTHORIZED)] })
+  openCard()
+  await screen.findByText(KEY_SAVED)
+
+  act(() => {
+    focusManager.setFocused(false)
+    focusManager.setFocused(true)
+  })
+
+  expect(await screen.findByText('Your session ended.')).toBeDefined()
+  expect(screen.queryByLabelText('Server URL')).toBeNull()
+  act(() => focusManager.setFocused(undefined))
 })
 
 it('says the session ended when loading answers 401', async () => {

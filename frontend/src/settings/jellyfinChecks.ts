@@ -85,6 +85,15 @@ export function checkUrl(url: string): string | null {
   return null
 }
 
+/**
+ * The host exactly as written, lowercased, or '' when there is none. Not the browser's URL parser, which reads
+ * 192.168.001.010 as octal while java.net.URI reads it as decimal, so the two would name different machines.
+ */
+export function serverHost(url: string): string {
+  const authority = URL_PARTS.exec(url)?.[2] ?? ''
+  return (AUTHORITY.exec(authority)?.[1] ?? '').toLowerCase()
+}
+
 /** What to fix in a trimmed API key, or null when the server will accept it. */
 export function checkApiKey(apiKey: string): string | null {
   if (!apiKey) return API_KEY_MESSAGES.empty

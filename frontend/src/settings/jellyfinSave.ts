@@ -1,5 +1,5 @@
 import type { JellyfinConnection, JellyfinConnectionPatch } from '../api/client.ts'
-import { API_KEY_MESSAGES, checkApiKey, checkUrl } from './jellyfinChecks.ts'
+import { API_KEY_MESSAGES, checkApiKey, checkUrl, serverHost } from './jellyfinChecks.ts'
 
 export type Field = 'url' | 'apiKey'
 export type Draft = Record<Field, string>
@@ -36,8 +36,8 @@ export function planSave(saved: JellyfinConnection, draft: Draft): SavePlan {
   if (Object.keys(errors).length > 0) return { kind: 'invalid', errors }
 
   const patch: JellyfinConnectionPatch = { ...(urlChanged ? { url } : {}), ...(apiKey ? { apiKey } : {}) }
-  const host = hostname(url)
-  if (!apiKey && urlChanged && host !== hostname(saved.url ?? '')) return { kind: 'confirm-host', host, patch }
+  const host = serverHost(url)
+  if (!apiKey && urlChanged && host !== serverHost(saved.url ?? '')) return { kind: 'confirm-host', host, patch }
   return { kind: 'send', patch }
 }
 
@@ -46,12 +46,4 @@ function missingKeyError(saved: JellyfinConnection, url: string): string | null 
   if (saved.apiKeyState !== 'STORED') return API_KEY_MESSAGES.empty
   if (HTTPS_URL.test(saved.url ?? '') && HTTP_URL.test(url)) return KEY_FOR_HTTP
   return null
-}
-
-function hostname(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return ''
-  }
 }
