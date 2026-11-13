@@ -41,7 +41,8 @@ await runJourney(async ({ page, step, record }) => {
   await step('phone-503')
 
   await card.getByRole('button', { name: 'Reload settings' }).click()
-  await card.getByText('Nothing saved yet.').waitFor()
+  await card.getByText("Continuarr can't store the API key yet.").waitFor({ state: 'hidden' })
+  await card.getByText('Unsaved changes').waitFor()
   assert.equal(await save.getAttribute('aria-disabled'), 'false', 'Reload settings turns Save back on')
   assert.equal(await card.getByLabel('Server URL').inputValue(), JELLYFIN_URL, 'reloading keeps the entries')
   await step('phone-after-reload-settings')
