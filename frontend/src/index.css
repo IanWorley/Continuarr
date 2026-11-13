@@ -22,6 +22,8 @@
 
   /* The signed-in frame. Each name generates spacing utilities such as h-header and w-rail. */
   --spacing-header: 3.5rem;
+  /* The header plus the phone search row under it, which is as tall as the header. */
+  --spacing-header-with-search: calc(var(--spacing-header) * 2);
   --spacing-rail: 3.75rem;
   --spacing-drawer: 15rem;
   --spacing-toolbar: 3.25rem;
@@ -35,6 +37,8 @@
 
   /* 721px, so the phone layout covers widths up to 720px. */
   --breakpoint-tablet: 45.0625rem;
+  /* 1101px, so the narrower header search covers widths up to 1100px. */
+  --breakpoint-wide: 68.8125rem;
 }
 
 :root {

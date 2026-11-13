@@ -1,6 +1,6 @@
 # App shell
 
-Once signed in, every page sits in one frame. A fixed header holds the menu button, the Continuarr name, the admin's username, and `Sign out`. From tablet width up, an icon rail runs down the left edge. The menu button opens a labelled drawer of the same destinations below the header, with the page behind it dimmed and locked. Only Settings has a page so far. The other destinations show as coming later. Home opens Settings, on the Media servers page.
+Once signed in, every page sits in one frame. A fixed header holds the menu button, the Continuarr name, the [search field](./header-search.md), the admin's username, and `Sign out`. From tablet width up, an icon rail runs down the left edge. The menu button opens a labelled drawer of the same destinations below the header, with the page behind it dimmed and locked. Only Settings has a page so far. The other destinations show as coming later. Home opens Settings, on the Media servers page.
 
 ## Sub-features
 
