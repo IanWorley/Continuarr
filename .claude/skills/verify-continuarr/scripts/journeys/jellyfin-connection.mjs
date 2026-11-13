@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { FRONTEND_URL, RUN_DIR, runJourney } from '../journey.mjs'
+import { promisify } from 'node:util'
+import { BACKEND_URL, FRONTEND_URL, RUN_DIR, runJourney } from '../journey.mjs'
 
 const CONNECTION_PATH = '/api/v1/jellyfin/connection'
+const MATCH_PATH = `${CONNECTION_PATH}/api-key/match`
 const CSRF_PATH = '/api/csrf'
 const CSRF_COOKIE = 'XSRF-TOKEN'
 const CSRF_HEADER = 'X-XSRF-TOKEN'
@@ -15,6 +18,16 @@ const API_KEY_BYTES = 16
 const HTTP_OK = 200
 const HTTP_NO_CONTENT = 204
 const HTTP_BAD_REQUEST = 400
+const HTTP_UNAUTHORIZED = 401
+const HTTP_FORBIDDEN = 403
+const POSTGRES_IMAGE_PREFIX = 'postgres:'
+// Testcontainers' PostgreSQLContainer defaults.
+const POSTGRES_USER = 'test'
+const POSTGRES_DATABASE = 'test'
+const CORRUPT_CIPHERTEXT_SQL = "UPDATE jellyfin_connection SET api_key_ciphertext = 'not AES-GCM ciphertext'::bytea"
+const UNREADABLE_BODY = '{"apiKey": unquoted}'
+
+const run = promisify(execFile)
 
 /** @type {{ username: string, password: string }} */
 const admin = JSON.parse(
@@ -27,6 +40,29 @@ const backendLog = join((await readFile(join(RUN_DIR, 'evidence-dir'), 'utf8')).
 // Made fresh for each run and never written to the evidence, so a leak can only come from the app.
 const apiKey = randomBytes(API_KEY_BYTES).toString('hex')
 const invalidApiKey = `${apiKey} with spaces`
+const otherApiKey = randomBytes(API_KEY_BYTES).toString('hex')
+
+/** Stands in for a changed CONTINUARR_ENCRYPTION_KEY, which a launch can't change while it runs. */
+async function corruptSavedCiphertext() {
+  const ids = (await readFile(join(RUN_DIR, 'containers'), 'utf8')).split('\n').filter(Boolean)
+  const images = await Promise.all(ids.map(async (id) => (await run('docker', ['inspect', '--format', '{{.Config.Image}}', id])).stdout.trim()))
+  const postgres = ids.find((_, index) => images[index].startsWith(POSTGRES_IMAGE_PREFIX))
+  assert.ok(postgres, 'this run recorded its Postgres container')
+  await run('docker', ['exec', postgres, 'psql', '-U', POSTGRES_USER, '-d', POSTGRES_DATABASE, '-c', CORRUPT_CIPHERTEXT_SQL])
+}
+
+/** A request with a CSRF token but no session, so only the missing login can refuse it. */
+async function matchWithoutSession() {
+  const csrf = await fetch(`${BACKEND_URL}${CSRF_PATH}`)
+  const cookie = csrf.headers.getSetCookie().map((header) => header.split(';')[0]).find((pair) => pair.startsWith(`${CSRF_COOKIE}=`))
+  assert.ok(cookie, 'the backend set the CSRF cookie without a session')
+  const response = await fetch(`${BACKEND_URL}${MATCH_PATH}`, {
+    method: 'POST',
+    headers: { Cookie: cookie, [CSRF_HEADER]: decodeURIComponent(cookie.slice(CSRF_COOKIE.length + 1)), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey }),
+  })
+  return { status: response.status, body: await response.text() }
+}
 
 await runJourney(async ({ page, step, record }) => {
   const api = page.request
@@ -53,6 +89,16 @@ await runJourney(async ({ page, step, record }) => {
     assert.ok(!text.includes(apiKey), 'PUT never echoes the API key')
     return { status: response.status(), body: text ? JSON.parse(text) : null }
   }
+  /** @param {{ data?: unknown, body?: string, csrf?: boolean }} request */
+  const match = async ({ data, body, csrf = true }) => {
+    const response = await api.post(`${FRONTEND_URL}${MATCH_PATH}`, {
+      headers: { 'Content-Type': 'application/json', ...(csrf ? { [CSRF_HEADER]: await csrfToken() } : {}) },
+      ...(body === undefined ? { data } : { data: body }),
+    })
+    const text = await response.text()
+    assert.ok(!text.includes(apiKey) && !text.includes(otherApiKey), 'matching never returns either key')
+    return { status: response.status(), body: text ? JSON.parse(text) : null }
+  }
 
   await page.goto(`${FRONTEND_URL}/login`)
   await page.getByLabel('Username').fill(admin.username)
@@ -63,6 +109,9 @@ await runJourney(async ({ page, step, record }) => {
 
   const before = await read()
   assert.deepEqual(before, { url: null, apiKeyState: 'NONE' }, 'nothing is saved on a fresh launch')
+
+  const matchBeforeSave = await match({ data: { apiKey } })
+  assert.deepEqual(matchBeforeSave, { status: HTTP_OK, body: { result: 'NONE' } }, 'matching with nothing saved answers NONE')
 
   const rejected = await save(INVALID_URL, invalidApiKey)
   assert.equal(rejected.status, HTTP_BAD_REQUEST)
@@ -75,14 +124,47 @@ await runJourney(async ({ page, step, record }) => {
   const after = await read()
   assert.deepEqual(after, { url: JELLYFIN_URL, apiKeyState: 'STORED' }, 'GET reports the saved URL and a stored key')
 
+  const matched = await match({ data: { apiKey } })
+  assert.deepEqual(matched, { status: HTTP_OK, body: { result: 'MATCH' } }, 'the saved key answers MATCH')
+  const mismatched = await match({ data: { apiKey: otherApiKey } })
+  assert.deepEqual(mismatched, { status: HTTP_OK, body: { result: 'MISMATCH' } }, 'another key answers MISMATCH')
+  const invalidKey = await match({ data: { apiKey: invalidApiKey } })
+  assert.deepEqual(invalidKey, { status: HTTP_BAD_REQUEST, body: null }, 'an invalid key answers 400 with no body')
+  const unreadableBody = await match({ body: UNREADABLE_BODY })
+  assert.deepEqual(unreadableBody, { status: HTTP_BAD_REQUEST, body: null }, 'a body that does not parse answers 400 with no body')
+  const withoutCsrf = await match({ data: { apiKey }, csrf: false })
+  assert.equal(withoutCsrf.status, HTTP_FORBIDDEN, 'matching without the CSRF header answers 403')
+  const withoutSession = await matchWithoutSession()
+  assert.equal(withoutSession.status, HTTP_UNAUTHORIZED, 'matching without a session answers 401')
+  assert.ok(!withoutSession.body.includes(apiKey), 'a refused match never echoes the key')
+
+  await corruptSavedCiphertext()
+  const unreadable = await read()
+  assert.deepEqual(unreadable, { url: JELLYFIN_URL, apiKeyState: 'UNREADABLE' }, 'GET reports a key that no longer decrypts')
+  const matchUnreadable = await match({ data: { apiKey } })
+  assert.deepEqual(matchUnreadable, { status: HTTP_OK, body: { result: 'UNREADABLE' } }, 'matching a key that no longer decrypts answers UNREADABLE')
+
   const log = await readFile(backendLog, 'utf8')
   assert.ok(!log.includes(apiKey), 'the backend log never holds the API key')
+  assert.ok(!log.includes(otherApiKey), 'the backend log never holds a submitted key')
 
   await record('jellyfin-connection', {
     before,
     rejected,
     savedStatus: saved.status,
     after,
+    unreadable,
     apiKeyInResponsesOrBackendLog: false,
+  })
+  await record('jellyfin-api-key-match', {
+    noKeySaved: matchBeforeSave,
+    match: matched,
+    mismatch: mismatched,
+    invalidKey,
+    unreadableBody,
+    withoutCsrf: { status: withoutCsrf.status },
+    withoutSession: { status: withoutSession.status },
+    unreadableSavedKey: matchUnreadable,
+    eitherKeyInResponsesOrBackendLog: false,
   })
 })
