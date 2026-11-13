@@ -182,8 +182,13 @@
         "properties" : {
           "url" : {
             "type" : [ "string", "null" ]
+          },
+          "apiKeyState" : {
+            "type" : "string",
+            "enum" : [ "NONE", "STORED", "UNREADABLE" ]
           }
-        }
+        },
+        "required" : [ "apiKeyState" ]
       },
       "Session" : {
         "type" : "object",

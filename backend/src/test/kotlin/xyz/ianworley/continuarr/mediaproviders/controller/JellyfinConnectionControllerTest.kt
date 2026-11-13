@@ -37,8 +37,10 @@ private const val UNQUOTED_KEY_BODY = """{"url": "$URL", "apiKey": $UNQUOTED_API
 private const val SPRING_WEB_LOGGER = "org.springframework.web"
 private const val JSON_NULL_BODY = "null"
 
-private const val NO_URL_JSON = """{"url": null}"""
-private const val SAVED_URL_JSON = """{"url": "$URL"}"""
+private const val NOTHING_SAVED_JSON = """{"url": null, "apiKeyState": "NONE"}"""
+private const val SAVED_JSON = """{"url": "$URL", "apiKeyState": "STORED"}"""
+private const val UNREADABLE_JSON = """{"url": "$URL", "apiKeyState": "UNREADABLE"}"""
+private val UNDECRYPTABLE_CIPHERTEXT = "not AES-GCM ciphertext".toByteArray()
 private const val BOTH_FIELDS_INVALID_JSON = """{"invalidFields": ["URL", "API_KEY"]}"""
 
 // TRACE is Spring's most verbose level, so nothing it logs at DEBUG can be missed.
@@ -72,18 +74,18 @@ class JellyfinConnectionControllerTest(
 	}
 
 	@Test
-	fun `GET before a save returns a null URL`() {
+	fun `GET before a save returns a null URL and no key`() {
 		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
 			.andExpect { status { isOk() } }
-			.andExpect { content { json(NO_URL_JSON, JsonCompareMode.STRICT) } }
+			.andExpect { content { json(NOTHING_SAVED_JSON, JsonCompareMode.STRICT) } }
 	}
 
 	@Test
-	fun `PUT saves the connection, and GET returns its URL without the API key`() {
+	fun `PUT saves the connection, and GET returns its URL and key state without the API key`() {
 		val saved = mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }.andReturn()
 
 		val read = mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
-			.andExpect { content { json(SAVED_URL_JSON, JsonCompareMode.STRICT) } }
+			.andExpect { content { json(SAVED_JSON, JsonCompareMode.STRICT) } }
 			.andReturn()
 		assertFalse(saved.response.contentAsString.contains(API_KEY))
 		assertFalse(read.response.contentAsString.contains(API_KEY))
@@ -158,7 +160,27 @@ class JellyfinConnectionControllerTest(
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
-class JellyfinConnectionControllerWithoutEncryptionKeyTest(@Autowired private val mockMvc: MockMvc) {
+class JellyfinConnectionControllerWithoutEncryptionKeyTest(
+	@Autowired private val mockMvc: MockMvc,
+	@Autowired private val jdbcClient: JdbcClient,
+) {
+
+	@BeforeTest
+	fun startWithNothingSaved() {
+		jdbcClient.sql("DELETE FROM jellyfin_connection").update()
+	}
+
+	@Test
+	fun `GET reports a saved key it can't decrypt as UNREADABLE`() {
+		jdbcClient.sql("INSERT INTO jellyfin_connection (id, url, api_key_ciphertext) VALUES (1, :url, :ciphertext)")
+			.param("url", URL)
+			.param("ciphertext", UNDECRYPTABLE_CIPHERTEXT)
+			.update()
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { status { isOk() } }
+			.andExpect { content { json(UNREADABLE_JSON, JsonCompareMode.STRICT) } }
+	}
 
 	@Test
 	fun `PUT answers 503 and stores nothing without an encryption key`() {
@@ -168,6 +190,6 @@ class JellyfinConnectionControllerWithoutEncryptionKeyTest(@Autowired private va
 		}.andExpect { status { isServiceUnavailable() } }
 
 		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
-			.andExpect { content { json(NO_URL_JSON, JsonCompareMode.STRICT) } }
+			.andExpect { content { json(NOTHING_SAVED_JSON, JsonCompareMode.STRICT) } }
 	}
 }
