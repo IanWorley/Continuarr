@@ -90,7 +90,7 @@ await runJourney(async ({ page, step, record }) => {
   await urlField.focus()
   await page.keyboard.type(JELLYFIN_URL)
   await page.keyboard.press('Enter')
-  await card.getByText('Paste the API key. Continuarr needs it on every save.', { exact: false }).waitFor()
+  await card.getByText('Paste the API key. Copy it from Jellyfin under Dashboard › API Keys.', { exact: false }).waitFor()
   assert.equal(await focusedId(), await keyField.getAttribute('id'), 'a failed save focuses the first bad field')
   await card.getByText('Fix 1 field, then save again. Your entries are kept.').waitFor()
   await step('desktop-key-required-keyboard')
