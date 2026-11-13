@@ -219,7 +219,7 @@
             "type" : "array",
             "items" : {
               "type" : "string",
-              "enum" : [ "NAME", "URL", "API_KEY" ]
+              "enum" : [ "URL", "API_KEY" ]
             }
           }
         },
@@ -262,9 +262,6 @@
       "JellyfinConnectionPatchRequest" : {
         "type" : "object",
         "properties" : {
-          "name" : {
-            "type" : [ "string", "null" ]
-          },
           "url" : {
             "type" : [ "string", "null" ]
           },
@@ -276,9 +273,6 @@
       "JellyfinConnectionResponse" : {
         "type" : "object",
         "properties" : {
-          "name" : {
-            "type" : [ "string", "null" ]
-          },
           "url" : {
             "type" : [ "string", "null" ]
           },

@@ -42,27 +42,14 @@ private const val UNQUOTED_KEY_BODY = """{"url": "$URL", "apiKey": $UNQUOTED_API
 private const val SPRING_WEB_LOGGER = "org.springframework.web"
 private const val JSON_NULL_BODY = "null"
 
-private const val NOTHING_SAVED_JSON = """{"name": null, "url": null, "apiKeyState": "NONE"}"""
-private const val SAVED_JSON = """{"name": null, "url": "$URL", "apiKeyState": "STORED"}"""
-private const val UNREADABLE_JSON = """{"name": null, "url": "$URL", "apiKeyState": "UNREADABLE"}"""
-private const val NAME = "Basement Jellyfin"
+private const val NOTHING_SAVED_JSON = """{"url": null, "apiKeyState": "NONE"}"""
+private const val SAVED_JSON = """{"url": "$URL", "apiKeyState": "STORED"}"""
+private const val UNREADABLE_JSON = """{"url": "$URL", "apiKeyState": "UNREADABLE"}"""
 private const val HTTPS_URL = "https://jellyfin.example:8920"
 private const val HTTP_URL = "http://jellyfin.example:8096"
-private const val NAME_WITH_CONTROL_CHARACTER = "Basement\u0007Jellyfin"
-private const val MAX_NAME_LENGTH = 100
-private val TOO_LONG_NAME = "n".repeat(MAX_NAME_LENGTH + 1)
-// Blank, but the name rules still apply, so neither clears the saved name.
-private const val BLANK_CONTROL_CHARACTERS = "\t\r\n"
-private val TOO_MANY_SPACES = " ".repeat(MAX_NAME_LENGTH + 1)
-// Sent as a JSON escape, since a lone surrogate can't be written as UTF-8.
-private const val LONE_SURROGATE_NAME_BODY = """{"name": "Basement\uD800Jellyfin"}"""
-// Each emoji is one character but two UTF-16 units, so this name is at the limit, not over it.
-private val LONGEST_EMOJI_NAME = "\uD83D\uDE00".repeat(MAX_NAME_LENGTH)
 private const val MISSPELLED_URL_BODY = """{"URL": "$URL"}"""
-private const val RENAMED_JSON = """{"name": "$NAME", "url": "$URL", "apiKeyState": "STORED"}"""
-private const val NEW_URL_JSON = """{"name": null, "url": "$HTTPS_URL", "apiKeyState": "STORED"}"""
+private const val NEW_URL_JSON = """{"url": "$HTTPS_URL", "apiKeyState": "STORED"}"""
 private const val API_KEY_INVALID_JSON = """{"invalidFields": ["API_KEY"]}"""
-private const val NAME_INVALID_JSON = """{"invalidFields": ["NAME"]}"""
 private const val UNQUOTED_PATCH_BODY = """{"apiKey": $UNQUOTED_API_KEY}"""
 private val UNDECRYPTABLE_CIPHERTEXT = "not AES-GCM ciphertext".toByteArray()
 private const val BOTH_FIELDS_INVALID_JSON = """{"invalidFields": ["URL", "API_KEY"]}"""
@@ -311,17 +298,6 @@ class JellyfinConnectionControllerTest(
 	}
 
 	@Test
-	fun `renaming keeps the saved URL and key`() {
-		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
-
-		mockMvc.patchConnection("name" to NAME).andExpect { status { isNoContent() } }
-
-		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
-			.andExpect { content { json(RENAMED_JSON, JsonCompareMode.STRICT) } }
-		mockMvc.matchApiKey(API_KEY).andExpect { content { json(MATCH_JSON, JsonCompareMode.STRICT) } }
-	}
-
-	@Test
 	fun `a new URL alone keeps the saved key`() {
 		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
 
@@ -345,49 +321,6 @@ class JellyfinConnectionControllerTest(
 	}
 
 	@Test
-	fun `a blank name clears the saved one`() {
-		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
-		mockMvc.patchConnection("name" to NAME).andExpect { status { isNoContent() } }
-
-		mockMvc.patchConnection("name" to " ").andExpect { status { isNoContent() } }
-
-		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
-			.andExpect { content { json(SAVED_JSON, JsonCompareMode.STRICT) } }
-	}
-
-	@Test
-	fun `a name with a control character or over 100 characters answers 400 without echoing it`() {
-		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
-
-		for (name in listOf(NAME_WITH_CONTROL_CHARACTER, TOO_LONG_NAME, BLANK_CONTROL_CHARACTERS, TOO_MANY_SPACES)) {
-			val response = mockMvc.patchConnection("name" to name)
-				.andExpect { status { isBadRequest() } }
-				.andExpect { content { json(NAME_INVALID_JSON, JsonCompareMode.STRICT) } }
-				.andReturn().response.contentAsString
-			assertFalse(response.contains(name))
-		}
-	}
-
-	@Test
-	fun `a name with a lone surrogate answers 400 instead of saving a question mark`() {
-		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
-
-		mockMvc.patchWithCsrf(JELLYFIN_CONNECTION_PATH) {
-			with(user(ADMIN_USERNAME))
-			contentType = MediaType.APPLICATION_JSON
-			content = LONE_SURROGATE_NAME_BODY
-		}.andExpect { status { isBadRequest() } }
-			.andExpect { content { json(NAME_INVALID_JSON, JsonCompareMode.STRICT) } }
-	}
-
-	@Test
-	fun `a name of 100 emoji is within the limit`() {
-		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
-
-		mockMvc.patchConnection("name" to LONGEST_EMOJI_NAME).andExpect { status { isNoContent() } }
-	}
-
-	@Test
 	fun `a misspelled PATCH field answers 400 instead of saving nothing`() {
 		mockMvc.saveConnection(HTTPS_URL, API_KEY).andExpect { status { isNoContent() } }
 
@@ -396,17 +329,6 @@ class JellyfinConnectionControllerTest(
 			contentType = MediaType.APPLICATION_JSON
 			content = MISSPELLED_URL_BODY
 		}.andExpect { status { isBadRequest() } }
-	}
-
-	@Test
-	fun `PUT keeps the saved name`() {
-		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
-		mockMvc.patchConnection("name" to NAME).andExpect { status { isNoContent() } }
-
-		mockMvc.saveConnection(URL, API_KEY).andExpect { status { isNoContent() } }
-
-		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
-			.andExpect { content { json(RENAMED_JSON, JsonCompareMode.STRICT) } }
 	}
 
 	@Test
@@ -488,13 +410,13 @@ class JellyfinConnectionControllerWithoutEncryptionKeyTest(
 	}
 
 	@Test
-	fun `renaming works without an encryption key, because the saved key isn't touched`() {
+	fun `a new URL works without an encryption key, because the saved key isn't touched`() {
 		jdbcClient.sql("INSERT INTO jellyfin_connection (id, url, api_key_ciphertext) VALUES (1, :url, :ciphertext)")
 			.param("url", URL)
 			.param("ciphertext", UNDECRYPTABLE_CIPHERTEXT)
 			.update()
 
-		mockMvc.patchConnection("name" to NAME).andExpect { status { isNoContent() } }
+		mockMvc.patchConnection("url" to HTTPS_URL).andExpect { status { isNoContent() } }
 		mockMvc.patchConnection("apiKey" to API_KEY).andExpect { status { isServiceUnavailable() } }
 	}
 

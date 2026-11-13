@@ -283,9 +283,9 @@ library pairs, and matches live in the database and are edited in the admin UI.
 | `SPRING_DATASOURCE_*` | Postgres connection (Compose only; Testcontainers handles dev and tests) |
 
 The admin saves the Jellyfin URL and API key with `PUT /api/v1/jellyfin/connection`. `PATCH` on the
-same path changes only the fields it sends, so a rename or a new URL keeps the saved key. The first save
-still needs both, and moving the URL from https to http needs the key again, so it never travels unencrypted.
-`GET` returns the name, the URL, and whether the saved key still decrypts (`apiKeyState`), never the key.
+same path changes only the fields it sends, so a new URL keeps the saved key. The first save still needs
+both, and moving the URL from https to http needs the key again, so it never travels unencrypted.
+`GET` returns the URL and whether the saved key still decrypts (`apiKeyState`), never the key.
 `POST /api/v1/jellyfin/connection/api-key/match` compares a submitted key with the saved one on the
 server and answers only `MATCH`, `MISMATCH`, `NONE`, or `UNREADABLE`.
 The key is stored encrypted, so saving needs `CONTINUARR_ENCRYPTION_KEY`. The app starts without it, as a fresh `docker compose up` from

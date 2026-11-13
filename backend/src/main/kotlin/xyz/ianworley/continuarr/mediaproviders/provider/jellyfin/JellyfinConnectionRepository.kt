@@ -7,14 +7,13 @@ import org.hibernate.annotations.UpdateTimestamp
 import org.springframework.data.repository.Repository
 import java.time.Instant
 
-// The single saved Jellyfin connection. See 0003-jellyfin-connection.sql and 0004-jellyfin-connection-name.sql.
+// The single saved Jellyfin connection. See 0003-jellyfin-connection.sql.
 @Entity
 @Table(name = "jellyfin_connection")
 class JellyfinConnectionRow(
 	@Id val id: Short,
 	val url: String,
 	val apiKeyCiphertext: ByteArray,
-	val name: String? = null,
 	@UpdateTimestamp val updatedAt: Instant? = null,
 )
 

@@ -1,16 +1,16 @@
 # Jellyfin connection
 
-The signed-in admin saves the Jellyfin server's URL and API key with `PUT /api/v1/jellyfin/connection` and reads back the saved name, URL, and `apiKeyState` with `GET` on the same path. `PATCH` changes only the fields it sends, so a rename or a new URL keeps the saved key. `GET` never returns the key. `apiKeyState` is `NONE` before a save, `STORED` when the saved key decrypts under the current encryption key, and `UNREADABLE` when it doesn't. A bad URL or key answers `400` and names the field without echoing its value. Saving needs `CONTINUARR_ENCRYPTION_KEY`, because the key is stored encrypted. Without it the save answers `503`. Saving doesn't contact Jellyfin. `POST /api/v1/jellyfin/connection/api-key/match` takes `{"apiKey": "..."}` and answers `{"result": ...}` with `MATCH`, `MISMATCH`, `NONE` when nothing is saved, or `UNREADABLE` when the saved key doesn't decrypt. It never returns either key. [Configuration in `docs/plan.md`](../../../../docs/plan.md#configuration) is the source for these rules.
+The signed-in admin saves the Jellyfin server's URL and API key with `PUT /api/v1/jellyfin/connection` and reads back the saved URL and `apiKeyState` with `GET` on the same path. `PATCH` changes only the fields it sends, so a new URL keeps the saved key. `GET` never returns the key. `apiKeyState` is `NONE` before a save, `STORED` when the saved key decrypts under the current encryption key, and `UNREADABLE` when it doesn't. A bad URL or key answers `400` and names the field without echoing its value. Saving needs `CONTINUARR_ENCRYPTION_KEY`, because the key is stored encrypted. Without it the save answers `503`. Saving doesn't contact Jellyfin. `POST /api/v1/jellyfin/connection/api-key/match` takes `{"apiKey": "..."}` and answers `{"result": ...}` with `MATCH`, `MISMATCH`, `NONE` when nothing is saved, or `UNREADABLE` when the saved key doesn't decrypt. It never returns either key. [Configuration in `docs/plan.md`](../../../../docs/plan.md#configuration) is the source for these rules.
 
 ## Sub-features
 
 - `jellyfin-needs-session` answers `401` to `GET` without a session.
-- `jellyfin-empty` answers `{"name":null,"url":null,"apiKeyState":"NONE"}` before a save.
+- `jellyfin-empty` answers `{"url":null,"apiKeyState":"NONE"}` before a save.
 - `jellyfin-csrf` rejects a `PUT` without the CSRF header with `403`.
 - `jellyfin-invalid` answers `400` with `invalidFields`, such as `["URL"]` or `["API_KEY"]`.
 - `jellyfin-no-encryption-key` answers `503` to a valid `PUT` when the launch has no `CONTINUARR_ENCRYPTION_KEY`.
 - `jellyfin-saved` answers `204` to a valid `PUT`, and `GET` then returns the URL with `"apiKeyState":"STORED"` and no key.
-- `jellyfin-patch` answers `204` to a `PATCH` that sends only `name` or only `url`, and the saved key still answers `MATCH`. A first `PATCH` without `url` and `apiKey`, or one that moves the URL from `https` to `http` without `apiKey`, answers `400` naming the missing field. A blank `name` clears it.
+- `jellyfin-patch` answers `204` to a `PATCH` that sends only `url`, and the saved key still answers `MATCH`. A first `PATCH` without `url` and `apiKey`, or one that moves the URL from `https` to `http` without `apiKey`, answers `400` naming the missing field.
 - `jellyfin-key-hidden` keeps the key out of every response and out of the backend log.
 - `jellyfin-match` answers `NONE` before a save, `MATCH` for the saved key, and `MISMATCH` for another valid key.
 - `jellyfin-match-invalid` answers `400` with no body to an invalid key or a body that doesn't parse.
@@ -33,11 +33,11 @@ To drive the same paths by hand, run these from a scratch directory. `RUN_DIR` i
 
 - **Session required.** Run `curl -s -w ' %{http_code}\n' http://localhost:8080/api/v1/jellyfin/connection`. It prints ` 401`.
 - **Sign in.** Fetch the CSRF token with `curl -s -o /dev/null -c cookies.txt http://localhost:8080/api/csrf`. Then run `curl -s -o /dev/null -w '%{http_code}\n' -b cookies.txt -c cookies.txt -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' cookies.txt)" --data-urlencode "username=$(node -p "require('$RUN_DIR/admin-credentials.json').username")" --data-urlencode "password=$(node -p "require('$RUN_DIR/admin-credentials.json').password")" http://localhost:8080/api/login`. It prints `204`. Signing in replaces the CSRF cookie in `cookies.txt`, so the steps below read the token afresh each time. A token read before sign-in answers `403`.
-- **Empty.** Run `curl -s -w ' %{http_code}\n' -b cookies.txt http://localhost:8080/api/v1/jellyfin/connection`. It prints `{"name":null,"url":null,"apiKeyState":"NONE"} 200`.
+- **Empty.** Run `curl -s -w ' %{http_code}\n' -b cookies.txt http://localhost:8080/api/v1/jellyfin/connection`. It prints `{"url":null,"apiKeyState":"NONE"} 200`.
 - **CSRF.** Run `curl -s -o /dev/null -w '%{http_code}\n' -b cookies.txt -X PUT -H 'Content-Type: application/json' -d '{"url":"http://localhost:8096","apiKey":"k"}' http://localhost:8080/api/v1/jellyfin/connection`. It prints `403`.
 - **Invalid.** Send the same `PUT` with `-H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' cookies.txt)"` and `-w ' %{http_code}\n'` instead of `-o /dev/null`, and the body `{"url":"not a url","apiKey":"k"}`. It prints `{"invalidFields":["URL"]} 400`. The body `{"url":"http://localhost:8096","apiKey":""}` prints `{"invalidFields":["API_KEY"]} 400`.
 - **Save.** Send the CSRF `PUT` with the body `{"url":"http://localhost:8096","apiKey":"verify-placeholder-key"}`. With a key in the launch it prints ` 204`. Without one it prints ` 503`, and nothing is saved.
-- **Side effect.** Run the **Empty** `GET` again. After a `204` it prints `{"name":null,"url":"http://localhost:8096","apiKeyState":"STORED"} 200`, with no key in the body. After a `503` it still prints `{"name":null,"url":null,"apiKeyState":"NONE"} 200`.
+- **Side effect.** Run the **Empty** `GET` again. After a `204` it prints `{"url":"http://localhost:8096","apiKeyState":"STORED"} 200`, with no key in the body. After a `503` it still prints `{"url":null,"apiKeyState":"NONE"} 200`.
 
 ## Gotchas
 

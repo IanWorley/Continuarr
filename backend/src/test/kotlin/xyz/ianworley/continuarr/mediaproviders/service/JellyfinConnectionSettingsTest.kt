@@ -108,14 +108,14 @@ class JellyfinConnectionSettingsTest(
 	@Test
 	fun `with nothing saved the connection loads as NotConfigured`() {
 		assertEquals(StoredConnection.NotConfigured, store.load())
-		assertEquals(SavedJellyfinConnection(null, null, JellyfinApiKeyState.NONE), settings.saved())
+		assertEquals(SavedJellyfinConnection(null, JellyfinApiKeyState.NONE), settings.saved())
 	}
 
 	@Test
 	fun `a saved key that decrypts reads as STORED`() {
 		settings.save(URL, API_KEY)
 
-		assertEquals(SavedJellyfinConnection(null, URL, JellyfinApiKeyState.STORED), settings.saved())
+		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.STORED), settings.saved())
 	}
 
 	@Test
@@ -123,7 +123,7 @@ class JellyfinConnectionSettingsTest(
 		settings.save(URL, API_KEY)
 		val settingsWithoutKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties()))
 
-		assertEquals(SavedJellyfinConnection(null, URL, JellyfinApiKeyState.UNREADABLE), settingsWithoutKey.saved())
+		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.UNREADABLE), settingsWithoutKey.saved())
 	}
 
 	@Test
@@ -145,7 +145,7 @@ class JellyfinConnectionSettingsTest(
 		settings.save(URL, API_KEY)
 		val settingsUnderOtherKey = JellyfinConnectionSettings(JellyfinConnectionStore(repository, EncryptionKeyProperties(OTHER_ENCRYPTION_KEY)))
 
-		assertEquals(SavedJellyfinConnection(null, URL, JellyfinApiKeyState.UNREADABLE), settingsUnderOtherKey.saved())
+		assertEquals(SavedJellyfinConnection(URL, JellyfinApiKeyState.UNREADABLE), settingsUnderOtherKey.saved())
 	}
 
 	@Test

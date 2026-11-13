@@ -26,12 +26,12 @@ class JellyfinConnectionStore(private val repository: JellyfinConnectionReposito
 	 * Returns false and saves nothing when [apiKey] is a new key and CONTINUARR_ENCRYPTION_KEY isn't set.
 	 * Two first saves at once both insert, and one fails on the primary key. One admin saves this, so that's accepted.
 	 */
-	fun save(url: URI, name: String?, apiKey: ApiKeyChange): Boolean {
+	fun save(url: URI, apiKey: ApiKeyChange): Boolean {
 		val ciphertext = when (apiKey) {
 			is ApiKeyChange.Replace -> cipher?.encrypt(apiKey.key) ?: return false
 			is ApiKeyChange.Keep -> apiKey.current.apiKeyCiphertext
 		}
-		repository.save(JellyfinConnectionRow(SINGLE_ROW_ID, url.toString(), ciphertext, name))
+		repository.save(JellyfinConnectionRow(SINGLE_ROW_ID, url.toString(), ciphertext))
 		return true
 	}
 

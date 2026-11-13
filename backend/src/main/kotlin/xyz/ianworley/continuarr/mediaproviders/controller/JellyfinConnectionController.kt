@@ -41,7 +41,7 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 	@GetMapping(JELLYFIN_CONNECTION_PATH)
 	fun connection(): JellyfinConnectionResponse {
 		val saved = settings.saved()
-		return JellyfinConnectionResponse(saved.name, saved.url, saved.apiKeyState)
+		return JellyfinConnectionResponse(saved.url, saved.apiKeyState)
 	}
 
 	@PutMapping(JELLYFIN_CONNECTION_PATH, consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -91,7 +91,7 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 	// Reads the body itself for the same reason as save.
 	fun patch(body: InputStream): ResponseEntity<JellyfinConnectionProblem> {
 		val request = readOrNull(body, JellyfinConnectionPatchRequest::class.java) ?: return ResponseEntity.badRequest().build()
-		return respond(settings.patch(JellyfinConnectionPatch(request.name, request.url, request.apiKey)))
+		return respond(settings.patch(JellyfinConnectionPatch(request.url, request.apiKey)))
 	}
 
 	@PostMapping(JELLYFIN_API_KEY_MATCH_PATH, consumes = [MediaType.APPLICATION_JSON_VALUE])
