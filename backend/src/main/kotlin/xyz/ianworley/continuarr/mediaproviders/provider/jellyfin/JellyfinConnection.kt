@@ -1,6 +1,7 @@
 package xyz.ianworley.continuarr.mediaproviders.provider.jellyfin
 
 import java.net.URI
+import java.security.MessageDigest
 
 private val URL_SCHEMES = setOf("http", "https")
 private const val NO_PORT = -1
@@ -39,6 +40,9 @@ class JellyfinApiKey private constructor(private val value: String) {
 
 	/** For [ApiKeyCipher] to encrypt before the key is stored. */
 	fun plaintext(): ByteArray = value.toByteArray(Charsets.US_ASCII)
+
+	/** Compares in constant time, so the response time doesn't show how much of a wrong key was right. */
+	fun matches(other: JellyfinApiKey): Boolean = MessageDigest.isEqual(plaintext(), other.plaintext())
 
 	override fun toString(): String = "JellyfinApiKey(hidden)"
 

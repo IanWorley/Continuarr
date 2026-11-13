@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RestController
 import tools.jackson.core.JacksonException
@@ -17,6 +18,7 @@ import java.io.InputStream
 import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBody
 
 const val JELLYFIN_CONNECTION_PATH = "/api/v1/jellyfin/connection"
+const val JELLYFIN_API_KEY_MATCH_PATH = "$JELLYFIN_CONNECTION_PATH/api-key/match"
 
 @RestController
 class JellyfinConnectionController(private val settings: JellyfinConnectionSettings, private val jsonMapper: JsonMapper) {
@@ -48,7 +50,7 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 	// Parses the body here instead of through @RequestBody. Jackson's parse error quotes the bad token, which
 	// can be an unquoted API key, and Spring logs a failed argument at DEBUG wherever it's resolved.
 	fun save(body: InputStream): ResponseEntity<JellyfinConnectionProblem> {
-		val request = readRequestOrNull(body) ?: return ResponseEntity.badRequest().build()
+		val request = readOrNull(body, JellyfinConnectionRequest::class.java) ?: return ResponseEntity.badRequest().build()
 		return when (val result = settings.save(request.url, request.apiKey)) {
 			JellyfinSaveResult.Saved -> ResponseEntity.noContent().build()
 			is JellyfinSaveResult.Invalid -> ResponseEntity.badRequest().body(JellyfinConnectionProblem(result.fields.sorted()))
@@ -56,9 +58,27 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 		}
 	}
 
+	@PostMapping(JELLYFIN_API_KEY_MATCH_PATH, consumes = [MediaType.APPLICATION_JSON_VALUE])
+	@SwaggerRequestBody(
+		required = true,
+		content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = JellyfinApiKeyMatchRequest::class))],
+	)
+	@ApiResponse(responseCode = "200", description = "How the key compares with the saved one; neither key is returned")
+	@ApiResponse(
+		responseCode = "400",
+		description = "The body doesn't parse, or the API key isn't valid; the value isn't echoed",
+		content = [Content()],
+	)
+	// Reads the body itself for the same reason as save.
+	fun matchApiKey(body: InputStream): ResponseEntity<JellyfinApiKeyMatchResponse> {
+		val request = readOrNull(body, JellyfinApiKeyMatchRequest::class.java) ?: return ResponseEntity.badRequest().build()
+		val result = settings.matchApiKeyOrNull(request.apiKey) ?: return ResponseEntity.badRequest().build()
+		return ResponseEntity.ok(JellyfinApiKeyMatchResponse(result))
+	}
+
 	/** Null when the body doesn't parse, or is the JSON literal `null`, which Jackson reads as null. */
-	private fun readRequestOrNull(body: InputStream): JellyfinConnectionRequest? = try {
-		jsonMapper.readValue(body, JellyfinConnectionRequest::class.java)
+	private fun <T> readOrNull(body: InputStream, type: Class<T>): T? = try {
+		jsonMapper.readValue(body, type)
 	} catch (_: JacksonException) {
 		null
 	}

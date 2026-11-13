@@ -27,8 +27,9 @@ class JellyfinConnectionStore(private val repository: JellyfinConnectionReposito
 
 	fun find(): JellyfinConnectionRow? = repository.findById(SINGLE_ROW_ID)
 
-	/** False without CONTINUARR_ENCRYPTION_KEY, or when [row] was saved under another key. */
-	fun apiKeyDecrypts(row: JellyfinConnectionRow): Boolean = apiKeyOrNull(row) != null
+	/** Null without CONTINUARR_ENCRYPTION_KEY, or when [row] was saved under another key. */
+	fun apiKeyOrNull(row: JellyfinConnectionRow): JellyfinApiKey? =
+		cipher?.decrypt(row.apiKeyCiphertext)?.let(JellyfinApiKey::parseOrNull)
 
 	/** Never throws, so the adapter keeps to MediaServer's rule of throwing only MediaServerException. */
 	fun load(): StoredConnection {
@@ -48,7 +49,4 @@ class JellyfinConnectionStore(private val repository: JellyfinConnectionReposito
 			StoredConnection.Usable(JellyfinConnection(baseUrl, apiKey))
 		}
 	}
-
-	private fun apiKeyOrNull(row: JellyfinConnectionRow): JellyfinApiKey? =
-		cipher?.decrypt(row.apiKeyCiphertext)?.let(JellyfinApiKey::parseOrNull)
 }

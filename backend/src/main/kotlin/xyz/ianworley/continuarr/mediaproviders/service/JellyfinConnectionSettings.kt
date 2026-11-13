@@ -18,6 +18,14 @@ enum class JellyfinApiKeyState {
 	UNREADABLE,
 }
 
+/** How a submitted API key compares with the saved one. Neither key is ever reported. */
+enum class JellyfinApiKeyMatch {
+	MATCH,
+	MISMATCH,
+	NONE,
+	UNREADABLE,
+}
+
 /** [url] is null exactly when [apiKeyState] is [JellyfinApiKeyState.NONE], since every save stores both. */
 data class SavedJellyfinConnection(val url: String?, val apiKeyState: JellyfinApiKeyState)
 
@@ -39,7 +47,7 @@ class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 	/** The URL comes back even when the key won't decrypt, so the admin sees what to save again. */
 	fun saved(): SavedJellyfinConnection {
 		val row = store.find() ?: return SavedJellyfinConnection(null, JellyfinApiKeyState.NONE)
-		val apiKeyState = if (store.apiKeyDecrypts(row)) JellyfinApiKeyState.STORED else JellyfinApiKeyState.UNREADABLE
+		val apiKeyState = if (store.apiKeyOrNull(row) != null) JellyfinApiKeyState.STORED else JellyfinApiKeyState.UNREADABLE
 		return SavedJellyfinConnection(row.url, apiKeyState)
 	}
 
@@ -53,5 +61,13 @@ class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 			)
 		}
 		return if (store.save(baseUrl, key)) JellyfinSaveResult.Saved else JellyfinSaveResult.EncryptionKeyMissing
+	}
+
+	/** Null when [apiKey] isn't a valid key, which can't match a saved one, since every save checks the key. */
+	fun matchApiKeyOrNull(apiKey: String): JellyfinApiKeyMatch? {
+		val candidate = JellyfinApiKey.parseOrNull(apiKey) ?: return null
+		val row = store.find() ?: return JellyfinApiKeyMatch.NONE
+		val saved = store.apiKeyOrNull(row) ?: return JellyfinApiKeyMatch.UNREADABLE
+		return if (saved.matches(candidate)) JellyfinApiKeyMatch.MATCH else JellyfinApiKeyMatch.MISMATCH
 	}
 }

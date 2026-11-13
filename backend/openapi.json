@@ -59,6 +59,37 @@
         }
       }
     },
+    "/api/v1/jellyfin/connection/api-key/match" : {
+      "post" : {
+        "tags" : [ "jellyfin-connection-controller" ],
+        "operationId" : "matchApiKey",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/JellyfinApiKeyMatchRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "How the key compares with the saved one; neither key is returned",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/JellyfinApiKeyMatchResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "The body doesn't parse, or the API key isn't valid; the value isn't echoed"
+          }
+        }
+      }
+    },
     "/api/setup" : {
       "get" : {
         "tags" : [ "setup-controller" ],
@@ -161,6 +192,25 @@
           }
         },
         "required" : [ "invalidFields" ]
+      },
+      "JellyfinApiKeyMatchRequest" : {
+        "type" : "object",
+        "properties" : {
+          "apiKey" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "apiKey" ]
+      },
+      "JellyfinApiKeyMatchResponse" : {
+        "type" : "object",
+        "properties" : {
+          "result" : {
+            "type" : "string",
+            "enum" : [ "MATCH", "MISMATCH", "NONE", "UNREADABLE" ]
+          }
+        },
+        "required" : [ "result" ]
       },
       "SetupRequest" : {
         "type" : "object",
