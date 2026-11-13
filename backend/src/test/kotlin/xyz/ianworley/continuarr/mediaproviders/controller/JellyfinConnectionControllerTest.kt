@@ -17,10 +17,12 @@ import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import tools.jackson.databind.json.JsonMapper
 import xyz.ianworley.continuarr.TEST_ENCRYPTION_KEY_PROPERTY
 import xyz.ianworley.continuarr.TestcontainersConfiguration
+import xyz.ianworley.continuarr.security.postWithCsrf
 import xyz.ianworley.continuarr.security.putWithCsrf
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -29,6 +31,7 @@ import kotlin.test.assertFalse
 private const val ADMIN_USERNAME = "admin"
 private const val URL = "http://jellyfin:8096"
 private const val API_KEY = "0123456789abcdef0123456789abcdef"
+private const val OTHER_API_KEY = "fedcba9876543210fedcba9876543210"
 private const val URL_PASSWORD = "url-password"
 private const val INVALID_URL = "http://user:$URL_PASSWORD@jellyfin:8096"
 private const val INVALID_API_KEY = "has a space"
@@ -42,6 +45,14 @@ private const val SAVED_JSON = """{"url": "$URL", "apiKeyState": "STORED"}"""
 private const val UNREADABLE_JSON = """{"url": "$URL", "apiKeyState": "UNREADABLE"}"""
 private val UNDECRYPTABLE_CIPHERTEXT = "not AES-GCM ciphertext".toByteArray()
 private const val BOTH_FIELDS_INVALID_JSON = """{"invalidFields": ["URL", "API_KEY"]}"""
+private const val MATCH_JSON = """{"result": "MATCH"}"""
+private const val MISMATCH_JSON = """{"result": "MISMATCH"}"""
+private const val NO_KEY_SAVED_JSON = """{"result": "NONE"}"""
+private const val UNREADABLE_KEY_JSON = """{"result": "UNREADABLE"}"""
+private const val UNQUOTED_MATCH_BODY = """{"apiKey": $UNQUOTED_API_KEY}"""
+private const val BOOLEAN_TEXT_API_KEY = "true"
+private const val BOOLEAN_MATCH_BODY = """{"apiKey": true}"""
+private const val NUMBER_SAVE_BODY = """{"url": "$URL", "apiKey": 123}"""
 
 // TRACE is Spring's most verbose level, so nothing it logs at DEBUG can be missed.
 private fun withSpringWebTraceLogging(request: () -> Unit) {
@@ -57,6 +68,16 @@ private fun withSpringWebTraceLogging(request: () -> Unit) {
 private fun MockHttpServletRequestDsl.jsonBody(url: String, apiKey: String) {
 	contentType = MediaType.APPLICATION_JSON
 	content = JsonMapper().writeValueAsString(mapOf("url" to url, "apiKey" to apiKey))
+}
+
+private fun MockHttpServletRequestDsl.matchBody(apiKey: String) {
+	contentType = MediaType.APPLICATION_JSON
+	content = JsonMapper().writeValueAsString(mapOf("apiKey" to apiKey))
+}
+
+private fun MockMvc.matchApiKey(apiKey: String): ResultActionsDsl = postWithCsrf(JELLYFIN_API_KEY_MATCH_PATH) {
+	with(user(ADMIN_USERNAME))
+	matchBody(apiKey)
 }
 
 @SpringBootTest(properties = [TEST_ENCRYPTION_KEY_PROPERTY])
@@ -151,6 +172,98 @@ class JellyfinConnectionControllerTest(
 		}.andExpect { status { isForbidden() } }
 	}
 
+	@Test
+	fun `matching a key with nothing saved answers NONE`() {
+		mockMvc.matchApiKey(API_KEY)
+			.andExpect { status { isOk() } }
+			.andExpect { content { json(NO_KEY_SAVED_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `the saved key answers MATCH`() {
+		mockMvc.saveConnection(URL, API_KEY)
+
+		mockMvc.matchApiKey(API_KEY).andExpect { content { json(MATCH_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `another valid key answers MISMATCH`() {
+		mockMvc.saveConnection(URL, API_KEY)
+
+		mockMvc.matchApiKey(OTHER_API_KEY).andExpect { content { json(MISMATCH_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `matching an invalid key answers 400 with no body`() {
+		mockMvc.saveConnection(URL, API_KEY)
+
+		mockMvc.matchApiKey(INVALID_API_KEY)
+			.andExpect { status { isBadRequest() } }
+			.andExpect { content { string("") } }
+	}
+
+	@Test
+	fun `a JSON boolean is not a key, even when the saved key is its text`() {
+		mockMvc.saveConnection(URL, BOOLEAN_TEXT_API_KEY)
+
+		mockMvc.postWithCsrf(JELLYFIN_API_KEY_MATCH_PATH) {
+			with(user(ADMIN_USERNAME))
+			contentType = MediaType.APPLICATION_JSON
+			content = BOOLEAN_MATCH_BODY
+		}.andExpect { status { isBadRequest() } }
+	}
+
+	@Test
+	fun `PUT with a JSON number for the key answers 400 and stores nothing`() {
+		mockMvc.putWithCsrf(JELLYFIN_CONNECTION_PATH) {
+			with(user(ADMIN_USERNAME))
+			contentType = MediaType.APPLICATION_JSON
+			content = NUMBER_SAVE_BODY
+		}.andExpect { status { isBadRequest() } }
+
+		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(NOTHING_SAVED_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `matching keeps both keys out of the log at every level`(output: CapturedOutput) {
+		mockMvc.saveConnection(URL, API_KEY)
+
+		withSpringWebTraceLogging {
+			mockMvc.matchApiKey(API_KEY).andExpect { status { isOk() } }
+			mockMvc.matchApiKey(OTHER_API_KEY).andExpect { status { isOk() } }
+		}
+
+		assertFalse(output.all.contains(API_KEY))
+		assertFalse(output.all.contains(OTHER_API_KEY))
+	}
+
+	@Test
+	fun `an unreadable match body answers 400 and keeps an unquoted key out of the log at every level`(output: CapturedOutput) {
+		withSpringWebTraceLogging {
+			mockMvc.postWithCsrf(JELLYFIN_API_KEY_MATCH_PATH) {
+				with(user(ADMIN_USERNAME))
+				contentType = MediaType.APPLICATION_JSON
+				content = UNQUOTED_MATCH_BODY
+			}.andExpect { status { isBadRequest() } }
+		}
+
+		assertFalse(output.all.contains(UNQUOTED_API_KEY))
+	}
+
+	@Test
+	fun `matching needs a login`() {
+		mockMvc.postWithCsrf(JELLYFIN_API_KEY_MATCH_PATH) { matchBody(API_KEY) }.andExpect { status { isUnauthorized() } }
+	}
+
+	@Test
+	fun `matching needs a CSRF token`() {
+		mockMvc.post(JELLYFIN_API_KEY_MATCH_PATH) {
+			with(user(ADMIN_USERNAME))
+			matchBody(API_KEY)
+		}.andExpect { status { isForbidden() } }
+	}
+
 	private fun MockMvc.saveConnection(url: String, apiKey: String): ResultActionsDsl = putWithCsrf(JELLYFIN_CONNECTION_PATH) {
 		with(user(ADMIN_USERNAME))
 		jsonBody(url, apiKey)
@@ -180,6 +293,18 @@ class JellyfinConnectionControllerWithoutEncryptionKeyTest(
 		mockMvc.get(JELLYFIN_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
 			.andExpect { status { isOk() } }
 			.andExpect { content { json(UNREADABLE_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `matching against a saved key it can't decrypt answers UNREADABLE`() {
+		jdbcClient.sql("INSERT INTO jellyfin_connection (id, url, api_key_ciphertext) VALUES (1, :url, :ciphertext)")
+			.param("url", URL)
+			.param("ciphertext", UNDECRYPTABLE_CIPHERTEXT)
+			.update()
+
+		mockMvc.matchApiKey(API_KEY)
+			.andExpect { status { isOk() } }
+			.andExpect { content { json(UNREADABLE_KEY_JSON, JsonCompareMode.STRICT) } }
 	}
 
 	@Test
