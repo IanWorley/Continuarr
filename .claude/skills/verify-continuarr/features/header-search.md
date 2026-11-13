@@ -7,6 +7,7 @@ The signed-in header holds a search field. It searches nothing yet, so typing in
 - `desktop-field` shows a 36px field, 300px wide above 1100px and 220px wide at 1100px and below, with no clear button inside it.
 - `phone-open` opens a 56px row under the header from the 44px `Search` button, focuses the field, and moves the page and its toolbar down by the row's height.
 - `phone-close` closes the row on Escape, on `Close search`, on the `Search` button again, on a click outside the header, or when the drawer opens. Escape and `Close search` return focus to the `Search` button.
+- `phone-rotate` closes search when the viewport widens past 720px, such as when the phone rotates to landscape. Focus and the typed text stay in the field, and rotating back shows the header with search closed.
 - `no-request` sends nothing while the admin types or presses Enter.
 
 ## How to get to it (user POV)
@@ -24,6 +25,7 @@ Preconditions:
 - **Desktop.** Run `control.sh drive header-search`. It signs in at 1440 by 900, types into the field, and presses Enter. Step `01-desktop-search-typed` shows the field with text and no clear button. At 1100 wide the field is 220px.
 - **Phone.** At 390 by 844, step `02-phone-home` shows the `Search` button. Step `03-phone-search-open` shows the row with focus in the field, the heading 56px lower, and the toolbar's sticky offset at 112px. Step `04-phone-search-typed` shows one X.
 - **Close.** Escape closes the row in step `05-phone-search-escape`. `Close search`, a click on the heading, and `Open navigation` each close it too, and the heading moves back up. Step `06-phone-drawer-over-search` shows the drawer with the row closed.
+- **Rotate.** With search open at 390 by 844, the journey switches to 844 by 390. The admin types a query first. Step `07-landscape-after-rotate` shows the wide header field with the query and focus in it, and search closed. Step `08-phone-after-rotate-back` shows the phone header with no search row and the heading back in place.
 - **Side effect.** `search-state.json` holds the measured sizes, the heading's position with the row open and closed, the toolbar's sticky offset, and every `/api` request the page made during the journey, which must be none.
 
 ## Gotchas
