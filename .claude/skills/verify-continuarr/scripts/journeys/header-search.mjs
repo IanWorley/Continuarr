@@ -129,6 +129,11 @@ await runJourney(async ({ page, step, record }) => {
 
   await toggle.click()
   await field.waitFor()
+  await toggle.click()
+  await searchClosed(headingTop, 'the search button closes search again')
+
+  await toggle.click()
+  await field.waitFor()
   await heading.click()
   await searchClosed(headingTop, 'a click outside the header closes search')
   const focusAfterOutsideClick = await page.evaluate(() => document.activeElement?.tagName)
@@ -150,6 +155,7 @@ await runJourney(async ({ page, step, record }) => {
   await page.getByRole('button', { name: 'Search', exact: true, includeHidden: true, expanded: false }).waitFor({ state: 'attached' })
   assert.equal(await focusedName(), 'search field', 'rotating keeps focus in the field, now the desktop field')
   assert.equal(await field.inputValue(), QUERY, 'rotating keeps what the admin typed')
+  assert.equal((await searchBox())?.width, NARROW_SEARCH_WIDTH, 'landscape shows the 220px desktop field')
   await step('landscape-after-rotate')
   await page.setViewportSize(PHONE)
   await searchClosed(headingTop, 'rotating back leaves search closed')

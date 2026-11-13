@@ -88,6 +88,11 @@ launch() {
 	echo "$REPO_ROOT" >"$RUN_DIR/repo-root"
 	git -C "$REPO_ROOT" rev-parse HEAD >"$RUN_DIR/revision"
 
+	# Install before the backend starts, so a Node or npm too old for the lock file fails with nothing running.
+	echo "Installing frontend dependencies (log: $evidence_dir/npm-ci.log)"
+	(cd "$REPO_ROOT/frontend" && npm ci >"$evidence_dir/npm-ci.log" 2>&1) ||
+		refuse "npm ci failed with node $(node --version 2>/dev/null || echo unknown), and frontend/.nvmrc pins $(cat "$REPO_ROOT/frontend/.nvmrc"); see $evidence_dir/npm-ci.log"
+
 	echo "Starting the backend (log: $evidence_dir/backend.log)"
 	(cd "$REPO_ROOT/backend" || exit 1
 		# Without an encryption key every save of a secret answers 503. Set CONTINUARR_VERIFY_ENCRYPTION_KEY to ""
@@ -99,9 +104,6 @@ launch() {
 	wait_for "$BACKEND_COLD_START_TIMEOUT_SECONDS" "$(read_state backend-gradle.pid)" backend backend_ready
 	record_pid backend-app "$(port_owner "$BACKEND_PORT")"
 	containers_connected_to "$(read_state backend-app.pid)" >"$RUN_DIR/containers"
-
-	echo "Installing frontend dependencies (log: $evidence_dir/npm-ci.log)"
-	(cd "$REPO_ROOT/frontend" && npm ci >"$evidence_dir/npm-ci.log" 2>&1) || die "npm ci failed; see $evidence_dir/npm-ci.log"
 
 	echo "Starting the frontend (log: $evidence_dir/frontend.log)"
 	(cd "$REPO_ROOT/frontend" || exit 1
