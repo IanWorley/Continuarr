@@ -7,14 +7,17 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RestController
 import tools.jackson.core.JacksonException
+import tools.jackson.databind.DeserializationFeature
 import tools.jackson.databind.cfg.CoercionAction
 import tools.jackson.databind.cfg.CoercionInputShape
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.type.LogicalType
+import xyz.ianworley.continuarr.mediaproviders.service.JellyfinConnectionPatch
 import xyz.ianworley.continuarr.mediaproviders.service.JellyfinConnectionSettings
 import xyz.ianworley.continuarr.mediaproviders.service.JellyfinSaveResult
 import java.io.InputStream
@@ -29,7 +32,9 @@ private val SCALAR_SHAPES = listOf(CoercionInputShape.Integer, CoercionInputShap
 class JellyfinConnectionController(private val settings: JellyfinConnectionSettings, jsonMapper: JsonMapper) {
 
 	// Jackson would read `true` or `123` as the string "true" or "123", a key the API schema says can't be sent.
+	// An unknown field fails too, so a misspelled PATCH field is a 400 rather than a save that changes nothing.
 	private val bodyMapper: JsonMapper = jsonMapper.rebuild()
+		.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
 		.withCoercionConfig(LogicalType.Textual) { config -> SCALAR_SHAPES.forEach { config.setCoercion(it, CoercionAction.Fail) } }
 		.build()
 
@@ -61,11 +66,32 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 	// can be an unquoted API key, and Spring logs a failed argument at DEBUG wherever it's resolved.
 	fun save(body: InputStream): ResponseEntity<JellyfinConnectionProblem> {
 		val request = readOrNull(body, JellyfinConnectionRequest::class.java) ?: return ResponseEntity.badRequest().build()
-		return when (val result = settings.save(request.url, request.apiKey)) {
-			JellyfinSaveResult.Saved -> ResponseEntity.noContent().build()
-			is JellyfinSaveResult.Invalid -> ResponseEntity.badRequest().body(JellyfinConnectionProblem(result.fields.sorted()))
-			JellyfinSaveResult.EncryptionKeyMissing -> ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build()
-		}
+		return respond(settings.save(request.url, request.apiKey))
+	}
+
+	@PatchMapping(JELLYFIN_CONNECTION_PATH, consumes = [MediaType.APPLICATION_JSON_VALUE])
+	@SwaggerRequestBody(
+		required = true,
+		content = [
+			Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = JellyfinConnectionPatchRequest::class)),
+		],
+	)
+	@ApiResponse(responseCode = "204", description = "Saved; fields the request left out keep their saved values", content = [Content()])
+	@ApiResponse(
+		responseCode = "400",
+		description = "Names the invalid fields without echoing their values. The first save needs url and apiKey, and moving " +
+			"the URL from https to http needs apiKey",
+		content = [Content(schema = Schema(implementation = JellyfinConnectionProblem::class))],
+	)
+	@ApiResponse(
+		responseCode = "503",
+		description = "The request sends apiKey and CONTINUARR_ENCRYPTION_KEY isn't set, so the key can't be stored",
+		content = [Content()],
+	)
+	// Reads the body itself for the same reason as save.
+	fun patch(body: InputStream): ResponseEntity<JellyfinConnectionProblem> {
+		val request = readOrNull(body, JellyfinConnectionPatchRequest::class.java) ?: return ResponseEntity.badRequest().build()
+		return respond(settings.patch(JellyfinConnectionPatch(request.url, request.apiKey)))
 	}
 
 	@PostMapping(JELLYFIN_API_KEY_MATCH_PATH, consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -84,6 +110,12 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 		val request = readOrNull(body, JellyfinApiKeyMatchRequest::class.java) ?: return ResponseEntity.badRequest().build()
 		val result = settings.matchApiKeyOrNull(request.apiKey) ?: return ResponseEntity.badRequest().build()
 		return ResponseEntity.ok(JellyfinApiKeyMatchResponse(result))
+	}
+
+	private fun respond(result: JellyfinSaveResult): ResponseEntity<JellyfinConnectionProblem> = when (result) {
+		JellyfinSaveResult.Saved -> ResponseEntity.noContent().build()
+		is JellyfinSaveResult.Invalid -> ResponseEntity.badRequest().body(JellyfinConnectionProblem(result.fields.sorted()))
+		JellyfinSaveResult.EncryptionKeyMissing -> ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build()
 	}
 
 	/** Null when the body doesn't parse, or is the JSON literal `null`, which Jackson reads as null. */

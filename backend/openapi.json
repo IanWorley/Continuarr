@@ -57,6 +57,38 @@
             "description" : "CONTINUARR_ENCRYPTION_KEY isn't set, so the API key can't be stored"
           }
         }
+      },
+      "patch" : {
+        "tags" : [ "jellyfin-connection-controller" ],
+        "operationId" : "patch",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/JellyfinConnectionPatchRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "Saved; fields the request left out keep their saved values"
+          },
+          "400" : {
+            "description" : "Names the invalid fields without echoing their values. The first save needs url and apiKey, and moving the URL from https to http needs apiKey",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/JellyfinConnectionProblem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The request sends apiKey and CONTINUARR_ENCRYPTION_KEY isn't set, so the key can't be stored"
+          }
+        }
       }
     },
     "/api/v1/jellyfin/connection/api-key/match" : {
@@ -226,6 +258,17 @@
           }
         },
         "required" : [ "password", "token", "username" ]
+      },
+      "JellyfinConnectionPatchRequest" : {
+        "type" : "object",
+        "properties" : {
+          "url" : {
+            "type" : [ "string", "null" ]
+          },
+          "apiKey" : {
+            "type" : [ "string", "null" ]
+          }
+        }
       },
       "JellyfinConnectionResponse" : {
         "type" : "object",

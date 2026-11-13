@@ -1,9 +1,13 @@
 package xyz.ianworley.continuarr.mediaproviders.service
 
 import org.springframework.stereotype.Service
+import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.ApiKeyChange
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinApiKey
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionStore
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.parseBaseUrlOrNull
+import java.net.URI
+
+private const val HTTPS = "https"
 
 /** A field of a Jellyfin connection that failed validation. The value itself is never reported. */
 enum class JellyfinField {
@@ -26,8 +30,13 @@ enum class JellyfinApiKeyMatch {
 	UNREADABLE,
 }
 
-/** [url] is null exactly when [apiKeyState] is [JellyfinApiKeyState.NONE], since every save stores both. */
+/** [url] is null exactly when [apiKeyState] is [JellyfinApiKeyState.NONE], since the first save stores both. */
 data class SavedJellyfinConnection(val url: String?, val apiKeyState: JellyfinApiKeyState)
+
+/** The fields a patch sends. A null field keeps what is saved. */
+class JellyfinConnectionPatch(val url: String?, val apiKey: String?) {
+	override fun toString(): String = "JellyfinConnectionPatch(hidden)"
+}
 
 sealed interface JellyfinSaveResult {
 	data object Saved : JellyfinSaveResult
@@ -60,7 +69,27 @@ class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 				setOfNotNull(JellyfinField.URL.takeIf { baseUrl == null }, JellyfinField.API_KEY.takeIf { key == null }),
 			)
 		}
-		return if (store.save(baseUrl, key)) JellyfinSaveResult.Saved else JellyfinSaveResult.EncryptionKeyMissing
+		return saved(store.save(baseUrl, ApiKeyChange.Replace(key)))
+	}
+
+	/**
+	 * Changes only the fields [patch] sends, so a new URL keeps the saved key. The first save needs a
+	 * URL and a key. Moving the URL from https to http needs a new key, so the saved one never travels unencrypted.
+	 */
+	fun patch(patch: JellyfinConnectionPatch): JellyfinSaveResult {
+		val current = store.find()
+		val url = if (patch.url != null) parseBaseUrlOrNull(patch.url) else current?.let { parseBaseUrlOrNull(it.url) }
+		val apiKey = when {
+			patch.apiKey != null -> JellyfinApiKey.parseOrNull(patch.apiKey)?.let(ApiKeyChange::Replace)
+			current == null || downgradesToHttp(current.url, url) -> null
+			else -> ApiKeyChange.Keep(current)
+		}
+		if (url == null || apiKey == null) {
+			return JellyfinSaveResult.Invalid(
+				setOfNotNull(JellyfinField.URL.takeIf { url == null }, JellyfinField.API_KEY.takeIf { apiKey == null }),
+			)
+		}
+		return saved(store.save(url, apiKey))
 	}
 
 	/** Null when [apiKey] isn't a valid key, which can't match a saved one, since every save checks the key. */
@@ -70,4 +99,11 @@ class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 		val saved = store.apiKeyOrNull(row) ?: return JellyfinApiKeyMatch.UNREADABLE
 		return if (saved.matches(candidate)) JellyfinApiKeyMatch.MATCH else JellyfinApiKeyMatch.MISMATCH
 	}
+
+	private fun saved(stored: Boolean): JellyfinSaveResult =
+		if (stored) JellyfinSaveResult.Saved else JellyfinSaveResult.EncryptionKeyMissing
 }
+
+private fun downgradesToHttp(currentUrl: String, newUrl: URI?): Boolean =
+	newUrl != null && currentUrl.startsWith("$HTTPS:", ignoreCase = true) && !newUrl.scheme.equals(HTTPS, ignoreCase = true)
+

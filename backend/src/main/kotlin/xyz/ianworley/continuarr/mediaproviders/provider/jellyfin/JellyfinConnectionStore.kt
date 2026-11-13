@@ -11,17 +11,27 @@ private const val UNREADABLE_REASON =
 		"or save the connection again"
 private const val DATABASE_FAILURE_REASON = "Can't read the saved Jellyfin connection from the database"
 
+/** What a save does with the API key: store a new one, or keep the ciphertext already in [Keep.current]. */
+sealed interface ApiKeyChange {
+	class Replace(val key: JellyfinApiKey) : ApiKeyChange
+
+	class Keep(val current: JellyfinConnectionRow) : ApiKeyChange
+}
+
 class JellyfinConnectionStore(private val repository: JellyfinConnectionRepository, encryptionKey: EncryptionKeyProperties) {
 
 	private val cipher: ApiKeyCipher? = encryptionKey.secretKey?.let(::ApiKeyCipher)
 
 	/**
-	 * Returns false and saves nothing when CONTINUARR_ENCRYPTION_KEY isn't set.
+	 * Returns false and saves nothing when [apiKey] is a new key and CONTINUARR_ENCRYPTION_KEY isn't set.
 	 * Two first saves at once both insert, and one fails on the primary key. One admin saves this, so that's accepted.
 	 */
-	fun save(url: URI, apiKey: JellyfinApiKey): Boolean {
-		val cipher = cipher ?: return false
-		repository.save(JellyfinConnectionRow(SINGLE_ROW_ID, url.toString(), cipher.encrypt(apiKey)))
+	fun save(url: URI, apiKey: ApiKeyChange): Boolean {
+		val ciphertext = when (apiKey) {
+			is ApiKeyChange.Replace -> cipher?.encrypt(apiKey.key) ?: return false
+			is ApiKeyChange.Keep -> apiKey.current.apiKeyCiphertext
+		}
+		repository.save(JellyfinConnectionRow(SINGLE_ROW_ID, url.toString(), ciphertext))
 		return true
 	}
 

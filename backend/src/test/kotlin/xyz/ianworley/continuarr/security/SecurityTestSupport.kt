@@ -5,6 +5,7 @@ import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import xyz.ianworley.continuarr.security.config.LOGIN_PATH
@@ -34,6 +35,14 @@ fun MockMvc.postWithCsrf(path: String, dsl: MockHttpServletRequestDsl.() -> Unit
 fun MockMvc.putWithCsrf(path: String, dsl: MockHttpServletRequestDsl.() -> Unit = {}): ResultActionsDsl {
 	val xsrfCookie = xsrfCookie()
 	return put(path) {
+		sendCsrf(xsrfCookie)
+		dsl()
+	}
+}
+
+fun MockMvc.patchWithCsrf(path: String, dsl: MockHttpServletRequestDsl.() -> Unit = {}): ResultActionsDsl {
+	val xsrfCookie = xsrfCookie()
+	return patch(path) {
 		sendCsrf(xsrfCookie)
 		dsl()
 	}
