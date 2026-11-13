@@ -226,6 +226,8 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
     const response = await saveJellyfinConnection(sent).catch(() => undefined)
     setSaving(false)
     if (response?.ok) {
+      // A GET still in flight, from Reload settings or a window refocus, may hold what was saved before this.
+      await queryClient.cancelQueries({ queryKey: JELLYFIN_CONNECTION_QUERY_KEY })
       setErrors({})
       setDraft({ url: sent.url, apiKey: '' })
       queryClient.setQueryData<JellyfinConnection>(JELLYFIN_CONNECTION_QUERY_KEY, { url: sent.url, apiKeyState: 'STORED' })

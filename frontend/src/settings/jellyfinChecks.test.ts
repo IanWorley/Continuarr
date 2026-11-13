@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+// The backend's JellyfinUrlCasesTest reads the same file, so this check refuses exactly what the server refuses.
+import sharedCases from '../../../backend/src/test/resources/jellyfin-url-cases.json'
 import { API_KEY_MESSAGES, checkApiKey, checkUrl, URL_MESSAGES } from './jellyfinChecks.ts'
 
 describe('checkUrl', () => {
@@ -52,5 +54,15 @@ describe('checkApiKey', () => {
     { apiKey: 'clé', message: API_KEY_MESSAGES.characters },
   ])('names what to fix in $apiKey', ({ apiKey, message }) => {
     expect(checkApiKey(apiKey)).toBe(message)
+  })
+})
+
+describe('checkUrl against the cases the server parser shares', () => {
+  it('accepts every URL the server accepts', () => {
+    expect(sharedCases.accept.filter((url) => checkUrl(url) !== null)).toEqual([])
+  })
+
+  it('refuses every URL the server refuses', () => {
+    expect(sharedCases.refuse.filter((url) => checkUrl(url) === null)).toEqual([])
   })
 })

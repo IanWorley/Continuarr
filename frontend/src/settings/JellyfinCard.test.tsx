@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { CSRF_COOKIE_NAME, JELLYFIN_CONNECTION_PATH, type JellyfinConnection } from '../api/client.ts'
 import { API_KEY_MESSAGES, URL_MESSAGES } from './jellyfinChecks.ts'
@@ -13,6 +13,8 @@ const HTTP_NO_CONTENT = 204
 const HTTP_BAD_REQUEST = 400
 const HTTP_INTERNAL_SERVER_ERROR = 500
 const HTTP_SERVICE_UNAVAILABLE = 503
+// Long enough for a resolved fetch to reach the query cache and re-render.
+const LOAD_SETTLE_MS = 50
 
 const NOTHING_SAVED: JellyfinConnection = { url: null, apiKeyState: 'NONE' }
 const STORED: JellyfinConnection = { url: SAVED_URL, apiKeyState: 'STORED' }
@@ -36,6 +38,17 @@ const status = (code: number): Respond => async () => new Response(null, { statu
 const refused: Respond = async () => Response.json({ invalidFields: ['URL', 'API_KEY'] }, { status: HTTP_BAD_REQUEST })
 const unreachable: Respond = async () => {
   throw new TypeError('Failed to fetch')
+}
+
+const notYetSet = (): void => undefined
+
+/** A promise the test settles by hand, to land a response at a chosen moment. */
+function deferred<T>() {
+  let resolve: (value: T) => void = notYetSet
+  const promise = new Promise<T>((settle) => {
+    resolve = settle
+  })
+  return { promise, resolve }
 }
 
 function putBodies(): unknown[] {
@@ -184,6 +197,32 @@ it('turns Save off after a 503 until settings are reloaded', async () => {
 
   await waitFor(() => expect(saveButton().getAttribute('aria-disabled')).toBe('false'))
   expect(urlField().value).toBe(NEW_URL)
+})
+
+it('keeps a successful save when an older load lands after it', async () => {
+  const slowLoad = deferred<Response>()
+  let saves = 0
+  const failThenSave: Respond = async () => status(++saves === 1 ? HTTP_SERVICE_UNAVAILABLE : HTTP_NO_CONTENT)()
+  stubBackend({ get: [answer(NOTHING_SAVED), () => slowLoad.promise], put: failThenSave })
+  openCard()
+
+  type(await screen.findByLabelText('Server URL'), NEW_URL)
+  type(keyField(), API_KEY)
+  fireEvent.click(saveButton())
+  fireEvent.click(await screen.findByRole('button', { name: 'Reload settings' }))
+  type(keyField(), API_KEY)
+  fireEvent.click(saveButton())
+  await screen.findByText('Saved. Continuarr uses this from now on.')
+  await act(async () => {
+    slowLoad.resolve(Response.json(NOTHING_SAVED))
+    await new Promise((resolve) => {
+      setTimeout(resolve, LOAD_SETTLE_MS)
+    })
+  })
+
+  expect(screen.getByText('Configured')).toBeDefined()
+  expect(screen.getByText('A key is saved')).toBeDefined()
+  expect(screen.queryByText('Not configured')).toBeNull()
 })
 
 it.each([
