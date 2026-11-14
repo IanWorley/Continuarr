@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import type { Ref } from 'react'
 import { MEDIA_SERVERS_PATH } from '../settings/MediaServersPage.tsx'
 import { Icon, type IconName } from './Icon.tsx'
+import { LaterTag } from './LaterTag.tsx'
 
 /** A destination in the main navigation. One without `to` has no page yet and shows as coming later. */
 interface NavItem {
@@ -35,14 +36,6 @@ const LATER_ITEM = 'cursor-not-allowed text-ink-500'
 
 function Separator() {
   return <hr className="mx-3 my-1.5 border-ink-700" />
-}
-
-function LaterTag() {
-  return (
-    <span className="inline-flex items-center rounded-sm border border-dashed border-ink-500 px-1.25 text-xs font-semibold tracking-wide whitespace-nowrap text-ink-400 uppercase tablet:text-tag">
-      Later
-    </span>
-  )
 }
 
 /** The rail's label: hidden until the item is hovered or focused, and always its accessible name. */

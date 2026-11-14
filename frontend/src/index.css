@@ -25,6 +25,7 @@
   --color-warn-surface: #2a2108;
   /* Brand colors stay on a card's mark letter, so Plex amber never reads as an action or a warning. */
   --color-jellyfin: #aa5cc3;
+  --color-plex: #e5a00d;
 
   /* The signed-in frame. Each name generates spacing utilities such as h-header and w-rail. */
   --spacing-header: 3.5rem;

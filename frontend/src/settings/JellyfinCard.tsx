@@ -1,7 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useId, useRef, useState, type ReactNode, type SubmitEvent } from 'react'
+import { useId, useImperativeHandle, useRef, useState, type Ref, type SubmitEvent } from 'react'
 import {
-  fetchJellyfinConnection,
   saveJellyfinConnection,
   type JellyfinConnection,
   type JellyfinConnectionProblem,
@@ -16,10 +15,19 @@ import {
   UNAVAILABLE_BUTTON_CLASSES,
 } from '../auth/formParts.tsx'
 import { Icon, type IconName } from '../shell/Icon.tsx'
-import { FieldRow, Pill, ROW, ROW_LABEL, SectionTitle, SMALL_TEXT, type PillTone } from './cardParts.tsx'
+import {
+  CardHead,
+  ComingLater,
+  FieldRow,
+  Pill,
+  ROW,
+  ROW_LABEL,
+  SectionTitle,
+  SMALL_TEXT,
+  type PillTone,
+} from './cardParts.tsx'
 import { checkApiKey, checkUrl } from './jellyfinChecks.ts'
-
-const JELLYFIN_CONNECTION_QUERY_KEY = ['jellyfin-connection'] as const
+import { jellyfinConnectionQuery, type CardHandle } from './servers.ts'
 
 const HTTP_BAD_REQUEST = 400
 
@@ -62,40 +70,16 @@ function invalidNote(count: number): string {
   return `Fix ${count} ${count === 1 ? 'field' : 'fields'}, then save again. Your entries are kept.`
 }
 
-function CardHead({ titleId, meta, pill }: { titleId: string; meta: ReactNode; pill?: ReactNode }) {
-  return (
-    <div className="flex items-center gap-2.5 border-b border-ink-700 px-3.5 py-3">
-      <span
-        aria-hidden="true"
-        className="grid size-7 flex-none place-items-center rounded-md border border-ink-700 bg-ink-800 font-extrabold text-jellyfin"
-      >
-        J
-      </span>
-      <div className="min-w-0 flex-1">
-        <h2 id={titleId} className="text-card-title font-semibold">
-          Jellyfin
-        </h2>
-        <p className={`wrap-anywhere text-ink-400 ${SMALL_TEXT}`}>{meta}</p>
-      </div>
-      {pill}
-    </div>
-  )
-}
-
-/** The card's frame. Every state, loading included, shares the head, so the page doesn't jump. */
-export function JellyfinCard() {
+/** The card's frame. `ref` reports unsaved edits, so the page can ask before Reload discards them. */
+export function JellyfinCard({ ref }: { ref?: Ref<CardHandle> }) {
   const titleId = useId()
-  const query = useQuery({
-    queryKey: JELLYFIN_CONNECTION_QUERY_KEY,
-    queryFn: fetchJellyfinConnection,
-    // The load-failed banner has its own Retry, so it appears at once instead of after several silent tries.
-    retry: false,
-  })
+  // The page loads this too, and remounts the card after a reload it has already fetched.
+  const query = useQuery({ ...jellyfinConnectionQuery, refetchOnMount: false })
 
   return (
     <section aria-labelledby={titleId} className="min-w-0 rounded-lg border border-ink-700 bg-ink-900">
       {query.data ? (
-        <JellyfinForm titleId={titleId} saved={query.data} />
+        <JellyfinForm ref={ref} titleId={titleId} saved={query.data} />
       ) : query.isError ? (
         <LoadFailed titleId={titleId} retry={() => void query.refetch()} retrying={query.isFetching} />
       ) : (
@@ -108,7 +92,7 @@ export function JellyfinCard() {
 function Loading({ titleId }: { titleId: string }) {
   return (
     <>
-      <CardHead titleId={titleId} meta="Loading…" />
+      <CardHead kind="jellyfin" titleId={titleId} meta="Loading…" />
       <SectionTitle>Connection</SectionTitle>
       <div aria-busy="true" className="px-3.5 pt-1.5 pb-2.5">
         {['Server URL', 'API key'].map((label) => (
@@ -125,7 +109,7 @@ function Loading({ titleId }: { titleId: string }) {
 function LoadFailed({ titleId, retry, retrying }: { titleId: string; retry: () => void; retrying: boolean }) {
   return (
     <>
-      <CardHead titleId={titleId} meta="Settings not loaded" pill={<Pill tone="warn">Unknown</Pill>} />
+      <CardHead kind="jellyfin" titleId={titleId} meta="Settings not loaded" pill={<Pill tone="warn">Unknown</Pill>} />
       <div role="alert" className="mx-3.5 mt-2.5">
         <Banner
           tone="danger"
@@ -152,11 +136,12 @@ function LoadFailed({ titleId, retry, retrying }: { titleId: string; retry: () =
 }
 
 interface JellyfinFormProps {
+  ref: Ref<CardHandle> | undefined
   titleId: string
   saved: JellyfinConnection
 }
 
-function JellyfinForm({ titleId, saved }: JellyfinFormProps) {
+function JellyfinForm({ ref, titleId, saved }: JellyfinFormProps) {
   const queryClient = useQueryClient()
   const formId = useId()
   const ids = { url: useId(), apiKey: useId(), keyState: useId(), urlHelp: useId(), keyHelp: useId() }
@@ -171,6 +156,7 @@ function JellyfinForm({ titleId, saved }: JellyfinFormProps) {
 
   const urlChanged = draft.url.trim() !== savedUrl
   const dirty = urlChanged || draft.apiKey !== ''
+  useImperativeHandle(ref, () => ({ unsaved: dirty }), [dirty])
 
   function report(next: Outcome) {
     setOutcome(next)
@@ -217,10 +203,10 @@ function JellyfinForm({ titleId, saved }: JellyfinFormProps) {
     setSaving(false)
     if (response?.ok) {
       // A GET still in flight, from Reload settings or a window refocus, may hold what was saved before this.
-      await queryClient.cancelQueries({ queryKey: JELLYFIN_CONNECTION_QUERY_KEY })
+      await queryClient.cancelQueries({ queryKey: jellyfinConnectionQuery.queryKey })
       setErrors({})
       setDraft({ url: sent.url, apiKey: '' })
-      queryClient.setQueryData<JellyfinConnection>(JELLYFIN_CONNECTION_QUERY_KEY, { url: sent.url, apiKeyState: 'STORED' })
+      queryClient.setQueryData<JellyfinConnection>(jellyfinConnectionQuery.queryKey, { url: sent.url, apiKeyState: 'STORED' })
       report({ kind: 'saved' })
     } else if (response?.status === HTTP_BAD_REQUEST) {
       const named = await namedFields(response)
@@ -265,7 +251,7 @@ function JellyfinForm({ titleId, saved }: JellyfinFormProps) {
 
   return (
     <>
-      <CardHead titleId={titleId} meta={meta} pill={<Pill tone={savedPill.tone}>{savedPill.text}</Pill>} />
+      <CardHead kind="jellyfin" titleId={titleId} meta={meta} pill={<Pill tone={savedPill.tone}>{savedPill.text}</Pill>} />
       <div aria-live="polite">
         {outcome?.kind === 'failed' && (
           <div className="mx-3.5 mt-2.5">
@@ -350,6 +336,7 @@ function JellyfinForm({ titleId, saved }: JellyfinFormProps) {
             />
           </FieldRow>
         </div>
+        <ComingLater kind="jellyfin" />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-b-lg border-t border-ink-700 bg-ink-850 px-3.5 py-2.5">
           <output className={SMALL_TEXT}>
             {outcome?.kind === 'saved' ? (
