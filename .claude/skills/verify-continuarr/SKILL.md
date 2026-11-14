@@ -17,7 +17,7 @@ Run `python3 scripts/ci_local.py` from the repo root first. It runs the lint, te
 .claude/skills/verify-continuarr/scripts/control.sh launch
 ```
 
-It needs Docker running, a JDK 17+ for Gradle, Node and npm, `curl`, `lsof`, `openssl`, and Google Chrome. It runs `npm ci` in `frontend/`, starts `./gradlew bootTestRun`, and starts `npm run dev`. `frontend/.nvmrc` pins the Node that CI uses. An older npm can reject the lock file, so a failed `npm ci` stops the launch before anything starts and prints the Node version next to the pin. Each launch gets a new, empty Postgres, and Liquibase migrates it at startup. Each launch also gets a random `CONTINUARR_ENCRYPTION_KEY`, so saving a secret works. To launch without one, set `CONTINUARR_VERIFY_ENCRYPTION_KEY=` (empty).
+It needs Docker running, a JDK 17+ for Gradle, Node and npm, `curl`, `lsof`, and Google Chrome. It runs `npm ci` in `frontend/`, starts `./gradlew bootTestRun`, and starts `npm run dev`. `frontend/.nvmrc` pins the Node that CI uses. An older npm can reject the lock file, so a failed `npm ci` stops the launch before anything starts and prints the Node version next to the pin. Each launch gets a new, empty Postgres, and Liquibase migrates it at startup.
 
 The instance is ready when the command prints `Ready: http://localhost:5173`. By then actuator health reports `UP` and `GET /api/setup` answers through both ports. A fresh launch has no admin. Run `control.sh token` to print its setup token. The first launch on a machine compiles the backend and pulls Postgres, so it can take minutes. Later launches take seconds.
 

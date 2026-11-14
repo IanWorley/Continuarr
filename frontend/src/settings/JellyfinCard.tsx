@@ -22,7 +22,6 @@ import { checkApiKey, checkUrl } from './jellyfinChecks.ts'
 const JELLYFIN_CONNECTION_QUERY_KEY = ['jellyfin-connection'] as const
 
 const HTTP_BAD_REQUEST = 400
-const HTTP_SERVICE_UNAVAILABLE = 503
 
 const URL_PLACEHOLDER = 'http://jellyfin.local:8096'
 const URL_HELP = 'The address Continuarr uses to reach Jellyfin, like http://jellyfin.local:8096.'
@@ -52,17 +51,11 @@ type Outcome =
 const SAVED_PILLS: Record<ApiKeyState, { tone: PillTone; text: string }> = {
   NONE: { tone: 'off', text: 'Not configured' },
   STORED: { tone: 'ok', text: 'Configured' },
-  UNREADABLE: { tone: 'warn', text: 'Key unreadable' },
 }
 
 const KEY_STATES: Record<ApiKeyState, { icon: IconName; text: string; tone: string }> = {
   NONE: { icon: 'unlock', text: 'No key saved yet', tone: 'text-ink-400' },
   STORED: { icon: 'lock', text: 'A key is saved', tone: 'text-ink-100' },
-  UNREADABLE: {
-    icon: 'warn',
-    text: "Continuarr can't read the saved key. It was saved under a different CONTINUARR_ENCRYPTION_KEY, or none is set now. Paste the key and save again.",
-    tone: 'text-warn',
-  },
 }
 
 function invalidNote(count: number): string {
@@ -102,7 +95,7 @@ export function JellyfinCard() {
   return (
     <section aria-labelledby={titleId} className="min-w-0 rounded-lg border border-ink-700 bg-ink-900">
       {query.data ? (
-        <JellyfinForm titleId={titleId} saved={query.data} reload={() => void query.refetch()} />
+        <JellyfinForm titleId={titleId} saved={query.data} />
       ) : query.isError ? (
         <LoadFailed titleId={titleId} retry={() => void query.refetch()} retrying={query.isFetching} />
       ) : (
@@ -161,10 +154,9 @@ function LoadFailed({ titleId, retry, retrying }: { titleId: string; retry: () =
 interface JellyfinFormProps {
   titleId: string
   saved: JellyfinConnection
-  reload: () => void
 }
 
-function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
+function JellyfinForm({ titleId, saved }: JellyfinFormProps) {
   const queryClient = useQueryClient()
   const formId = useId()
   const ids = { url: useId(), apiKey: useId(), keyState: useId(), urlHelp: useId(), keyHelp: useId() }
@@ -176,11 +168,9 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
   // Each outcome gets a new key, so a repeated note is announced again.
   const [outcomeSerial, setOutcomeSerial] = useState(0)
   const [saving, setSaving] = useState(false)
-  const [encryptionKeyMissing, setEncryptionKeyMissing] = useState(false)
 
   const urlChanged = draft.url.trim() !== savedUrl
   const dirty = urlChanged || draft.apiKey !== ''
-  const saveUnavailable = saving || encryptionKeyMissing
 
   function report(next: Outcome) {
     setOutcome(next)
@@ -205,7 +195,7 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
 
   async function save(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (saveUnavailable) return
+    if (saving) return
     const sent: Draft = { url: draft.url.trim(), apiKey: draft.apiKey.trim() }
     if (!dirty) {
       setErrors({})
@@ -232,9 +222,6 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
       setDraft({ url: sent.url, apiKey: '' })
       queryClient.setQueryData<JellyfinConnection>(JELLYFIN_CONNECTION_QUERY_KEY, { url: sent.url, apiKeyState: 'STORED' })
       report({ kind: 'saved' })
-    } else if (response?.status === HTTP_SERVICE_UNAVAILABLE) {
-      setOutcome(undefined)
-      setEncryptionKeyMissing(true)
     } else if (response?.status === HTTP_BAD_REQUEST) {
       const named = await namedFields(response)
       if (named.length > 0) {
@@ -247,17 +234,10 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
     }
   }
 
-  function reloadSettings() {
-    setEncryptionKeyMissing(false)
-    reload()
-  }
-
   const meta = saving ? (
     'Saving…'
   ) : outcome?.kind === 'failed' ? (
     saved.url ? 'Last save failed. The saved settings still apply.' : 'Last save failed.'
-  ) : encryptionKeyMissing ? (
-    'Not saved'
   ) : dirty ? (
     <span className="inline-flex items-center gap-1.5 font-semibold text-ink-100 before:size-1.75 before:rounded-full before:border-[1.5px] before:border-current">
       Unsaved changes
@@ -274,9 +254,8 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
     saved.apiKeyState === 'NONE'
       ? 'Create one in Jellyfin under Dashboard › API Keys.'
       : 'Every save needs the key, so a new URL never receives the old one.'
-  const note = encryptionKeyMissing
-    ? 'Save is off until the server can encrypt the key.'
-    : outcome?.kind === 'unchanged'
+  const note =
+    outcome?.kind === 'unchanged'
       ? 'No changes to save.'
       : outcome?.kind === 'invalid'
         ? invalidNote(outcome.count)
@@ -288,23 +267,6 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
     <>
       <CardHead titleId={titleId} meta={meta} pill={<Pill tone={savedPill.tone}>{savedPill.text}</Pill>} />
       <div aria-live="polite">
-        {encryptionKeyMissing && (
-          <div className="mx-3.5 mt-2.5">
-            <Banner
-              tone="warn"
-              title="Continuarr can't store the API key yet."
-              action={
-                <button type="button" onClick={reloadSettings} className={SECONDARY_BUTTON_CLASSES}>
-                  <Icon name="refresh" className="size-3.75" />
-                  Reload settings
-                </button>
-              }
-            >
-              Set <code className="rounded-sm border border-ink-700 bg-ink-800 px-1 text-xs text-ink-100">CONTINUARR_ENCRYPTION_KEY</code>{' '}
-              in your server's environment and restart Continuarr. Then reload settings and save again.
-            </Banner>
-          </div>
-        )}
         {outcome?.kind === 'failed' && (
           <div className="mx-3.5 mt-2.5">
             <Banner
@@ -406,7 +368,7 @@ function JellyfinForm({ titleId, saved, reload }: JellyfinFormProps) {
           <div className="flex w-full tablet:ml-auto tablet:w-auto">
             <button
               type="submit"
-              aria-disabled={saveUnavailable}
+              aria-disabled={saving}
               className={`flex-1 ${PRIMARY_BUTTON_CLASSES} ${saving ? BUSY_BUTTON_CLASSES : UNAVAILABLE_BUTTON_CLASSES}`}
             >
               {saving ? <Spinner /> : <Icon name="save" className="size-3.75" />}

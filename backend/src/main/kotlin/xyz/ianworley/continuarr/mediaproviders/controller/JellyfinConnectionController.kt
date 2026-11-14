@@ -3,7 +3,6 @@ package xyz.ianworley.continuarr.mediaproviders.controller
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -50,17 +49,12 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 		content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = JellyfinConnectionRequest::class))],
 	)
 	// springdoc gives every listed response the ResponseEntity's body type unless it names its own content,
-	// so the bodiless 204 and 503 name an empty one.
+	// so the bodiless 204 names an empty one.
 	@ApiResponse(responseCode = "204", description = "Saved; the next Jellyfin call uses it", content = [Content()])
 	@ApiResponse(
 		responseCode = "400",
 		description = "Names the invalid fields without echoing their values",
 		content = [Content(schema = Schema(implementation = JellyfinConnectionProblem::class))],
-	)
-	@ApiResponse(
-		responseCode = "503",
-		description = "CONTINUARR_ENCRYPTION_KEY isn't set, so the API key can't be stored",
-		content = [Content()],
 	)
 	// Parses the body here instead of through @RequestBody. Jackson's parse error quotes the bad token, which
 	// can be an unquoted API key, and Spring logs a failed argument at DEBUG wherever it's resolved.
@@ -82,11 +76,6 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 		description = "Names the invalid fields without echoing their values. The first save needs url and apiKey, and moving " +
 			"the URL from https to http needs apiKey",
 		content = [Content(schema = Schema(implementation = JellyfinConnectionProblem::class))],
-	)
-	@ApiResponse(
-		responseCode = "503",
-		description = "The request sends apiKey and CONTINUARR_ENCRYPTION_KEY isn't set, so the key can't be stored",
-		content = [Content()],
 	)
 	// Reads the body itself for the same reason as save.
 	fun patch(body: InputStream): ResponseEntity<JellyfinConnectionProblem> {
@@ -115,7 +104,6 @@ class JellyfinConnectionController(private val settings: JellyfinConnectionSetti
 	private fun respond(result: JellyfinSaveResult): ResponseEntity<JellyfinConnectionProblem> = when (result) {
 		JellyfinSaveResult.Saved -> ResponseEntity.noContent().build()
 		is JellyfinSaveResult.Invalid -> ResponseEntity.badRequest().body(JellyfinConnectionProblem(result.fields.sorted()))
-		JellyfinSaveResult.EncryptionKeyMissing -> ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build()
 	}
 
 	/** Null when the body doesn't parse, or is the JSON literal `null`, which Jackson reads as null. */

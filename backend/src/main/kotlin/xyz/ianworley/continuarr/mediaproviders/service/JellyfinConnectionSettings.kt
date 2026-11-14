@@ -1,7 +1,6 @@
 package xyz.ianworley.continuarr.mediaproviders.service
 
 import org.springframework.stereotype.Service
-import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.ApiKeyChange
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinApiKey
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.JellyfinConnectionStore
 import xyz.ianworley.continuarr.mediaproviders.provider.jellyfin.parseBaseUrlOrNull
@@ -15,11 +14,9 @@ enum class JellyfinField {
 	API_KEY,
 }
 
-/** Whether the saved API key decrypts under the current CONTINUARR_ENCRYPTION_KEY. The key itself is never reported. */
 enum class JellyfinApiKeyState {
 	NONE,
 	STORED,
-	UNREADABLE,
 }
 
 /** How a submitted API key compares with the saved one. Neither key is ever reported. */
@@ -27,10 +24,8 @@ enum class JellyfinApiKeyMatch {
 	MATCH,
 	MISMATCH,
 	NONE,
-	UNREADABLE,
 }
 
-/** [url] is null exactly when [apiKeyState] is [JellyfinApiKeyState.NONE], since the first save stores both. */
 data class SavedJellyfinConnection(val url: String?, val apiKeyState: JellyfinApiKeyState)
 
 /** The fields a patch sends. A null field keeps what is saved. */
@@ -42,8 +37,6 @@ sealed interface JellyfinSaveResult {
 	data object Saved : JellyfinSaveResult
 
 	data class Invalid(val fields: Set<JellyfinField>) : JellyfinSaveResult
-
-	data object EncryptionKeyMissing : JellyfinSaveResult
 }
 
 /**
@@ -53,10 +46,9 @@ sealed interface JellyfinSaveResult {
 @Service
 class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 
-	/** The URL comes back even when the key won't decrypt, so the admin sees what to save again. */
 	fun saved(): SavedJellyfinConnection {
 		val row = store.find() ?: return SavedJellyfinConnection(null, JellyfinApiKeyState.NONE)
-		val apiKeyState = if (store.apiKeyOrNull(row) != null) JellyfinApiKeyState.STORED else JellyfinApiKeyState.UNREADABLE
+		val apiKeyState = if (store.apiKeyOrNull(row) != null) JellyfinApiKeyState.STORED else JellyfinApiKeyState.NONE
 		return SavedJellyfinConnection(row.url, apiKeyState)
 	}
 
@@ -69,7 +61,8 @@ class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 				setOfNotNull(JellyfinField.URL.takeIf { baseUrl == null }, JellyfinField.API_KEY.takeIf { key == null }),
 			)
 		}
-		return saved(store.save(baseUrl, ApiKeyChange.Replace(key)))
+		store.save(baseUrl, key)
+		return JellyfinSaveResult.Saved
 	}
 
 	/**
@@ -80,28 +73,25 @@ class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 		val current = store.find()
 		val url = if (patch.url != null) parseBaseUrlOrNull(patch.url) else current?.let { parseBaseUrlOrNull(it.url) }
 		val apiKey = when {
-			patch.apiKey != null -> JellyfinApiKey.parseOrNull(patch.apiKey)?.let(ApiKeyChange::Replace)
+			patch.apiKey != null -> JellyfinApiKey.parseOrNull(patch.apiKey)
 			current == null || downgradesToHttp(current.url, url) -> null
-			else -> ApiKeyChange.Keep(current)
+			else -> store.apiKeyOrNull(current)
 		}
 		if (url == null || apiKey == null) {
 			return JellyfinSaveResult.Invalid(
 				setOfNotNull(JellyfinField.URL.takeIf { url == null }, JellyfinField.API_KEY.takeIf { apiKey == null }),
 			)
 		}
-		return saved(store.save(url, apiKey))
+		store.save(url, apiKey)
+		return JellyfinSaveResult.Saved
 	}
 
 	/** Null when [apiKey] isn't a valid key, which can't match a saved one, since every save checks the key. */
 	fun matchApiKeyOrNull(apiKey: String): JellyfinApiKeyMatch? {
 		val candidate = JellyfinApiKey.parseOrNull(apiKey) ?: return null
-		val row = store.find() ?: return JellyfinApiKeyMatch.NONE
-		val saved = store.apiKeyOrNull(row) ?: return JellyfinApiKeyMatch.UNREADABLE
+		val saved = store.find()?.let(store::apiKeyOrNull) ?: return JellyfinApiKeyMatch.NONE
 		return if (saved.matches(candidate)) JellyfinApiKeyMatch.MATCH else JellyfinApiKeyMatch.MISMATCH
 	}
-
-	private fun saved(stored: Boolean): JellyfinSaveResult =
-		if (stored) JellyfinSaveResult.Saved else JellyfinSaveResult.EncryptionKeyMissing
 }
 
 private fun downgradesToHttp(currentUrl: String, newUrl: URI?): Boolean =

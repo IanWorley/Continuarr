@@ -15,7 +15,7 @@ import java.time.Instant
 class PlexConnectionRow(
 	@Id val id: Short,
 	val url: String,
-	val tokenCiphertext: ByteArray,
+	val token: String?,
 	@Enumerated(EnumType.STRING) val source: PlexConnectionSource,
 	@UpdateTimestamp val updatedAt: Instant? = null,
 )
