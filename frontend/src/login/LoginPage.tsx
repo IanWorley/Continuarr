@@ -1,5 +1,5 @@
-import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 import { login, type Credentials } from '../api/client.ts'
 import { AuthLayout } from '../auth/AuthLayout.tsx'
 import { LoginForm, type LoginFailure, type LoginFormProps } from './LoginForm.tsx'
@@ -17,22 +17,22 @@ async function submitLogin(credentials: Credentials): Promise<LoginFailure | und
   }
 }
 
+// Plain state rather than useMutation, whose cache would keep the password for 5 minutes after the submit.
 export function LoginPage() {
   const navigate = useNavigate()
-  const mutation = useMutation({
-    mutationFn: submitLogin,
-    onSuccess: (failure) => {
-      if (!failure) void navigate({ to: '/' })
-    },
-  })
+  const [submitting, setSubmitting] = useState(false)
+  const [failure, setFailure] = useState<LoginFailure>()
 
-  return (
-    <LoginScreen
-      submitting={mutation.isPending}
-      failure={mutation.data}
-      onSubmit={(credentials) => mutation.mutate(credentials)}
-    />
-  )
+  async function signIn(credentials: Credentials) {
+    setSubmitting(true)
+    setFailure(undefined)
+    const result = await submitLogin(credentials)
+    setSubmitting(false)
+    setFailure(result)
+    if (!result) void navigate({ to: '/' })
+  }
+
+  return <LoginScreen submitting={submitting} failure={failure} onSubmit={(credentials) => void signIn(credentials)} />
 }
 
 /** The page without its data wiring, so each state can be rendered on its own. */

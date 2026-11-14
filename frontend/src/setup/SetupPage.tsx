@@ -1,5 +1,5 @@
-import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 import { setUp, type SetupRequest } from '../api/client.ts'
 import { AuthLayout } from '../auth/AuthLayout.tsx'
 import { SetupForm, type SetupFailure, type SetupFormProps } from './SetupForm.tsx'
@@ -26,22 +26,22 @@ async function submitSetup(request: SetupRequest): Promise<SetupFailure | undefi
   }
 }
 
+// Plain state rather than useMutation, whose cache would keep the setup token and password for 5 minutes after the submit.
 export function SetupPage() {
   const navigate = useNavigate()
-  const mutation = useMutation({
-    mutationFn: submitSetup,
-    onSuccess: (failure) => {
-      if (!failure) void navigate({ to: '/login' })
-    },
-  })
+  const [submitting, setSubmitting] = useState(false)
+  const [failure, setFailure] = useState<SetupFailure>()
 
-  return (
-    <SetupScreen
-      submitting={mutation.isPending}
-      failure={mutation.data}
-      onSubmit={(request) => mutation.mutate(request)}
-    />
-  )
+  async function createAdmin(request: SetupRequest) {
+    setSubmitting(true)
+    setFailure(undefined)
+    const result = await submitSetup(request)
+    setSubmitting(false)
+    setFailure(result)
+    if (!result) void navigate({ to: '/login' })
+  }
+
+  return <SetupScreen submitting={submitting} failure={failure} onSubmit={(request) => void createAdmin(request)} />
 }
 
 /** The page without its data wiring, so each state can be rendered on its own. */
