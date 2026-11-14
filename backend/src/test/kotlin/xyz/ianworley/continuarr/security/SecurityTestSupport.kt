@@ -4,6 +4,7 @@ import jakarta.servlet.http.Cookie
 import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
@@ -43,6 +44,14 @@ fun MockMvc.putWithCsrf(path: String, dsl: MockHttpServletRequestDsl.() -> Unit 
 fun MockMvc.patchWithCsrf(path: String, dsl: MockHttpServletRequestDsl.() -> Unit = {}): ResultActionsDsl {
 	val xsrfCookie = xsrfCookie()
 	return patch(path) {
+		sendCsrf(xsrfCookie)
+		dsl()
+	}
+}
+
+fun MockMvc.deleteWithCsrf(path: String, dsl: MockHttpServletRequestDsl.() -> Unit = {}): ResultActionsDsl {
+	val xsrfCookie = xsrfCookie()
+	return delete(path) {
 		sendCsrf(xsrfCookie)
 		dsl()
 	}

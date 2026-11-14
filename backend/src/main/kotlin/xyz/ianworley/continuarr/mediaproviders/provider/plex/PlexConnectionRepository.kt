@@ -6,7 +6,10 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import org.hibernate.annotations.UpdateTimestamp
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.Repository
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 // The single saved Plex connection. See 0004-plex-connection.sql.
@@ -25,4 +28,10 @@ interface PlexConnectionRepository : Repository<PlexConnectionRow, Short> {
 	fun findById(id: Short): PlexConnectionRow?
 
 	fun save(row: PlexConnectionRow): PlexConnectionRow
+
+	// One DELETE statement, unlike deleteById, which loads the row first and fails when a concurrent unlink removed it.
+	@Transactional
+	@Modifying
+	@Query("DELETE FROM PlexConnectionRow row WHERE row.id = :id")
+	fun deleteRow(id: Short): Int
 }
