@@ -20,4 +20,9 @@ class PlexConnectionSettings(private val store: PlexConnectionStore) {
 		val tokenState = if (store.tokenOrNull(row) != null) PlexTokenState.STORED else PlexTokenState.NONE
 		return SavedPlexConnection(row.url, row.source, tokenState)
 	}
+
+	/** Forgets the URL and token. A seeded connection comes back on the next start while its env vars are set. */
+	fun unlink() {
+		store.delete()
+	}
 }

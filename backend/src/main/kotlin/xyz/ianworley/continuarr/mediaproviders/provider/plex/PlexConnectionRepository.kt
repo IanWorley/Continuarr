@@ -25,4 +25,6 @@ interface PlexConnectionRepository : Repository<PlexConnectionRow, Short> {
 	fun findById(id: Short): PlexConnectionRow?
 
 	fun save(row: PlexConnectionRow): PlexConnectionRow
+
+	fun deleteById(id: Short)
 }

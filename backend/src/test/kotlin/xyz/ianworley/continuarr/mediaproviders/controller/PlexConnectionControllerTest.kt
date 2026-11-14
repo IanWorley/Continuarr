@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.get
 import xyz.ianworley.continuarr.TestcontainersConfiguration
 import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexConnectionStore
 import xyz.ianworley.continuarr.mediaproviders.provider.plex.PlexToken
+import xyz.ianworley.continuarr.security.deleteWithCsrf
 import java.net.URI
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -59,5 +60,28 @@ class PlexConnectionControllerTest(
 	@Test
 	fun `GET needs a login`() {
 		mockMvc.get(PLEX_CONNECTION_PATH).andExpect { status { isUnauthorized() } }
+	}
+
+	@Test
+	fun `DELETE unlinks, so GET returns nothing saved`() {
+		store.seed(URI(URL), assertNotNull(PlexToken.parseOrNull(TOKEN)))
+
+		mockMvc.deleteWithCsrf(PLEX_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }.andExpect { status { isNoContent() } }
+		mockMvc.get(PLEX_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(NOTHING_SAVED_JSON, JsonCompareMode.STRICT) } }
+	}
+
+	@Test
+	fun `DELETE with nothing saved still answers 204`() {
+		mockMvc.deleteWithCsrf(PLEX_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }.andExpect { status { isNoContent() } }
+	}
+
+	@Test
+	fun `DELETE needs a login`() {
+		store.seed(URI(URL), assertNotNull(PlexToken.parseOrNull(TOKEN)))
+
+		mockMvc.deleteWithCsrf(PLEX_CONNECTION_PATH).andExpect { status { isUnauthorized() } }
+		mockMvc.get(PLEX_CONNECTION_PATH) { with(user(ADMIN_USERNAME)) }
+			.andExpect { content { json(SEEDED_JSON, JsonCompareMode.STRICT) } }
 	}
 }

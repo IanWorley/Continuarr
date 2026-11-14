@@ -15,6 +15,10 @@ class PlexConnectionStore(private val repository: PlexConnectionRepository) {
 
 	fun find(): PlexConnectionRow? = repository.findById(SINGLE_ROW_ID)
 
+	fun delete() {
+		repository.deleteById(SINGLE_ROW_ID)
+	}
+
 	fun tokenOrNull(row: PlexConnectionRow): PlexToken? = row.token?.let(PlexToken::parseOrNull)
 
 	fun seed(url: URI, token: PlexToken): PlexSeedResult {
