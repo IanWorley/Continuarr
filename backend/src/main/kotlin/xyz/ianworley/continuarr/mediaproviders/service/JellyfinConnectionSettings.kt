@@ -14,7 +14,6 @@ enum class JellyfinField {
 	API_KEY,
 }
 
-/** Whether an API key is saved. The key itself is never reported. */
 enum class JellyfinApiKeyState {
 	NONE,
 	STORED,
@@ -27,7 +26,6 @@ enum class JellyfinApiKeyMatch {
 	NONE,
 }
 
-/** [url] is null until the first save. A saved URL can come with [JellyfinApiKeyState.NONE]; see [JellyfinConnectionStore.apiKeyOrNull]. */
 data class SavedJellyfinConnection(val url: String?, val apiKeyState: JellyfinApiKeyState)
 
 /** The fields a patch sends. A null field keeps what is saved. */
@@ -48,7 +46,6 @@ sealed interface JellyfinSaveResult {
 @Service
 class JellyfinConnectionSettings(private val store: JellyfinConnectionStore) {
 
-	/** The URL comes back even when no key is saved, so the admin only has to add the key. */
 	fun saved(): SavedJellyfinConnection {
 		val row = store.find() ?: return SavedJellyfinConnection(null, JellyfinApiKeyState.NONE)
 		val apiKeyState = if (store.apiKeyOrNull(row) != null) JellyfinApiKeyState.STORED else JellyfinApiKeyState.NONE

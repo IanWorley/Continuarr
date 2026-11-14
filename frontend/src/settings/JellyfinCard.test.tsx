@@ -185,7 +185,6 @@ it('keeps a successful save when an older load lands after it', async () => {
 
   type(await screen.findByLabelText('Server URL'), NEW_URL)
   type(keyField(), API_KEY)
-  // Coming back to the tab refetches the settings, and that load is still out when Save lands.
   fireEvent(window, new Event('visibilitychange'))
   fireEvent.click(saveButton())
   await screen.findByText('Saved. Continuarr uses this from now on.')

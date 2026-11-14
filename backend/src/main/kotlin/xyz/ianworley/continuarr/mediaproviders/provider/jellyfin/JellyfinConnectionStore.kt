@@ -18,7 +18,6 @@ class JellyfinConnectionStore(private val repository: JellyfinConnectionReposito
 
 	fun find(): JellyfinConnectionRow? = repository.findById(SINGLE_ROW_ID)
 
-	/** Null when [row] holds no key, as after 0005-plaintext-secrets cleared an encrypted one. */
 	fun apiKeyOrNull(row: JellyfinConnectionRow): JellyfinApiKey? = row.apiKey?.let(JellyfinApiKey::parseOrNull)
 
 	/** Never throws, so the adapter keeps to MediaServer's rule of throwing only MediaServerException. */

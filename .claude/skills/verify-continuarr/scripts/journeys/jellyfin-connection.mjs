@@ -26,7 +26,6 @@ const POSTGRES_IMAGE_PREFIX = 'postgres:'
 // Testcontainers' PostgreSQLContainer defaults.
 const POSTGRES_USER = 'test'
 const POSTGRES_DATABASE = 'test'
-// The state a database upgrade from encrypted storage leaves: the URL stays, the key is gone.
 const CLEAR_KEY_SQL = 'UPDATE jellyfin_connection SET api_key = NULL'
 
 const run = promisify(execFile)

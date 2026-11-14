@@ -13,7 +13,6 @@ const POSTGRES_IMAGE_PREFIX = 'postgres:'
 // Testcontainers' PostgreSQLContainer defaults.
 const POSTGRES_USER = 'test'
 const POSTGRES_DATABASE = 'test'
-// The state a database upgrade from encrypted storage leaves: the URL and source stay, the token is gone.
 const CLEAR_TOKEN_SQL = 'UPDATE plex_connection SET token = NULL'
 const NOTHING_SAVED = { url: null, source: null, tokenState: 'NONE' }
 

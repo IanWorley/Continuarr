@@ -15,7 +15,6 @@ class PlexConnectionStore(private val repository: PlexConnectionRepository) {
 
 	fun find(): PlexConnectionRow? = repository.findById(SINGLE_ROW_ID)
 
-	/** Null when [row] holds no token, as after 0005-plaintext-secrets cleared an encrypted one. */
 	fun tokenOrNull(row: PlexConnectionRow): PlexToken? = row.token?.let(PlexToken::parseOrNull)
 
 	fun seed(url: URI, token: PlexToken): PlexSeedResult {

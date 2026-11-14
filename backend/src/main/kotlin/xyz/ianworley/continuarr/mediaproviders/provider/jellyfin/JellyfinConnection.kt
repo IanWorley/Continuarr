@@ -38,7 +38,6 @@ class JellyfinApiKey private constructor(private val value: String) {
 	/** Jellyfin 12 accepts the key only in the MediaBrowser scheme. */
 	fun authorizationHeader(): String = """MediaBrowser Client="$CLIENT_NAME", Token="$value""""
 
-	/** For the store to save. */
 	fun plaintext(): String = value
 
 	/** Compares in constant time, so the response time doesn't show how much of a wrong key was right. */

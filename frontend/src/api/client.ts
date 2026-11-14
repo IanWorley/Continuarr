@@ -84,7 +84,7 @@ export function setUp(request: SetupRequest): Promise<Response> {
   })
 }
 
-/** The saved Jellyfin URL and whether its API key decrypts. Never the key itself. */
+/** The saved Jellyfin URL and whether an API key is saved. Never the key itself. */
 export async function fetchJellyfinConnection(): Promise<JellyfinConnection> {
   const response = await apiFetch(JELLYFIN_CONNECTION_PATH)
   if (!response.ok) {
@@ -94,7 +94,7 @@ export async function fetchJellyfinConnection(): Promise<JellyfinConnection> {
   return (await response.json()) as JellyfinConnection
 }
 
-/** Replaces the saved connection; answers 204, or 400 or 503 as documented in openapi.json. */
+/** Replaces the saved connection; answers 204, or 400 as documented in openapi.json. */
 export function saveJellyfinConnection(request: JellyfinConnectionRequest): Promise<Response> {
   return apiFetch(JELLYFIN_CONNECTION_PATH, {
     method: 'PUT',
