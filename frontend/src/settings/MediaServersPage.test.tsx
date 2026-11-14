@@ -177,6 +177,31 @@ it('puts the saved values back when the admin discards their edits', async () =>
   expect(screen.queryByText('Discard unsaved changes to Jellyfin?')).toBeNull()
 })
 
+it('keeps edits and says so when Reload fails', async () => {
+  stubBackend(JELLYFIN_STORED, PLEX_LINKED)
+  openPage()
+  fireEvent.change(await screen.findByLabelText('Server URL'), { target: { value: EDITED_URL } })
+  stubBackend(JELLYFIN_STORED, 'fails')
+
+  fireEvent.click(button('Reload'))
+  fireEvent.click(button('Discard changes'))
+
+  expect(await screen.findByText("Couldn't reload settings.")).toBeDefined()
+  expect(screen.getByLabelText<HTMLInputElement>('Server URL').value).toBe(EDITED_URL)
+})
+
+it('asks about edits typed while Reload was loading instead of dropping them', async () => {
+  stubBackend(JELLYFIN_STORED, PLEX_LINKED)
+  openPage()
+  const url = await screen.findByLabelText<HTMLInputElement>('Server URL')
+
+  fireEvent.click(button('Reload'))
+  fireEvent.change(url, { target: { value: EDITED_URL } })
+
+  expect(await screen.findByText('Discard unsaved changes to Jellyfin?')).toBeDefined()
+  expect(screen.getByLabelText<HTMLInputElement>('Server URL').value).toBe(EDITED_URL)
+})
+
 it('keeps the Plex card after Unlink, showing it as not linked', async () => {
   stubBackend(JELLYFIN_STORED, PLEX_LINKED)
   openPage()

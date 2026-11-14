@@ -36,6 +36,7 @@ export function MediaServersPage() {
   const [generation, setGeneration] = useState(0)
   const [reloading, setReloading] = useState(false)
   const [discarding, setDiscarding] = useState<readonly ServerKind[]>()
+  const [reloadFailed, setReloadFailed] = useState(false)
   const cards = useRef<Partial<Record<ServerKind, CardHandle | null>>>({})
   const focusOnAdd = useRef<ServerKind>(undefined)
   const reloadButton = useRef<HTMLButtonElement>(null)
@@ -57,14 +58,27 @@ export function MediaServersPage() {
     keep(kind)
   }
 
-  async function reload() {
+  /** Refetches, then remounts the cards, which drops the edits in `discard`. Other edits are never dropped. */
+  async function reload(discard: readonly ServerKind[]) {
     // Discard changes is about to disappear, so focus goes back to the button that asked.
     reloadButton.current?.focus()
     setDiscarding(undefined)
+    setReloadFailed(false)
     setReloading(true)
-    await Promise.all([jellyfin.refetch(), plex.refetch()])
-    setGeneration((current) => current + 1)
+    const results = await Promise.all([jellyfin.refetch(), plex.refetch()])
     setReloading(false)
+    // The cards keep showing what loaded before, with every edit, so nothing is lost to a failed reload.
+    if (results.some((result) => result.isError)) {
+      setReloadFailed(true)
+      return
+    }
+    // The fields stay editable while the request runs, so ask about anything typed since Reload was pressed.
+    const typedMeanwhile = SERVER_KINDS.filter((kind) => cards.current[kind]?.unsaved && !discard.includes(kind))
+    if (typedMeanwhile.length > 0) {
+      setDiscarding(typedMeanwhile)
+      return
+    }
+    setGeneration((current) => current + 1)
   }
 
   function cancelReload() {
@@ -78,7 +92,7 @@ export function MediaServersPage() {
     if (unsaved.length > 0) {
       setDiscarding(unsaved)
     } else {
-      void reload()
+      void reload([])
     }
   }
 
@@ -115,7 +129,22 @@ export function MediaServersPage() {
         </p>
         <div aria-live="polite">
           {discarding && (
-            <ReloadConfirm servers={discarding} onCancel={cancelReload} onDiscard={() => void reload()} />
+            <ReloadConfirm servers={discarding} onCancel={cancelReload} onDiscard={() => void reload(discarding)} />
+          )}
+          {reloadFailed && (
+            <div role="alert" className="mt-4">
+              <Banner
+                tone="danger"
+                title="Couldn't reload settings."
+                action={
+                  <button type="button" onClick={askToReload} className={SECONDARY_BUTTON_CLASSES}>
+                    Try again
+                  </button>
+                }
+              >
+                The cards show what loaded before, and your edits are kept.
+              </Banner>
+            </div>
           )}
         </div>
         {/* Two cards side by side above 1100px, stacked below. */}

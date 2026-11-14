@@ -196,11 +196,13 @@ function PlexLink({ titleId, saved, onUnlinked }: PlexLinkProps) {
               <button
                 type="button"
                 ref={focusOnMount}
+                aria-disabled={outcome === 'unlinking'}
                 onClick={() => {
+                  if (outcome === 'unlinking') return
                   refocusUnlink.current = true
                   setOutcome(undefined)
                 }}
-                className={`flex-1 ${SECONDARY_BUTTON_CLASSES}`}
+                className={`flex-1 ${SECONDARY_BUTTON_CLASSES} ${UNAVAILABLE_BUTTON_CLASSES}`}
               >
                 Cancel
               </button>

@@ -89,6 +89,19 @@ it('unlinks after the confirm and shows Plex as not linked', async () => {
   expect(deletes()).toHaveLength(1)
 })
 
+it('ignores Cancel while Unlink runs, so only one request goes out', async () => {
+  stubBackend(LINKED)
+  openCard()
+  fireEvent.click(await screen.findByRole('button', { name: 'Unlink' }))
+  fireEvent.click(button('Unlink'))
+
+  fireEvent.click(button('Cancel'))
+
+  expect(screen.getByText('Unlink Plex?')).toBeDefined()
+  expect(await screen.findByText('Not linked')).toBeDefined()
+  expect(deletes()).toHaveLength(1)
+})
+
 it('keeps the link and offers Try again when Unlink fails', async () => {
   stubBackend(LINKED, HTTP_INTERNAL_SERVER_ERROR)
   openCard()
