@@ -73,8 +73,8 @@ function invalidNote(count: number): string {
 /** The card's frame. `ref` reports unsaved edits, so the page can ask before Reload discards them. */
 export function JellyfinCard({ ref }: { ref?: Ref<CardHandle> }) {
   const titleId = useId()
-  // The page loads this too, and remounts the card after a reload it has already fetched.
-  const query = useQuery({ ...jellyfinConnectionQuery, refetchOnMount: false })
+  // The page loads this, so a card that mounts or remounts reads that result instead of fetching or retrying again.
+  const query = useQuery({ ...jellyfinConnectionQuery, refetchOnMount: false, retryOnMount: false })
 
   return (
     <section aria-labelledby={titleId} className="min-w-0 rounded-lg border border-ink-700 bg-ink-900">

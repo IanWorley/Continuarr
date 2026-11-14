@@ -21,7 +21,10 @@ export const MEDIA_SERVERS_PATH = '/settings/media-servers'
 
 const SERVER_LIST = new Intl.ListFormat('en', { type: 'conjunction' })
 
-/** Whether a server has a saved connection, or undefined until its settings load. A failed load counts as yes. */
+/**
+ * Whether a server has a saved connection, or undefined until its settings load. A load that ever failed counts as
+ * yes, so the card and its Retry stay on screen, including while a retry resets the query to pending.
+ */
 type Configured = Record<ServerKind, boolean | undefined>
 
 export function MediaServersPage() {
@@ -38,8 +41,8 @@ export function MediaServersPage() {
   const reloadButton = useRef<HTMLButtonElement>(null)
 
   const configured: Configured = {
-    jellyfin: jellyfin.data ? isJellyfinConfigured(jellyfin.data) : jellyfin.isError || undefined,
-    plex: plex.data ? isPlexConfigured(plex.data) : plex.isError || undefined,
+    jellyfin: jellyfin.data ? isJellyfinConfigured(jellyfin.data) : jellyfin.errorUpdateCount > 0 || undefined,
+    plex: plex.data ? isPlexConfigured(plex.data) : plex.errorUpdateCount > 0 || undefined,
   }
   const loading = SERVER_KINDS.some((kind) => configured[kind] === undefined)
   const shown = SERVER_KINDS.filter((kind) => added.has(kind) || configured[kind])

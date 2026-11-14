@@ -39,8 +39,8 @@ type Outcome = 'confirming' | 'unlinking' | 'unlinked' | 'failed'
 
 export function PlexCard({ onUnlinked }: { onUnlinked?: () => void }) {
   const titleId = useId()
-  // The page loads this too, and remounts the card after a reload it has already fetched.
-  const query = useQuery({ ...plexConnectionQuery, refetchOnMount: false })
+  // The page loads this, so a card that mounts or remounts reads that result instead of fetching or retrying again.
+  const query = useQuery({ ...plexConnectionQuery, refetchOnMount: false, retryOnMount: false })
 
   return (
     <section aria-labelledby={titleId} className="min-w-0 rounded-lg border border-ink-700 bg-ink-900">
