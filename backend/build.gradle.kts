@@ -29,7 +29,7 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-security")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
-	implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.2.0")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.2.1")
 	implementation("org.springframework.modulith:spring-modulith-starter-core")
 	implementation("tools.jackson.module:jackson-module-kotlin")
 	// springdoc reads Kotlin nullability through Jackson 2, which marks non-null fields as required in the spec.
