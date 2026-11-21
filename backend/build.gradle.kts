@@ -20,7 +20,7 @@ repositories {
 	mavenCentral()
 }
 
-extra["springModulithVersion"] = "2.1.2"
+extra["springModulithVersion"] = "2.2.0"
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
