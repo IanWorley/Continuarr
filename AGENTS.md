@@ -61,3 +61,17 @@ Most code changes do not need an internal documentation change. Agents can read 
 - Do not commit implementation plans, research notes, or agent scratch files. Keep temporary working material outside the worktree.
 - Track active maintainer work in the GitHub issue or project item that owns it.
 - A merged PR is the implementation record. Close or update its tracking item when the work lands; do not preserve a second checklist in the repository.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `IanWorley/Continuarr`, through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` at the repo root, decisions in `docs/internals/`. See `docs/agents/domain.md`.
