@@ -34,3 +34,5 @@ Each feature file starts with an H1 title and one paragraph about the user-visib
 - [Access control](./access-control.md) covers which endpoints answer without a session, and the CSRF requirement on state-changing calls.
 - [Jellyfin connection](./jellyfin-connection.md) covers saving the Jellyfin URL and API key through the API, its validation, and reading back the URL and the key's state without the key.
 - [Jellyfin card](./jellyfin-card.md) covers the Media servers page's Jellyfin card: the key state, the field checks, saving, and the failure states at desktop and phone widths.
+- [Plex connection](./plex-connection.md) covers seeding the Plex connection from env vars and reading it back through the API without the token.
+- [Media servers page](./media-servers.md) covers Add server, Reload and its discard prompt, the Plex card's states and Unlink, and the dimmed Sync zone on each card.

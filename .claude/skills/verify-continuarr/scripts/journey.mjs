@@ -1,8 +1,15 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 
 const STEP_NUMBER_WIDTH = 2
+const POSTGRES_IMAGE_PREFIX = 'postgres:'
+// Testcontainers' PostgreSQLContainer defaults.
+const POSTGRES_USER = 'test'
+const POSTGRES_DATABASE = 'test'
 
 /**
  * @param {string} name
@@ -21,6 +28,21 @@ export const EVIDENCE_DIR = requiredEnv('CONTINUARR_VERIFY_EVIDENCE')
 
 /** @type {typeof import('playwright-core')} */
 const playwright = createRequire(join(requiredEnv('CONTINUARR_VERIFY_TOOLS'), 'package.json'))('playwright-core')
+
+const run = promisify(execFile)
+
+/**
+ * Runs SQL in this launch's Postgres, for states a fresh database can't reach through the app.
+ * @param {string} sql
+ * @returns {Promise<void>}
+ */
+export async function runSql(sql) {
+  const ids = (await readFile(join(RUN_DIR, 'containers'), 'utf8')).split('\n').filter(Boolean)
+  const images = await Promise.all(ids.map(async (id) => (await run('docker', ['inspect', '--format', '{{.Config.Image}}', id])).stdout.trim()))
+  const postgres = ids.find((_, index) => images[index].startsWith(POSTGRES_IMAGE_PREFIX))
+  assert.ok(postgres, 'this run recorded its Postgres container')
+  await run('docker', ['exec', postgres, 'psql', '-U', POSTGRES_USER, '-d', POSTGRES_DATABASE, '-c', sql])
+}
 
 /**
  * @typedef {object} Journey

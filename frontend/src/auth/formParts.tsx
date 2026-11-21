@@ -22,6 +22,7 @@ export const PRIMARY_BUTTON_CLASSES =
   `${BUTTON_BASE} border-accent bg-accent font-semibold text-accent-ink ` +
   'not-aria-disabled:hover:border-accent-hover not-aria-disabled:hover:bg-accent-hover'
 export const SECONDARY_BUTTON_CLASSES = `${BUTTON_BASE} border-ink-500 text-ink-100 not-aria-disabled:hover:border-ink-400`
+export const DANGER_BUTTON_CLASSES = `${BUTTON_BASE} border-danger/50 text-danger not-aria-disabled:hover:border-danger`
 export const UNAVAILABLE_BUTTON_CLASSES = 'aria-disabled:cursor-not-allowed aria-disabled:opacity-55'
 export const BUSY_BUTTON_CLASSES = 'cursor-wait opacity-85'
 

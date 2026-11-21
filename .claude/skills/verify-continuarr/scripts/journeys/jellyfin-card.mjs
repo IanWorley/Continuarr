@@ -53,6 +53,9 @@ await runJourney(async ({ page, step, record }) => {
   await page.getByLabel('Password').fill(admin.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.waitForURL(`${FRONTEND_URL}${HOME_PATH}`)
+  // An unconfigured server has no card until the admin adds one.
+  await page.getByRole('button', { name: 'Add server' }).click()
+  await page.getByRole('button', { name: 'Jellyfin', exact: true }).click()
   await card.getByText('No key saved yet').waitFor()
   await card.getByText('Nothing saved yet.').waitFor()
   await card.getByText('Not configured').waitFor()

@@ -15,7 +15,7 @@ The Media servers page has a Jellyfin card for the server URL and API key. The k
 
 ## How to get to it (user POV)
 
-- Sign in. Home opens Settings, on the Media servers page.
+- Sign in. Home opens Settings, on the Media servers page. Before anything is saved, pick Jellyfin from `Add server`.
 
 ## Driving it with control.sh
 
@@ -24,7 +24,7 @@ Preconditions:
 - `control.sh drive first-run-setup` passed earlier in this launch, and nothing is saved yet.
 
 - **Journey.** Run `control.sh drive jellyfin-card`. It runs at 1440 by 900, then at 390 by 844.
-- **First run.** Step `01-desktop-first-run` shows the empty card. Fields and Save are 36px, and the label column is 128px wide.
+- **First run.** The journey adds the card from `Add server`. Step `01-desktop-first-run` shows the empty card. Fields and Save are 36px, and the label column is 128px wide.
 - **Checks.** Step `02-desktop-key-required-keyboard` types a URL and presses Enter with no key. Focus moves to the key field. Step `03-desktop-two-fields-wrong` shows both field messages and `Fix 2 fields`.
 - **Save.** Step `04-desktop-saved-keyboard` saves with Tab and Enter. `GET` then returns the URL with `"apiKeyState":"STORED"`.
 - **Stored.** Step `05-desktop-stored-after-reload` reloads and shows `A key is saved` with the key field empty. Step `06-desktop-unsaved-changes` edits the URL.

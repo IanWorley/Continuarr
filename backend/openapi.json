@@ -178,6 +178,15 @@
             }
           }
         }
+      },
+      "delete" : {
+        "tags" : [ "plex-connection-controller" ],
+        "operationId" : "unlink",
+        "responses" : {
+          "204" : {
+            "description" : "Unlinked, or nothing was saved"
+          }
+        }
       }
     },
     "/api/v1/auth" : {

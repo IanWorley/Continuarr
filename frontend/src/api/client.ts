@@ -11,6 +11,7 @@ export const LOGIN_PATH = '/api/login'
 export const LOGOUT_PATH = '/api/logout'
 export const SETUP_PATH = '/api/setup'
 export const JELLYFIN_CONNECTION_PATH = '/api/v1/jellyfin/connection'
+export const PLEX_CONNECTION_PATH = '/api/v1/plex/connection'
 export const API_TIMEOUT_MS = 10_000
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -30,6 +31,7 @@ export type SetupStatus = components['schemas']['SetupStatus']
 export type JellyfinConnection = components['schemas']['JellyfinConnectionResponse']
 export type JellyfinConnectionRequest = components['schemas']['JellyfinConnectionRequest']
 export type JellyfinConnectionProblem = components['schemas']['JellyfinConnectionProblem']
+export type PlexConnection = components['schemas']['PlexConnectionResponse']
 
 /**
  * Sends a request to the backend. State-changing methods carry the CSRF token, fetching it
@@ -101,6 +103,21 @@ export function saveJellyfinConnection(request: JellyfinConnectionRequest): Prom
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   })
+}
+
+/** The saved Plex URL, how it was linked, and whether a token is saved. Never the token itself. */
+export async function fetchPlexConnection(): Promise<PlexConnection> {
+  const response = await apiFetch(PLEX_CONNECTION_PATH)
+  if (!response.ok) {
+    throw new Error(`GET ${PLEX_CONNECTION_PATH} returned ${response.status}`)
+  }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the generated types and OpenApiSpecTest pin the shape.
+  return (await response.json()) as PlexConnection
+}
+
+/** Forgets the saved Plex URL and token; answers 204 even when nothing was saved. */
+export function unlinkPlex(): Promise<Response> {
+  return apiFetch(PLEX_CONNECTION_PATH, { method: 'DELETE' })
 }
 
 // Read from the cookie on every request rather than cached: Spring rotates the token on login
